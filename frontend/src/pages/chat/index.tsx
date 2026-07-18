@@ -7,6 +7,13 @@ import * as api from '@/api'
 import ComPageLayout from '@/components/page-layout'
 import ComSender, { AttachmentInfo } from '@/components/sender'
 import { ChatRole, ChatType } from '@/configs'
+import { OutlineApprovalPanel } from '@/features/deep-research/OutlineApprovalPanel'
+import { consumeResearchStream } from '@/features/deep-research/research-stream'
+import type {
+  EditableResearchPlan,
+  OutlinePendingApprovalEvent,
+  ResearchEvent,
+} from '@/features/deep-research/types'
 import { deviceActions, deviceState } from '@/store/device'
 import { sessionState } from '@/store/session'
 import { usePageTransport } from '@/utils'
@@ -60,6 +67,15 @@ export default function Index() {
   const researchDetailsRef = useRef<Map<string, ResearchDetailData>>(new Map())
   // 版本计数器 - 用于触发 aggregatedResearchData 重新计算
   const [researchDataVersion, setResearchDataVersion] = useState(0)
+  const [pendingOutline, setPendingOutline] =
+    useState<OutlinePendingApprovalEvent | null>(null)
+  const [approvingOutline, setApprovingOutline] = useState(false)
+  const [outlineApprovalError, setOutlineApprovalError] = useState<string>()
+  const approvalInFlightRef = useRef(false)
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const researchStreamConsumerRef = useRef<
+    ((stream: ReadableStream<Uint8Array>) => Promise<void>) | null
+  >(null)
 
   // 同步 researchSteps 到 ref
   useEffect(() => {
@@ -95,24 +111,13 @@ export default function Index() {
     }
   })
 
-  // 用于取消请求的 ref
-  const readerRef = useRef<ReadableStreamDefaultReader<any> | null>(null)
   const currentSessionIdRef = useRef<string | null>(null)
 
   // 停止生成
   const handleStop = useCallback(async () => {
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
     console.log('[handleStop] 用户点击停止按钮')
-
-    // 取消读取流
-    if (readerRef.current) {
-      try {
-        await readerRef.current.cancel()
-        console.log('[handleStop] 读取流已取消')
-      } catch (e) {
-        console.error('[handleStop] 取消读取流失败:', e)
-      }
-      readerRef.current = null
-    }
 
     // 调用后端取消 API
     if (currentSessionIdRef.current) {
@@ -225,88 +230,88 @@ export default function Index() {
   }, [])
 
   const sendChat = useCallback(
-    async (target: API.ChatItem, message: string, attachmentIds?: string[]) => {
+    async (
+      target: API.ChatItem,
+      chatMessage: string,
+      attachmentIds?: string[],
+      streamOverride?: ReadableStream<Uint8Array>,
+    ) => {
       setCurrentChatItem(target)
       target.loading = true
+      const controller = new AbortController()
+      streamAbortRef.current = controller
       try {
         let res
-        if (target.type === ChatType.Deepsearch) {
+        if (streamOverride) {
+          res = { data: streamOverride }
+        } else if (target.type === ChatType.Deepsearch) {
           res = await api.session.deepsearch({
-            query: message,
+            query: chatMessage,
             session_id: id,  // 传递会话 ID 用于检查点保存
             search_modes: deviceState.searchModes as string[],  // 传递搜索模式
-          })
+          }, { signal: controller.signal })
         } else if (attachmentIds && attachmentIds.length > 0) {
           // 使用带附件的聊天接口
           res = await api.session.chatWithAttachments({
             session_id: id!,
-            question: message,
+            question: chatMessage,
             attachment_ids: attachmentIds,
-          })
+          }, { signal: controller.signal })
         } else {
           res = await api.session.chat({
             session_id: id!,
-            question: message,
+            question: chatMessage,
+          }, { signal: controller.signal })
+        }
+
+        const consumeTargetStream = async (
+          stream: ReadableStream<Uint8Array>,
+        ) => {
+          await consumeResearchStream(stream, {
+            onEvent: (event) => {
+              parseData(event)
+              void scrollToBottom()
+            },
+            onProtocolError: (error, raw) => {
+              console.error('Research stream protocol error', error, raw)
+            },
+            onConnectionError: (error) => {
+              if (!controller.signal.aborted) {
+                console.error('Research stream connection error', error)
+                message.error(
+                  'Research stream disconnected. You can resume it later.',
+                )
+              }
+            },
           })
         }
 
-        const reader = res.data.getReader()
-        if (!reader) return
-
         // 存储 reader 和 session ID 用于取消
-        readerRef.current = reader
         currentSessionIdRef.current = id || null
 
-        await read(reader)
+        researchStreamConsumerRef.current = consumeTargetStream
+        await consumeTargetStream(res.data as ReadableStream<Uint8Array>)
 
-        // 清理 reader ref
-        readerRef.current = null
-      } catch (error) {
-        throw error
       } finally {
+        if (streamAbortRef.current === controller) {
+          streamAbortRef.current = null
+        }
         target.loading = false
       }
 
-      async function read(reader: ReadableStreamDefaultReader<any>) {
-        let temp = ''
-        const decoder = new TextDecoder('utf-8')
-        while (true) {
-          const { value, done } = await reader.read()
-          temp += decoder.decode(value)
-
-          while (true) {
-            const index = temp.indexOf('\n')
-            if (index === -1) break
-
-            const slice = temp.slice(0, index)
-            temp = temp.slice(index + 1)
-
-            if (slice.startsWith('data: ')) {
-              parseData(slice)
-              scrollToBottom()
-            }
-          }
-
-          if (done) {
-            console.debug('数据接受完毕', temp)
-            target.loading = false
-            break
-          }
-        }
-      }
-
-      function parseData(slice: string) {
+      function parseData(event: ResearchEvent) {
         try {
-          const str = slice
-            .trim()
-            .replace(/^data\: /, '')
-            .trim()
-          if (str === '[DONE]') {
-            return
-          }
-
-          const json = JSON.parse(str)
+          // The legacy chat reducer accepts the backend's open event schema.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const json: any = event
           if (target.type === ChatType.Deepsearch) {
+            if (json.type === 'outline_pending_approval') {
+              setPendingOutline(json as OutlinePendingApprovalEvent)
+              setOutlineApprovalError(undefined)
+              target.loading = false
+              return
+            }
+
             // 辅助函数：从 V2 格式中提取实际内容
             const extractContent = (data: any): string => {
               if (typeof data === 'string') return data
@@ -321,6 +326,8 @@ export default function Index() {
 
             // V2 研究开始事件
             if (json.type === 'research_start') {
+              setPendingOutline(null)
+              setOutlineApprovalError(undefined)
               target.reactMode = true
               if (!target.reactSteps) {
                 target.reactSteps = []
@@ -591,6 +598,7 @@ export default function Index() {
 
             // V2 研究完成事件
             if (json.type === 'research_complete') {
+              setPendingOutline(null)
               console.log('研究完成事件:', json)
               // 设置最终报告为内容
               if (json.final_report) {
@@ -1082,11 +1090,60 @@ export default function Index() {
           }
         } catch {
           console.debug('解析失败')
-          console.debug(slice)
+          console.debug(event)
         }
       }
     },
-    [chat],
+    [id],
+  )
+
+  const handleApproveOutline = useCallback(
+    async (plan: EditableResearchPlan) => {
+      if (!id || !pendingOutline || approvalInFlightRef.current) return
+
+      approvalInFlightRef.current = true
+      setApprovingOutline(true)
+      setOutlineApprovalError(undefined)
+      const controller = new AbortController()
+      streamAbortRef.current = controller
+
+      try {
+        const response = await api.session.approveResearchOutline(
+          id,
+          {
+            outline_revision: pendingOutline.outline_revision,
+            sections: plan.sections,
+            research_questions: plan.researchQuestions,
+          },
+          { signal: controller.signal },
+        )
+        const consume = researchStreamConsumerRef.current
+        if (!consume) {
+          throw new Error('Research stream handler is unavailable')
+        }
+
+        setPendingOutline(null)
+        await consume(response.data as ReadableStream<Uint8Array>)
+      } catch (error) {
+        const requestError = error as {
+          message?: string
+          response?: { data?: { detail?: string } }
+        }
+        setOutlineApprovalError(
+          requestError.response?.data?.detail ||
+            requestError.message ||
+            'Unable to approve the outline',
+        )
+        throw error
+      } finally {
+        approvalInFlightRef.current = false
+        setApprovingOutline(false)
+        if (streamAbortRef.current === controller) {
+          streamAbortRef.current = null
+        }
+      }
+    },
+    [id, pendingOutline],
   )
 
   const send = useCallback(
@@ -1168,6 +1225,8 @@ export default function Index() {
       setSelectedResearchDetail(null)
       setResearchDataVersion(0)
       setCurrentChatItem(null)
+      setPendingOutline(null)
+      setOutlineApprovalError(undefined)
     }
   }, [id, chat])
 
@@ -1251,7 +1310,58 @@ export default function Index() {
           })
 
           // 只恢复已完成或正在运行的研究
-          if (checkpoint.status === 'completed' || checkpoint.status === 'running') {
+          const checkpointState = checkpoint.state_json as
+            | {
+                outline_revision?: string
+                outline?: OutlinePendingApprovalEvent['sections']
+                research_questions?: OutlinePendingApprovalEvent['research_questions']
+              }
+            | undefined
+          if (
+            checkpoint.phase === 'awaiting_outline_approval' &&
+            checkpointState?.outline_revision
+          ) {
+            hasLoadedCheckpoint.current = true
+            let approvalTarget = chat.list
+              .filter((item) => item.role === ChatRole.Assistant)
+              .pop()
+            if (!approvalTarget) {
+              approvalTarget = {
+                id: createChatId(),
+                role: ChatRole.Assistant,
+                type: ChatType.Deepsearch,
+                content: '',
+              }
+              chat.list.push(approvalTarget)
+            }
+            approvalTarget.type = ChatType.Deepsearch
+            setCurrentChatItem(approvalTarget)
+            const emptyStream = new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close()
+              },
+            })
+            await sendChat(
+              approvalTarget,
+              checkpoint.query || '',
+              undefined,
+              emptyStream,
+            )
+            setPendingOutline({
+              type: 'outline_pending_approval',
+              session_id: checkpoint.session_id,
+              outline_revision: checkpointState.outline_revision,
+              sections: checkpointState.outline || [],
+              research_questions: checkpointState.research_questions || [],
+            })
+            return
+          }
+
+          if (
+            checkpoint.status === 'completed' ||
+            checkpoint.status === 'running' ||
+            checkpoint.status === 'paused'
+          ) {
             hasLoadedCheckpoint.current = true
 
             // 恢复 UI 状态
@@ -1423,6 +1533,20 @@ export default function Index() {
                 hasReport: !!detail.streamingReport,
               }
             })
+            if (checkpoint.status !== 'completed') {
+              const resumeTarget = chat.list
+                .filter((item) => item.role === ChatRole.Assistant)
+                .pop()
+              if (resumeTarget) {
+                const resumeResponse = await api.session.resumeResearch(id!)
+                await sendChat(
+                  resumeTarget,
+                  checkpoint.query || '',
+                  undefined,
+                  resumeResponse.data as ReadableStream<Uint8Array>,
+                )
+              }
+            }
             console.log('[恢复状态] ✅ 恢复完成，最终状态:', finalSummary)
           }
         } else {
@@ -1434,7 +1558,7 @@ export default function Index() {
     }
 
     loadCheckpoint()
-  }, [id, chat])
+  }, [id, chat, sendChat])
 
   useEffect(() => {
     if (ctx?.data?.message && !hasSentInitialMessage.current) {
@@ -1619,6 +1743,17 @@ export default function Index() {
     >
       <div className={styles['chat-page']}>
         <ChatMessage list={list} onSend={send} onStepClick={handleStepClick} />
+        {pendingOutline ? (
+          <OutlineApprovalPanel
+            sessionId={pendingOutline.session_id}
+            outlineRevision={pendingOutline.outline_revision}
+            initialSections={pendingOutline.sections}
+            initialResearchQuestions={pendingOutline.research_questions}
+            approving={approvingOutline}
+            error={outlineApprovalError}
+            onApprove={handleApproveOutline}
+          />
+        ) : null}
       </div>
     </ComPageLayout>
   )

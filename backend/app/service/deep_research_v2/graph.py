@@ -825,7 +825,12 @@ class DeepResearchGraph:
             logger.error(f"Simplified execution error: {e}")
             # 更新检查点状态为失败
             if self.checkpoint_service and session_id:
-                self.checkpoint_service.update_status(session_id, "failed", str(e))
+                self.checkpoint_service.update_status(
+                    session_id,
+                    "failed",
+                    str(e),
+                    user_id=user_id,
+                )
             yield {"type": "error", "content": str(e)}
         finally:
             # 清理队列

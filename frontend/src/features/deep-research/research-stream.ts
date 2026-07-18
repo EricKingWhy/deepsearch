@@ -33,8 +33,8 @@ function emitFrame(frame: string, handlers: ResearchStreamHandlers): boolean {
 
   try {
     const event = JSON.parse(raw) as ResearchEvent
-    if (!event || typeof event !== 'object' || typeof event.type !== 'string') {
-      throw new Error('Research event must contain a string type')
+    if (!event || typeof event !== 'object' || Array.isArray(event)) {
+      throw new Error('Stream event must be a JSON object')
     }
     handlers.onEvent(event)
   } catch (error) {

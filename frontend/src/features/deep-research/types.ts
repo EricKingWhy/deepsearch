@@ -50,7 +50,7 @@ export interface PhaseEvent {
 }
 
 export interface GenericResearchEvent {
-  type: string
+  type?: string
   [key: string]: unknown
 }
 

@@ -156,6 +156,8 @@ export function OutlineApprovalPanel({
       await onApprove(plan)
       approvedRef.current = true
       clearOutlineDraft(sessionId, outlineRevision)
+    } catch {
+      // The parent renders the API error and the local draft is preserved.
     } finally {
       setSubmitting(false)
     }

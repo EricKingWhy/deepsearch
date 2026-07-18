@@ -127,6 +127,26 @@ describe('consumeResearchStream', () => {
     })
   })
 
+  it('keeps compatibility with chat events that do not have a type', async () => {
+    const callbacks = handlers()
+
+    await consumeResearchStream(
+      streamFromChunks([
+        bytes(
+          'event: message\n' +
+            'data: {"role":"assistant","content":"hello","thinking":false}\n\n',
+        ),
+      ]),
+      callbacks,
+    )
+
+    expect(callbacks.onEvent).toHaveBeenCalledWith({
+      role: 'assistant',
+      content: 'hello',
+      thinking: false,
+    })
+  })
+
   it('routes reader failures to the connection error handler', async () => {
     const callbacks = handlers()
     const failure = new Error('connection lost')

@@ -24,3 +24,8 @@ Object.defineProperty(window, 'ResizeObserver', {
   writable: true,
   value: ResizeObserverStub,
 })
+
+Object.defineProperty(window, 'scrollTo', {
+  writable: true,
+  value: () => undefined,
+})

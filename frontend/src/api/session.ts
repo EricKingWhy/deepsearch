@@ -4,6 +4,7 @@
  */
 
 import { AxiosRequestConfig } from 'axios'
+import type { EditableResearchPlan } from '@/features/deep-research/types'
 import { request } from './request'
 
 // ============ 新的会话管理 API ============
@@ -100,7 +101,7 @@ export function addMessage(sessionId: string, params: CreateMessageParams) {
 
 // ============ 旧的聊天 API（保持兼容） ============
 
-export function create(params?: {}, options?: AxiosRequestConfig) {
+export function create(params?: Record<string, never>, options?: AxiosRequestConfig) {
   return request.post<
     API.Result<{
       session_id: string
@@ -143,6 +144,47 @@ export function deepsearch(
     loading: false,
     ...options,
   })
+}
+
+export interface ApproveResearchOutlineParams {
+  outline_revision: string
+  sections: EditableResearchPlan['sections']
+  research_questions: EditableResearchPlan['researchQuestions']
+}
+
+function researchStreamConfig(options?: AxiosRequestConfig): AxiosRequestConfig {
+  return {
+    headers: {
+      Accept: 'text/event-stream',
+    },
+    responseType: 'stream',
+    adapter: 'fetch',
+    loading: false,
+    ...options,
+  }
+}
+
+export function approveResearchOutline(
+  sessionId: string,
+  params: ApproveResearchOutlineParams,
+  options?: AxiosRequestConfig,
+) {
+  return request.post<ReadableStream>(
+    `/research/outline/${sessionId}/approve`,
+    params,
+    researchStreamConfig(options),
+  )
+}
+
+export function resumeResearch(
+  sessionId: string,
+  options?: AxiosRequestConfig,
+) {
+  return request.post<ReadableStream>(
+    `/research/resume/${sessionId}`,
+    {},
+    researchStreamConfig(options),
+  )
 }
 
 // ============ 附件 API ============
