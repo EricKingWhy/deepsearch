@@ -20,3 +20,7 @@ _register_namespace_package(
     "service.deep_research_v2",
     APP_DIR / "service" / "deep_research_v2",
 )
+_register_namespace_package(
+    "service.deep_research_v2.agents",
+    APP_DIR / "service" / "deep_research_v2" / "agents",
+)

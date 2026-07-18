@@ -11,6 +11,7 @@ DeepResearch V2.0 - 总架构师 Agent (ChiefArchitect)
 4. 进度监控 - 根据研究进展动态调整大纲
 """
 
+import json
 import uuid
 from typing import Dict, Any, List
 from datetime import datetime
@@ -64,6 +65,41 @@ class ChiefArchitect(BaseAgent):
 - 假设政策变化会影响行业格局，需要分析政策走向
 
 请根据研究课题填写具体内容，每个字段都是字符串类型。"""
+
+    OUTLINE_ONLY_PROMPT = """研究课题：{query}
+
+请生成一份可由用户审核的深度研究计划，严格输出 JSON：
+{{
+  "sections": [
+    {{"id": "section_唯一标识", "title": "章节标题", "description": "研究范围描述"}}
+  ],
+  "research_questions": [
+    {{"id": "question_唯一标识", "text": "需要回答的核心研究问题"}}
+  ]
+}}
+
+要求：
+1. 生成 5-8 个章节，每章标题和描述必须具体且非空。
+2. 生成 3-6 个核心研究问题。
+3. ID 在本次输出中必须唯一且稳定。
+4. 不要生成搜索关键词或研究假设。"""
+
+    SEARCH_PLAN_PROMPT = """研究课题：{query}
+
+用户批准的章节与核心研究问题：
+{approved_plan}
+
+请基于最终计划生成每章搜索关键词与可验证研究假设，严格输出 JSON：
+{{
+  "sections": [
+    {{"id": "必须与输入章节ID一致", "queries": ["精准关键词1", "精准关键词2"]}}
+  ],
+  "hypotheses": [
+    {{"id": "hypothesis_唯一标识", "content": "可被证据支持或反驳的假设"}}
+  ]
+}}
+
+要求：每个输入章节都必须出现一次；不要创造未知章节 ID；每章至少两个非空关键词。{retry_feedback}"""
 
     REVISION_PROMPT = """你是总架构师，需要根据研究进展动态调整大纲。
 
@@ -163,11 +199,259 @@ class ChiefArchitect(BaseAgent):
         根据当前阶段执行不同的规划任务
         """
         if state["phase"] == ResearchPhase.INIT.value:
-            return await self._initial_planning(state)
+            return await self._generate_outline(state)
+        elif state["phase"] == ResearchPhase.PLANNING.value:
+            return await self._generate_search_plan(state)
         elif state["phase"] == ResearchPhase.REVIEWING.value:
             return await self._check_revision(state)
         else:
             return state
+
+    async def _generate_outline(self, state: ResearchState) -> ResearchState:
+        """生成等待用户审核的章节与核心研究问题。"""
+        self.add_message(state, "research_step", {
+            "step_id": f"step_planning_{uuid.uuid4().hex[:8]}",
+            "step_type": "planning",
+            "title": "研究计划",
+            "subtitle": "生成待审核大纲",
+            "status": "running",
+            "stats": {},
+        })
+        self.add_message(state, "thought", {
+            "agent": self.name,
+            "content": "正在生成可审核的研究章节与核心问题...",
+        })
+
+        prompt = self.OUTLINE_ONLY_PROMPT.format(query=state["query"])
+        normalized_sections = []
+        normalized_questions = []
+
+        for _attempt in range(3):
+            response = await self.call_llm(
+                system_prompt="你是一位专业的行业研究规划师，只输出合法 JSON。",
+                user_prompt=prompt,
+                json_mode=True,
+                temperature=0.3,
+                max_tokens=8000,
+            )
+            result = self.parse_json_response(response) or {}
+            normalized_sections = self._normalize_outline_sections(
+                result.get("sections", [])
+            )
+            normalized_questions = self._normalize_research_questions(
+                result.get("research_questions", [])
+            )
+            if 5 <= len(normalized_sections) <= 8 and 3 <= len(normalized_questions) <= 6:
+                break
+
+        if not (5 <= len(normalized_sections) <= 8 and 3 <= len(normalized_questions) <= 6):
+            state["errors"].append("大纲生成失败：章节或核心研究问题数量不合格")
+            self.add_message(state, "planning_error", {
+                "stage": "outline_generation",
+                "message": state["errors"][-1],
+                "retryable": True,
+            })
+            return state
+
+        state["outline"] = normalized_sections
+        state["research_questions"] = normalized_questions
+        state["hypotheses"] = []
+        state["outline_revision"] = uuid.uuid4().hex
+        state["phase"] = ResearchPhase.AWAITING_OUTLINE_APPROVAL.value
+
+        self.add_message(state, "outline", {
+            "outline": normalized_sections,
+            "research_questions": normalized_questions,
+            "outline_revision": state["outline_revision"],
+        })
+        self.add_message(state, "research_step", {
+            "step_type": "planning",
+            "title": "研究计划",
+            "subtitle": "等待用户审核",
+            "status": "paused",
+            "stats": {
+                "sections_count": len(normalized_sections),
+                "questions_count": len(normalized_questions),
+            },
+        })
+        return state
+
+    def _normalize_outline_sections(self, sections: Any) -> List[Dict[str, Any]]:
+        if not isinstance(sections, list):
+            return []
+
+        normalized = []
+        used_ids = set()
+        for index, section in enumerate(sections):
+            if not isinstance(section, dict):
+                continue
+            title = str(section.get("title", "")).strip()
+            description = str(section.get("description", "")).strip()
+            if not title or not description:
+                continue
+            section_id = str(section.get("id", "")).strip()
+            if not section_id or section_id in used_ids:
+                section_id = f"section_{uuid.uuid4().hex}"
+            used_ids.add(section_id)
+            normalized.append({
+                "id": section_id,
+                "title": title,
+                "description": description,
+                "section_type": section.get("section_type", "mixed"),
+                "requires_data": bool(section.get("requires_data", index < 2)),
+                "requires_chart": bool(section.get("requires_chart", index < 2)),
+                "priority": index + 1,
+                "search_queries": [],
+                "status": "pending",
+            })
+        return normalized
+
+    def _normalize_research_questions(self, questions: Any) -> List[Dict[str, str]]:
+        if not isinstance(questions, list):
+            return []
+
+        normalized = []
+        used_ids = set()
+        for question in questions:
+            if isinstance(question, str):
+                question = {"text": question}
+            if not isinstance(question, dict):
+                continue
+            text = str(question.get("text", "")).strip()
+            if not text:
+                continue
+            question_id = str(question.get("id", "")).strip()
+            if not question_id or question_id in used_ids:
+                question_id = f"question_{uuid.uuid4().hex}"
+            used_ids.add(question_id)
+            normalized.append({"id": question_id, "text": text})
+        return normalized
+
+    async def _generate_search_plan(self, state: ResearchState) -> ResearchState:
+        """基于用户批准的计划生成关键词与研究假设。"""
+        outline = state.get("outline", [])
+        approved_plan = json.dumps({
+            "sections": outline,
+            "research_questions": state.get("research_questions", []),
+        }, ensure_ascii=False)
+        expected_ids = {section.get("id") for section in outline}
+        valid_queries = {}
+        hypotheses = []
+        retry_feedback = ""
+
+        for attempt in range(2):
+            prompt = self.SEARCH_PLAN_PROMPT.format(
+                query=state["query"],
+                approved_plan=approved_plan,
+                retry_feedback=retry_feedback,
+            )
+            response = await self.call_llm(
+                system_prompt="你是一位专业的行业研究检索规划师，只输出合法 JSON。",
+                user_prompt=prompt,
+                json_mode=True,
+                temperature=0.3,
+                max_tokens=8000,
+            )
+            result = self.parse_json_response(response) or {}
+            valid_queries = self._parse_section_queries(
+                result.get("sections", []), expected_ids
+            )
+            hypotheses = self._normalize_hypotheses(result.get("hypotheses", []))
+            if len(valid_queries) == len(expected_ids):
+                break
+            retry_feedback = (
+                f"上次输出仅覆盖 {len(valid_queries)}/{len(expected_ids)} 个有效章节，"
+                "请修正缺失、重复或未知 ID。"
+            )
+
+        if len(valid_queries) < 3:
+            state["errors"].append(
+                f"关键词生成失败：仅 {len(valid_queries)} 个章节获得有效关键词"
+            )
+            self.add_message(state, "planning_error", {
+                "stage": "keyword_generation",
+                "message": state["errors"][-1],
+                "retryable": True,
+            })
+            return state
+
+        fallback_ids = []
+        for section in outline:
+            section_id = section.get("id")
+            queries = valid_queries.get(section_id)
+            if not queries:
+                fallback_ids.append(section_id)
+                queries = [
+                    f"{state['query']} {section.get('title', '')}".strip(),
+                    f"{section.get('title', '')} {section.get('description', '')}".strip(),
+                ]
+            section["search_queries"] = queries
+
+        state["outline"] = outline
+        state["hypotheses"] = hypotheses
+        state["phase"] = ResearchPhase.RESEARCHING.value
+        self.add_message(state, "keywords_generated", {
+            "sections_count": len(outline),
+            "fallback_section_ids": fallback_ids,
+            "hypotheses_count": len(hypotheses),
+        })
+        return state
+
+    def _parse_section_queries(
+        self,
+        sections: Any,
+        expected_ids: set,
+    ) -> Dict[str, List[str]]:
+        if not isinstance(sections, list):
+            return {}
+
+        parsed = {}
+        duplicate_ids = set()
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            section_id = section.get("id")
+            if section_id not in expected_ids:
+                continue
+            if section_id in parsed:
+                duplicate_ids.add(section_id)
+                continue
+            queries = section.get("queries", [])
+            if not isinstance(queries, list):
+                continue
+            cleaned = [str(query).strip() for query in queries if str(query).strip()]
+            if cleaned:
+                parsed[section_id] = list(dict.fromkeys(cleaned))
+        for section_id in duplicate_ids:
+            parsed.pop(section_id, None)
+        return parsed
+
+    def _normalize_hypotheses(self, hypotheses: Any) -> List[Dict[str, Any]]:
+        if not isinstance(hypotheses, list):
+            return []
+
+        normalized = []
+        used_ids = set()
+        for hypothesis in hypotheses:
+            if isinstance(hypothesis, str):
+                hypothesis = {"content": hypothesis}
+            if not isinstance(hypothesis, dict):
+                continue
+            content = str(hypothesis.get("content", "")).strip()
+            if not content:
+                continue
+            hypothesis_id = str(hypothesis.get("id", "")).strip()
+            if not hypothesis_id or hypothesis_id in used_ids:
+                hypothesis_id = f"hypothesis_{uuid.uuid4().hex}"
+            used_ids.add(hypothesis_id)
+            normalized.append({
+                "id": hypothesis_id,
+                "content": content,
+                "status": "unverified",
+                "evidence_for": [],
+                "evidence_against": [],
+            })
+        return normalized
 
     async def _initial_planning(self, state: ResearchState) -> ResearchState:
         """初始规划"""
