@@ -16,6 +16,8 @@ def _register_namespace_package(name: str, path: Path) -> None:
 
 
 _register_namespace_package("service", APP_DIR / "service")
+_register_namespace_package("core", APP_DIR / "core")
+_register_namespace_package("models", APP_DIR / "models")
 _register_namespace_package(
     "service.deep_research_v2",
     APP_DIR / "service" / "deep_research_v2",

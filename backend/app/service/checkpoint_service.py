@@ -4,15 +4,24 @@
 """检查点服务 - 用于保存和恢复深度研究状态"""
 import json
 import logging
+from copy import deepcopy
 from typing import Dict, Any, Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from models.research import ResearchCheckpoint
 from core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
+
+
+class CheckpointNotFound(Exception):
+    """检查点不存在或不属于当前用户。"""
+
+
+class OutlineApprovalConflict(Exception):
+    """检查点状态或大纲版本不允许当前批准操作。"""
 
 
 class CheckpointService:
@@ -280,6 +289,125 @@ class CheckpointService:
             return False
         finally:
             db.close()
+
+    def approve_outline(
+        self,
+        session_id: str,
+        user_id: str,
+        outline_revision: str,
+        sections: List[Dict[str, Any]],
+        research_questions: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """锁定并原子批准当前用户的待审核研究计划。"""
+        db = self._get_db()
+        try:
+            checkpoint = (
+                db.query(ResearchCheckpoint)
+                .filter(
+                    ResearchCheckpoint.session_id == session_id,
+                    ResearchCheckpoint.user_id == UUID(user_id),
+                )
+                .with_for_update()
+                .first()
+            )
+            if not checkpoint:
+                raise CheckpointNotFound(session_id)
+
+            state = deepcopy(checkpoint.state_json or {})
+            if (
+                checkpoint.phase != "awaiting_outline_approval"
+                or checkpoint.status != "paused"
+            ):
+                raise OutlineApprovalConflict(
+                    "Research is not waiting for outline approval"
+                )
+            if state.get("outline_revision") != outline_revision:
+                raise OutlineApprovalConflict("Outline revision is stale")
+
+            normalized_sections = self._validate_approved_sections(sections)
+            normalized_questions = self._validate_approved_questions(
+                research_questions
+            )
+            state["outline"] = normalized_sections
+            state["research_questions"] = normalized_questions
+            state["phase"] = "planning"
+
+            checkpoint.state_json = self._clean_state_for_storage(state)
+            checkpoint.phase = "planning"
+            checkpoint.status = "running"
+            checkpoint.error_message = None
+            checkpoint.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            return deepcopy(checkpoint.state_json)
+        except (CheckpointNotFound, OutlineApprovalConflict, ValueError):
+            db.rollback()
+            raise
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed to approve outline for session %s",
+                session_id,
+            )
+            raise
+        finally:
+            db.close()
+
+    def _validate_approved_sections(
+        self,
+        sections: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not 3 <= len(sections) <= 12:
+            raise ValueError("Outline must contain between 3 and 12 sections")
+
+        normalized = []
+        used_ids = set()
+        for index, section in enumerate(sections):
+            if not isinstance(section, dict):
+                raise ValueError("Every outline section must be an object")
+            section_id = str(section.get("id", "")).strip()
+            title = str(section.get("title", "")).strip()
+            description = str(section.get("description", "")).strip()
+            if not section_id or not title or not description:
+                raise ValueError("Section id, title and description are required")
+            if section_id in used_ids:
+                raise ValueError(f"Duplicate section id: {section_id}")
+            used_ids.add(section_id)
+            normalized.append({
+                "id": section_id,
+                "title": title,
+                "description": description,
+                "section_type": section.get("section_type", "mixed"),
+                "requires_data": bool(section.get("requires_data", False)),
+                "requires_chart": bool(section.get("requires_chart", False)),
+                "priority": index + 1,
+                "search_queries": [],
+                "status": "pending",
+            })
+        return normalized
+
+    def _validate_approved_questions(
+        self,
+        questions: List[Dict[str, Any]],
+    ) -> List[Dict[str, str]]:
+        if not 3 <= len(questions) <= 12:
+            raise ValueError(
+                "Research plan must contain between 3 and 12 questions"
+            )
+
+        normalized = []
+        used_ids = set()
+        for question in questions:
+            if not isinstance(question, dict):
+                raise ValueError("Every research question must be an object")
+            question_id = str(question.get("id", "")).strip()
+            text = str(question.get("text", "")).strip()
+            if not question_id or not text:
+                raise ValueError("Research question id and text are required")
+            if question_id in used_ids:
+                raise ValueError(f"Duplicate research question id: {question_id}")
+            used_ids.add(question_id)
+            normalized.append({"id": question_id, "text": text})
+        return normalized
 
     def delete_checkpoint(self, session_id: str) -> bool:
         """
