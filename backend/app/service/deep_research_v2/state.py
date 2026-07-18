@@ -17,6 +17,7 @@ from enum import Enum
 class ResearchPhase(str, Enum):
     """研究阶段状态机"""
     INIT = "init"                    # 初始化
+    AWAITING_OUTLINE_APPROVAL = "awaiting_outline_approval"  # 等待用户审核大纲
     PLANNING = "planning"            # 规划阶段
     RESEARCHING = "researching"      # 深度探索阶段
     ANALYZING = "analyzing"          # 数据分析阶段
@@ -125,6 +126,7 @@ class ResearchState(TypedDict):
 
     # 规划输出
     outline: List[Dict[str, Any]]           # 动态大纲 (Section序列化)
+    outline_revision: Optional[str]         # 当前待审核大纲版本
     mind_map: Dict[str, Any]                # 知识图谱/思维导图
     key_entities: List[str]                 # 关键实体
     research_questions: List[str]           # 待研究的子问题
@@ -181,6 +183,7 @@ def create_initial_state(
         search_web=search_web,
         search_local=search_local,
         outline=[],
+        outline_revision=None,
         mind_map={},
         key_entities=[],
         research_questions=[],
