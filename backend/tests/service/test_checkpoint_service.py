@@ -33,6 +33,7 @@ def _questions(count: int = 3):
 
 class FakeCheckpoint:
     def __init__(self):
+        self.id = UUID("22222222-2222-2222-2222-222222222222")
         self.session_id = "session-1"
         self.user_id = UUID(USER_ID)
         self.phase = "awaiting_outline_approval"
@@ -218,3 +219,19 @@ def test_research_checkpoint_declares_unique_session_constraint():
     }
 
     assert "uq_research_checkpoints_session_id" in constraint_names
+
+
+def test_save_checkpoint_persists_explicit_status():
+    row = FakeCheckpoint()
+    service, session = _service_with_row(row)
+
+    checkpoint_id = service.save_checkpoint(
+        session_id="session-1",
+        state={"query": "产业研究", "phase": "awaiting_outline_approval"},
+        user_id=USER_ID,
+        status="paused",
+    )
+
+    assert checkpoint_id is not None
+    assert row.status == "paused"
+    assert session.committed is True

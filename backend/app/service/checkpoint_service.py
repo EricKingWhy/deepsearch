@@ -41,6 +41,7 @@ class CheckpointService:
         user_id: Optional[str] = None,
         ui_state: Optional[Dict[str, Any]] = None,
         final_report: Optional[str] = None,
+        status: str = "running",
     ) -> Optional[str]:
         """
         保存检查点
@@ -80,8 +81,8 @@ class CheckpointService:
                     existing.ui_state_json = clean_ui_state
                 if final_report:
                     existing.final_report = final_report
-                existing.status = "running"
-                existing.updated_at = datetime.utcnow()
+                existing.status = status
+                existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 checkpoint_id = str(existing.id)
             else:
                 # 创建新检查点
@@ -94,7 +95,7 @@ class CheckpointService:
                     state_json=clean_state,
                     ui_state_json=clean_ui_state,
                     final_report=final_report,
-                    status="running",
+                    status=status,
                 )
                 db.add(checkpoint)
                 db.flush()
@@ -278,7 +279,7 @@ class CheckpointService:
             checkpoint.status = status
             if error_message:
                 checkpoint.error_message = error_message
-            checkpoint.updated_at = datetime.utcnow()
+            checkpoint.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
             db.commit()
             return True
