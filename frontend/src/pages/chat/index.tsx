@@ -48,6 +48,33 @@ async function scrollToBottom() {
   }
 }
 
+async function getApprovalErrorMessage(error: unknown): Promise<string> {
+  const requestError = error as {
+    message?: string
+    response?: { data?: unknown }
+  }
+  const data = requestError.response?.data
+
+  if (data && typeof data === 'object' && 'detail' in data) {
+    const detail = (data as { detail?: unknown }).detail
+    if (typeof detail === 'string' && detail) return detail
+  }
+
+  if (data instanceof ReadableStream) {
+    try {
+      const raw = await new Response(data).text()
+      const parsed = JSON.parse(raw) as { detail?: unknown }
+      if (typeof parsed.detail === 'string' && parsed.detail) {
+        return parsed.detail
+      }
+    } catch {
+      // Fall through to the transport error message.
+    }
+  }
+
+  return requestError.message || 'Unable to approve the outline'
+}
+
 export default function Index() {
   const { id } = useParams()
   const { data: ctx } = usePageTransport(transportToChatEnter)
@@ -1125,15 +1152,7 @@ export default function Index() {
         setPendingOutline(null)
         await consume(response.data as ReadableStream<Uint8Array>)
       } catch (error) {
-        const requestError = error as {
-          message?: string
-          response?: { data?: { detail?: string } }
-        }
-        setOutlineApprovalError(
-          requestError.response?.data?.detail ||
-            requestError.message ||
-            'Unable to approve the outline',
-        )
+        setOutlineApprovalError(await getApprovalErrorMessage(error))
         throw error
       } finally {
         approvalInFlightRef.current = false

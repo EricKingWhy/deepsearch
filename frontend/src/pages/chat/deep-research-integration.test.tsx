@@ -71,6 +71,16 @@ function eventStream(events: unknown[]): ReadableStream<Uint8Array> {
   })
 }
 
+function jsonStream(value: unknown): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(JSON.stringify(value)))
+      controller.close()
+    },
+  })
+}
+
 function outlineEvent() {
   return {
     type: 'outline_pending_approval',
@@ -159,7 +169,7 @@ describe('deep research outline approval integration', () => {
   it('keeps the edited panel and draft when approval returns 409', async () => {
     const user = userEvent.setup()
     apiMocks.approveResearchOutline.mockRejectedValue({
-      response: { data: { detail: 'Outline revision is stale' } },
+      response: { data: jsonStream({ detail: 'Outline revision is stale' }) },
     })
     renderPage()
 
