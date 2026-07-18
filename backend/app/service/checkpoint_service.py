@@ -119,7 +119,11 @@ class CheckpointService:
         finally:
             db.close()
 
-    def load_checkpoint(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def load_checkpoint(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         加载最新的检查点（仅后端状态）
 
@@ -131,9 +135,12 @@ class CheckpointService:
         """
         db = self._get_db()
         try:
-            checkpoint = db.query(ResearchCheckpoint).filter(
+            query = db.query(ResearchCheckpoint).filter(
                 ResearchCheckpoint.session_id == session_id
-            ).order_by(ResearchCheckpoint.updated_at.desc()).first()
+            )
+            if user_id:
+                query = query.filter(ResearchCheckpoint.user_id == UUID(user_id))
+            checkpoint = query.order_by(ResearchCheckpoint.updated_at.desc()).first()
 
             if not checkpoint:
                 return None
@@ -146,7 +153,11 @@ class CheckpointService:
         finally:
             db.close()
 
-    def load_full_checkpoint(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def load_full_checkpoint(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         加载完整的检查点（包含后端状态、UI状态和报告）
 
@@ -158,9 +169,12 @@ class CheckpointService:
         """
         db = self._get_db()
         try:
-            checkpoint = db.query(ResearchCheckpoint).filter(
+            query = db.query(ResearchCheckpoint).filter(
                 ResearchCheckpoint.session_id == session_id
-            ).order_by(ResearchCheckpoint.updated_at.desc()).first()
+            )
+            if user_id:
+                query = query.filter(ResearchCheckpoint.user_id == UUID(user_id))
+            checkpoint = query.order_by(ResearchCheckpoint.updated_at.desc()).first()
 
             if not checkpoint:
                 logger.info(f"[CheckpointService] 未找到检查点: session={session_id}")
@@ -185,7 +199,11 @@ class CheckpointService:
         finally:
             db.close()
 
-    def get_checkpoint_info(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_checkpoint_info(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         获取检查点信息（不包含完整状态）
 
@@ -197,9 +215,12 @@ class CheckpointService:
         """
         db = self._get_db()
         try:
-            checkpoint = db.query(ResearchCheckpoint).filter(
+            query = db.query(ResearchCheckpoint).filter(
                 ResearchCheckpoint.session_id == session_id
-            ).order_by(ResearchCheckpoint.updated_at.desc()).first()
+            )
+            if user_id:
+                query = query.filter(ResearchCheckpoint.user_id == UUID(user_id))
+            checkpoint = query.order_by(ResearchCheckpoint.updated_at.desc()).first()
 
             if not checkpoint:
                 return None
@@ -255,6 +276,7 @@ class CheckpointService:
         session_id: str,
         status: str,
         error_message: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> bool:
         """
         更新检查点状态
@@ -269,9 +291,12 @@ class CheckpointService:
         """
         db = self._get_db()
         try:
-            checkpoint = db.query(ResearchCheckpoint).filter(
+            query = db.query(ResearchCheckpoint).filter(
                 ResearchCheckpoint.session_id == session_id
-            ).first()
+            )
+            if user_id:
+                query = query.filter(ResearchCheckpoint.user_id == UUID(user_id))
+            checkpoint = query.first()
 
             if not checkpoint:
                 return False
@@ -410,7 +435,11 @@ class CheckpointService:
             normalized.append({"id": question_id, "text": text})
         return normalized
 
-    def delete_checkpoint(self, session_id: str) -> bool:
+    def delete_checkpoint(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """
         删除检查点
 
@@ -422,9 +451,12 @@ class CheckpointService:
         """
         db = self._get_db()
         try:
-            deleted = db.query(ResearchCheckpoint).filter(
+            query = db.query(ResearchCheckpoint).filter(
                 ResearchCheckpoint.session_id == session_id
-            ).delete()
+            )
+            if user_id:
+                query = query.filter(ResearchCheckpoint.user_id == UUID(user_id))
+            deleted = query.delete()
 
             db.commit()
             return deleted > 0

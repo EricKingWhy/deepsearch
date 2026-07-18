@@ -179,13 +179,20 @@ class DeepResearchGraph:
 
         return False
 
-    def _load_checkpoint(self, session_id: str) -> Dict[str, Any]:
+    def _load_checkpoint(
+        self,
+        session_id: str,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
         """加载检查点"""
         if not self.checkpoint_service:
             return None
 
         try:
-            state = self.checkpoint_service.load_checkpoint(session_id)
+            state = self.checkpoint_service.load_checkpoint(
+                session_id,
+                user_id=user_id,
+            )
             if state:
                 logger.info(f"Checkpoint loaded for session: {session_id}")
                 return state
@@ -319,7 +326,7 @@ class DeepResearchGraph:
         # 尝试从检查点恢复
         state = None
         if resume and session_id:
-            state = self._load_checkpoint(session_id)
+            state = self._load_checkpoint(session_id, user_id=user_id)
             if state:
                 yield {
                     "type": "research_resumed",
@@ -778,7 +785,11 @@ class DeepResearchGraph:
             # 更新检查点状态为已完成
             state["phase"] = ResearchPhase.COMPLETED.value
             if self.checkpoint_service and session_id:
-                self.checkpoint_service.update_status(session_id, "completed")
+                self.checkpoint_service.update_status(
+                    session_id,
+                    "completed",
+                    user_id=user_id,
+                )
 
             # 构建前端友好的 references
             final_facts = state.get("facts", [])
