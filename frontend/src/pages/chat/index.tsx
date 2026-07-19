@@ -4,6 +4,7 @@
  */
 
 import * as api from '@/api'
+import type { ResearchTimeline } from '@/api/session'
 import ComPageLayout from '@/components/page-layout'
 import ComSender, { AttachmentInfo } from '@/components/sender'
 import { ChatRole, ChatType } from '@/configs'
@@ -94,6 +95,9 @@ export default function Index() {
   const researchDetailsRef = useRef<Map<string, ResearchDetailData>>(new Map())
   // 版本计数器 - 用于触发 aggregatedResearchData 重新计算
   const [researchDataVersion, setResearchDataVersion] = useState(0)
+  const [diagnostics, setDiagnostics] = useState<ResearchTimeline | null>(null)
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false)
+  const [diagnosticsError, setDiagnosticsError] = useState<string>()
   const [pendingOutline, setPendingOutline] =
     useState<OutlinePendingApprovalEvent | null>(null)
   const [approvingOutline, setApprovingOutline] = useState(false)
@@ -127,6 +131,34 @@ export default function Index() {
   }, [list])
   const loadingRef = useRef(loading)
   loadingRef.current = loading
+
+  const loadDiagnostics = useCallback(async () => {
+    if (!id) return
+    setDiagnosticsLoading(true)
+    setDiagnosticsError(undefined)
+    try {
+      const response = await api.session.getResearchTimeline(id)
+      setDiagnostics(response.data)
+    } catch (error) {
+      const requestError = error as { response?: { status?: number } }
+      if (requestError.response?.status === 404) {
+        setDiagnostics({ runs: [], events: [], next_cursor: null })
+      } else {
+        setDiagnosticsError('诊断记录加载失败，请检查后端服务')
+      }
+    } finally {
+      setDiagnosticsLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    setDiagnostics(null)
+    setDiagnosticsError(undefined)
+  }, [id])
+
+  useEffect(() => {
+    if (!loading) void loadDiagnostics()
+  }, [loadDiagnostics, loading])
   useEffect(() => {
     deviceActions.setChatting(loading)
   }, [loading])
@@ -1834,8 +1866,11 @@ export default function Index() {
         <ResearchDetail
           data={aggregatedResearchData}
           steps={researchSteps}
+          diagnostics={diagnostics}
+          diagnosticsLoading={diagnosticsLoading}
+          diagnosticsError={diagnosticsError}
+          onRefreshDiagnostics={loadDiagnostics}
           onStepClick={handleResearchStepClick}
-          onClose={() => setSelectedResearchDetail(null)}
         />
       )
     }
@@ -1861,6 +1896,10 @@ export default function Index() {
     isDeepResearchMode,
     outlineApprovalError,
     pendingOutline,
+    diagnostics,
+    diagnosticsError,
+    diagnosticsLoading,
+    loadDiagnostics,
     researchSteps,
     selectedStepDetail,
   ])

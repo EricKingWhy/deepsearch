@@ -42,6 +42,44 @@ export interface UpdateSessionParams {
   title: string
 }
 
+export interface ResearchRunDiagnostic {
+  run_id: string
+  research_id: string
+  session_id: string
+  request_id?: string | null
+  trace_id?: string | null
+  status: 'running' | 'completed' | 'paused' | 'cancelled' | 'failed' | string
+  current_phase?: string | null
+  started_at: string
+  ended_at?: string | null
+  duration_ms?: number | null
+  input_tokens: number
+  output_tokens: number
+  estimated_cost?: number | null
+  error_code?: string | null
+  error_summary?: string | null
+}
+
+export interface ResearchEventDiagnostic {
+  id: number
+  run_id: string
+  sequence: number
+  event_type: string
+  phase?: string | null
+  status: string
+  payload: Record<string, unknown>
+  duration_ms?: number | null
+  trace_id?: string | null
+  span_id?: string | null
+  created_at: string
+}
+
+export interface ResearchTimeline {
+  runs: ResearchRunDiagnostic[]
+  events: ResearchEventDiagnostic[]
+  next_cursor: number | null
+}
+
 export interface CreateMessageParams {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -69,6 +107,14 @@ export function createSession(params?: CreateSessionParams) {
  */
 export function getSession(sessionId: string) {
   return request.get<SessionWithMessages>(`/sessions/${sessionId}`, { loading: false })
+}
+
+/** 获取会话持久化的深度研究诊断时间线。 */
+export function getResearchTimeline(sessionId: string) {
+  return request.get<ResearchTimeline>(`/research/sessions/${sessionId}/timeline`, {
+    loading: false,
+    errorToast: false,
+  })
 }
 
 /**

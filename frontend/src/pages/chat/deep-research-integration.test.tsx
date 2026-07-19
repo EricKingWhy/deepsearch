@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   addMessage: vi.fn(),
   getSession: vi.fn(),
   getFullResearchCheckpoint: vi.fn(),
+  getResearchTimeline: vi.fn(),
   getAttachment: vi.fn(),
   deleteAttachment: vi.fn(),
   uploadAttachment: vi.fn(),
@@ -158,10 +159,21 @@ describe('deep research outline approval integration', () => {
     apiMocks.getFullResearchCheckpoint.mockResolvedValue({
       data: { success: false },
     })
+    apiMocks.getResearchTimeline.mockResolvedValue({
+      data: { runs: [], events: [], next_cursor: null },
+    })
     apiMocks.addMessage.mockResolvedValue({ data: {} })
     apiMocks.deepsearch.mockResolvedValue({
       data: eventStream([outlineEvent()]),
     })
+  })
+
+  it('reloads the durable research timeline when a session opens', async () => {
+    renderPage()
+
+    await waitFor(() =>
+      expect(apiMocks.getResearchTimeline).toHaveBeenCalledWith('session-1'),
+    )
   })
 
   it('submits edited content once and consumes the approval stream', async () => {
