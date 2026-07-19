@@ -188,6 +188,7 @@ export function deepsearch(
     responseType: 'stream',
     adapter: 'fetch',
     loading: false,
+    errorToast: false,
     ...options,
   })
 }
@@ -366,7 +367,7 @@ export function getResearchCheckpoint(sessionId: string) {
 export function getFullResearchCheckpoint(sessionId: string) {
   return request.get<{ success: boolean; checkpoint?: ResearchCheckpoint; message?: string }>(
     `/research/checkpoint/${sessionId}/full`,
-    { loading: false }
+    { loading: false, errorToast: false }
   )
 }
 
