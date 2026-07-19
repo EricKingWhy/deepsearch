@@ -30,6 +30,7 @@ async function mockApplication(
   let resumeRequests = 0
   let approved = false
   let approvalBody: Record<string, unknown> | undefined
+  const persistedAssistantMessages: Record<string, unknown>[] = []
 
   await page.route('**/*', async (route: Route) => {
     const request = route.request()
@@ -73,6 +74,9 @@ async function mockApplication(
       return route.fulfill({ json: [] })
     }
     if (path.endsWith('/sessions/session-1') && method === 'GET') {
+      const messages = approved
+        ? [{ role: 'user', content: 'Battery industry outlook' }]
+        : []
       return route.fulfill({
         json: {
           id: 'session-1',
@@ -80,12 +84,14 @@ async function mockApplication(
           session_type: 'deepsearch',
           created_at: '2026-07-19T00:00:00Z',
           updated_at: '2026-07-19T00:00:00Z',
-          message_count: 0,
-          messages: [],
+          message_count: messages.length,
+          messages,
         },
       })
     }
     if (path.endsWith('/sessions/session-1/messages') && method === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>
+      if (body.role === 'assistant') persistedAssistantMessages.push(body)
       return route.fulfill({ json: { id: 'message-1' } })
     }
     if (path.endsWith('/research/checkpoint/session-1/full')) {
@@ -169,6 +175,9 @@ async function mockApplication(
     get approvalBody() {
       return approvalBody
     },
+    get persistedAssistantMessages() {
+      return persistedAssistantMessages
+    },
   }
 }
 
@@ -222,6 +231,12 @@ test('approve, disconnect, and resume without regenerating the outline', async (
   await expect(page.getByText('Resumed final report')).toBeVisible()
   expect(state.outlineRequests).toBe(1)
   expect(state.resumeRequests).toBe(1)
+  expect(state.persistedAssistantMessages).toEqual([
+    expect.objectContaining({
+      role: 'assistant',
+      content: 'Resumed final report',
+    }),
+  ])
 })
 
 test('a stale revision keeps the edited draft', async ({ page }) => {

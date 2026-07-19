@@ -52,6 +52,29 @@ class FailingCheckpointService:
         return None
 
 
+class CompletingCritic:
+    name = "CriticMaster"
+
+    async def process(self, state):
+        state["phase"] = "completed"
+        state["final_report"] = "final revised report"
+        return state
+
+
+class RecordingCheckpointService:
+    def __init__(self):
+        self.saved = []
+        self.status_updates = []
+
+    def save_checkpoint(self, **kwargs):
+        self.saved.append(kwargs)
+        return "checkpoint-1"
+
+    def update_status(self, *args, **kwargs):
+        self.status_updates.append((args, kwargs))
+        return True
+
+
 @pytest.mark.asyncio
 async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
     graph = object.__new__(DeepResearchGraph)
@@ -81,3 +104,76 @@ async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
     assert not any(
         event["type"] == "outline_pending_approval" for event in events
     )
+
+
+@pytest.mark.asyncio
+async def test_completion_saves_final_state_and_ui_before_emitting_report(monkeypatch):
+    graph = object.__new__(DeepResearchGraph)
+    graph.critic = CompletingCritic()
+    graph.checkpoint_service = RecordingCheckpointService()
+    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
+    monkeypatch.setattr(
+        graph_module,
+        "is_research_cancelled",
+        lambda _session_id: False,
+    )
+    state = {
+        "query": "industry research",
+        "session_id": "session-1",
+        "phase": "reviewing",
+        "iteration": 0,
+        "max_iterations": 1,
+        "messages": [],
+        "facts": [],
+        "references": [],
+        "charts": [],
+        "knowledge_graph": {"nodes": [], "edges": []},
+        "final_report": "pre-review draft",
+    }
+
+    events = [event async for event in graph._run_simplified(state)]
+
+    assert graph.checkpoint_service.saved
+    final_save = graph.checkpoint_service.saved[-1]
+    assert final_save["status"] == "completed"
+    assert final_save["state"]["phase"] == "completed"
+    assert final_save["final_report"] == "final revised report"
+    assert final_save["ui_state"]["streaming_report"] == "final revised report"
+    event_types = [event.get("type") for event in events]
+    assert event_types.index("checkpoint_saved") < event_types.index("research_complete")
+    assert any(
+        event.get("type") == "research_complete"
+        and event.get("final_report") == "final revised report"
+        for event in events
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_final_checkpoint_never_emits_research_complete(monkeypatch):
+    graph = object.__new__(DeepResearchGraph)
+    graph.critic = CompletingCritic()
+    graph.checkpoint_service = FailingCheckpointService()
+    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
+    monkeypatch.setattr(
+        graph_module,
+        "is_research_cancelled",
+        lambda _session_id: False,
+    )
+    state = {
+        "query": "industry research",
+        "session_id": "session-1",
+        "phase": "reviewing",
+        "iteration": 0,
+        "max_iterations": 1,
+        "messages": [],
+        "facts": [],
+        "references": [],
+        "charts": [],
+        "knowledge_graph": {"nodes": [], "edges": []},
+        "final_report": "pre-review draft",
+    }
+
+    events = [event async for event in graph._run_simplified(state)]
+
+    assert any(event.get("type") == "error" for event in events)
+    assert not any(event.get("type") == "research_complete" for event in events)

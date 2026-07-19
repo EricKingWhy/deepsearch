@@ -787,14 +787,16 @@ class DeepResearchGraph:
             for i, chart in enumerate(state.get('charts', [])):
                 logger.info(f"[Graph] 图表 {i+1}: id={chart.get('id')}, title={chart.get('title')}, has_echarts={bool(chart.get('echarts_option'))}, has_image={bool(chart.get('image_base64'))}")
 
-            # 更新检查点状态为已完成
+            # 在通知前端完成前，原子保存最终修订稿和完整 UI 状态。
             state["phase"] = ResearchPhase.COMPLETED.value
-            if self.checkpoint_service and session_id:
-                self.checkpoint_service.update_status(
-                    session_id,
-                    "completed",
-                    user_id=user_id,
-                )
+            final_checkpoint_event = await save_checkpoint_async(status="completed")
+            if not final_checkpoint_event:
+                yield {
+                    "type": "error",
+                    "content": "最终研究报告保存失败，请稍后重试。",
+                }
+                return
+            yield final_checkpoint_event
 
             # 构建前端友好的 references
             final_facts = state.get("facts", [])

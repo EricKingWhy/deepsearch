@@ -139,6 +139,15 @@ export default function Index() {
   })
 
   const currentSessionIdRef = useRef<string | null>(null)
+  const activeRouteSessionIdRef = useRef<string | undefined>(id)
+
+  useEffect(() => {
+    if (activeRouteSessionIdRef.current !== id) {
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+    }
+    activeRouteSessionIdRef.current = id
+  }, [id])
 
   // 停止生成
   const handleStop = useCallback(async () => {
@@ -262,7 +271,10 @@ export default function Index() {
       chatMessage: string,
       attachmentIds?: string[],
       streamOverride?: ReadableStream<Uint8Array>,
+      expectedSessionId?: string,
     ) => {
+      const streamSessionId = expectedSessionId || id
+      if (activeRouteSessionIdRef.current !== streamSessionId) return
       setCurrentChatItem(target)
       target.loading = true
       const controller = new AbortController()
@@ -291,19 +303,26 @@ export default function Index() {
           }, { signal: controller.signal })
         }
 
+        if (activeRouteSessionIdRef.current !== streamSessionId) return
+
         const consumeTargetStream = async (
           stream: ReadableStream<Uint8Array>,
         ) => {
           await consumeResearchStream(stream, {
             onEvent: (event) => {
+              if (activeRouteSessionIdRef.current !== streamSessionId) return
               parseData(event)
               void scrollToBottom()
             },
             onProtocolError: (error, raw) => {
+              if (activeRouteSessionIdRef.current !== streamSessionId) return
               console.error('Research stream protocol error', error, raw)
             },
             onConnectionError: (error) => {
-              if (!controller.signal.aborted) {
+              if (
+                activeRouteSessionIdRef.current === streamSessionId &&
+                !controller.signal.aborted
+              ) {
                 console.error('Research stream connection error', error)
                 message.error(
                   'Research stream disconnected. You can resume it later.',
@@ -314,7 +333,7 @@ export default function Index() {
         }
 
         // 存储 reader 和 session ID 用于取消
-        currentSessionIdRef.current = id || null
+        currentSessionIdRef.current = streamSessionId || null
 
         researchStreamConsumerRef.current = consumeTargetStream
         await consumeTargetStream(res.data as ReadableStream<Uint8Array>)
@@ -1226,6 +1245,15 @@ export default function Index() {
   const hasLoadedCheckpoint = useRef(false)
   const hasLoadedMessages = useRef(false)
   const previousIdRef = useRef<string | undefined>(undefined)
+  const messagesLoadBarrierRef = useRef<{
+    sessionId: string | undefined
+    promise: Promise<void>
+    resolve: () => void
+  }>({
+    sessionId: undefined,
+    promise: Promise.resolve(),
+    resolve: () => undefined,
+  })
 
   // 当 session ID 变化时，重置加载状态
   useEffect(() => {
@@ -1235,6 +1263,15 @@ export default function Index() {
       hasLoadedMessages.current = false
       hasLoadedCheckpoint.current = false
       hasSentInitialMessage.current = false
+      let resolveMessagesLoaded = () => undefined
+      const messagesLoadedPromise = new Promise<void>((resolve) => {
+        resolveMessagesLoaded = resolve
+      })
+      messagesLoadBarrierRef.current = {
+        sessionId: id,
+        promise: messagesLoadedPromise,
+        resolve: resolveMessagesLoaded,
+      }
       // 清空消息列表和研究状态
       console.log(`[前端] ⚠️ 会话切换: 清空 researchDetailsRef`)
       chat.list.length = 0
@@ -1252,6 +1289,8 @@ export default function Index() {
   // 加载会话历史消息
   useEffect(() => {
     if (!id || hasLoadedMessages.current) return
+    const loadId = id
+    const loadBarrier = messagesLoadBarrierRef.current
 
     // 辅助函数：将消息数组填充到 chat.list
     function populateMessages(messages: any[]) {
@@ -1284,6 +1323,7 @@ export default function Index() {
       console.log('[加载消息] 使用预加载的数据:', cachedSession.messages.length, '条')
       hasLoadedMessages.current = true
       populateMessages(cachedSession.messages)
+      loadBarrier.resolve()
       return
     }
 
@@ -1294,7 +1334,12 @@ export default function Index() {
         const res = await api.session.getSession(id!)
         const session = (res as any).data || res
 
-        if (session && session.messages && session.messages.length > 0) {
+        if (
+          previousIdRef.current === loadId &&
+          session &&
+          session.messages &&
+          session.messages.length > 0
+        ) {
           hasLoadedMessages.current = true
           console.log('[加载消息] 找到消息:', session.messages.length, '条')
           populateMessages(session.messages)
@@ -1302,6 +1347,11 @@ export default function Index() {
         }
       } catch (e) {
         console.log('[加载消息] 加载失败或无消息:', e)
+      } finally {
+        if (previousIdRef.current === loadId) {
+          hasLoadedMessages.current = true
+        }
+        loadBarrier.resolve()
       }
     }
 
@@ -1311,11 +1361,27 @@ export default function Index() {
   // 加载并恢复研究检查点状态
   useEffect(() => {
     if (!id || hasLoadedCheckpoint.current) return
+    const loadId = id
+    const loadBarrier = messagesLoadBarrierRef.current
 
     async function loadCheckpoint() {
       try {
         console.log('[恢复状态] 开始加载检查点, session_id:', id)
-        const res = await api.session.getFullResearchCheckpoint(id!)
+        let checkpointResponse: any
+        let checkpointError: unknown
+        const checkpointRequest = api.session
+          .getFullResearchCheckpoint(id!)
+          .then((response) => {
+            checkpointResponse = response
+          })
+          .catch((error) => {
+            checkpointError = error
+          })
+        await loadBarrier.promise
+        await checkpointRequest
+        if (checkpointError) throw checkpointError
+        if (previousIdRef.current !== loadId) return
+        const res = checkpointResponse
         const response = (res as any).data || res
         console.log('[恢复状态] API响应:', { success: response?.success, hasCheckpoint: !!response?.checkpoint })
         if (response?.success && response?.checkpoint) {
@@ -1487,55 +1553,72 @@ export default function Index() {
             // 触发数据更新
             setResearchDataVersion(v => v + 1)
 
-            // 恢复聊天记录（仅当消息列表为空时）
-            if (stateJson && chat.list.length === 0) {
-              // 添加用户问题
-              chat.list.push({
-                id: createChatId(),
-                role: ChatRole.User,
-                type: ChatType.Normal,
-                content: checkpoint.query || '',
-              })
-
-              // 添加助手回复
-              const assistantItem: API.ChatItem = {
-                id: createChatId(),
-                role: ChatRole.Assistant,
-                type: ChatType.Deepsearch,
-                content: checkpoint.final_report || uiState?.streaming_report || '',
-                reactMode: true,
-                charts: uiState?.charts || stateJson.charts || [],
+            let restoredAssistant: API.ChatItem | undefined
+            let shouldPersistRestoredAssistant = false
+            if (stateJson) {
+              if (chat.list.length === 0) {
+                chat.list.push({
+                  id: createChatId(),
+                  role: ChatRole.User,
+                  type: ChatType.Normal,
+                  content: checkpoint.query || '',
+                })
               }
 
-              // 恢复引用 - 优先使用 ui_state 中的 references
+              let latestUserIndex = -1
+              for (let index = chat.list.length - 1; index >= 0; index -= 1) {
+                if (chat.list[index].role === ChatRole.User) {
+                  latestUserIndex = index
+                  break
+                }
+              }
+              restoredAssistant = chat.list
+                .slice(latestUserIndex + 1)
+                .filter((item) => item.role === ChatRole.Assistant)
+                .pop()
+              if (!restoredAssistant) {
+                shouldPersistRestoredAssistant = true
+                chat.list.push({
+                  id: createChatId(),
+                  role: ChatRole.Assistant,
+                  type: ChatType.Deepsearch,
+                  content: '',
+                })
+                restoredAssistant = chat.list[chat.list.length - 1]
+              }
+
+              const restoredReport =
+                restoredAssistant.content ||
+                checkpoint.final_report ||
+                uiState?.streaming_report ||
+                ''
+              if (restoredReport) {
+                restoredAssistant.content = restoredReport
+                const writingDetail = researchDetailsRef.current.get('writing')
+                if (writingDetail) {
+                  writingDetail.streamingReport = restoredReport
+                }
+              }
+              restoredAssistant.type = ChatType.Deepsearch
+              restoredAssistant.reactMode = true
+              restoredAssistant.charts = uiState?.charts || stateJson.charts || []
+
               const refs = uiState?.references || stateJson.references || []
-              if (refs.length > 0) {
-                assistantItem.reference = refs.map((ref: any, i: number) => ({
+              if (refs.length > 0 && !restoredAssistant.reference?.length) {
+                restoredAssistant.reference = refs.map((ref: any, i: number) => ({
                   id: i + 1,
                   title: ref.title || ref.source_name || '来源',
-                  link: ref.url || ref.source_url || '',
+                  link: ref.link || ref.url || ref.source_url || '',
                   content: ref.content || ref.summary || '',
-                  source: ref.source_type === 'local' ? 'knowledge' : 'web',
+                  source:
+                    ref.source === 'knowledge' || ref.source_type === 'local'
+                      ? 'knowledge'
+                      : 'web',
                 }))
               }
 
-              chat.list.push(assistantItem)
-              setCurrentChatItem(assistantItem)
-
-              console.log('[恢复状态] 已恢复聊天记录和研究状态')
-            } else if (chat.list.length > 0) {
-              // 消息已通过 loadSessionMessages 加载，只需设置 currentChatItem
-              const lastAssistant = chat.list.filter(m => m.role === ChatRole.Assistant).pop()
-              if (lastAssistant) {
-                // 补充图表数据到已加载的消息
-                lastAssistant.charts = uiState?.charts || stateJson?.charts || []
-                lastAssistant.reactMode = true
-                // 关键：设置类型为深度研究，否则 isDeepResearchMode 会是 false
-                lastAssistant.type = ChatType.Deepsearch
-                setCurrentChatItem(lastAssistant)
-                console.log('[恢复状态] 已设置消息类型为 Deepsearch, type=', lastAssistant.type)
-              }
-              console.log('[恢复状态] 消息已存在，仅恢复研究UI状态')
+              setCurrentChatItem(restoredAssistant)
+              console.log('[恢复状态] 已恢复助手消息和研究状态')
             }
 
             // 最终状态汇总
@@ -1552,18 +1635,33 @@ export default function Index() {
                 hasReport: !!detail.streamingReport,
               }
             })
-            if (checkpoint.status !== 'completed') {
-              const resumeTarget = chat.list
-                .filter((item) => item.role === ChatRole.Assistant)
-                .pop()
-              if (resumeTarget) {
+            if (checkpoint.status !== 'completed' && restoredAssistant) {
                 const resumeResponse = await api.session.resumeResearch(id!)
+                if (previousIdRef.current !== loadId) return
                 await sendChat(
-                  resumeTarget,
+                  restoredAssistant,
                   checkpoint.query || '',
                   undefined,
                   resumeResponse.data as ReadableStream<Uint8Array>,
+                  loadId,
                 )
+            }
+            if (previousIdRef.current !== loadId) return
+            if (
+              shouldPersistRestoredAssistant &&
+              restoredAssistant?.content
+            ) {
+              try {
+                await api.session.addMessage(id!, {
+                  role: 'assistant',
+                  content: restoredAssistant.content,
+                  thinking: restoredAssistant.think,
+                  references_data: restoredAssistant.reference
+                    ? { references: restoredAssistant.reference }
+                    : undefined,
+                })
+              } catch (error) {
+                console.error('[恢复状态] 保存恢复后的助手消息失败:', error)
               }
             }
             console.log('[恢复状态] ✅ 恢复完成，最终状态:', finalSummary)

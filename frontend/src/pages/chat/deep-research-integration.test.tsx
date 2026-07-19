@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMocks = vi.hoisted(() => ({
@@ -51,10 +51,22 @@ vi.mock('@/components/sender', () => ({
   ),
 }))
 vi.mock('./component/chat-message', () => ({
-  default: ({ list }: { list: Array<{ content?: string }> }) => (
+  default: ({ list }: {
+    list: Array<{
+      content?: string
+      reference?: Array<{ title: string; link: string }>
+    }>
+  }) => (
     <div data-testid="chat-messages">
       {list.map((item, index) => (
-        <div key={index}>{item.content}</div>
+        <div key={index}>
+          {item.content}
+          {item.reference?.map((reference) => (
+            <a key={reference.title} href={reference.link}>
+              {reference.title}
+            </a>
+          ))}
+        </div>
       ))}
     </div>
   ),
@@ -111,6 +123,26 @@ function outlineEvent() {
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/chat/session-1']}>
+      <Routes>
+        <Route path="/chat/:id" element={<ChatPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function SessionSwitcher() {
+  const navigate = useNavigate()
+  return (
+    <button onClick={() => navigate('/chat/session-2')}>
+      Switch session
+    </button>
+  )
+}
+
+function renderPageWithSessionSwitcher() {
+  return render(
+    <MemoryRouter initialEntries={['/chat/session-1']}>
+      <SessionSwitcher />
       <Routes>
         <Route path="/chat/:id" element={<ChatPage />} />
       </Routes>
@@ -245,5 +277,402 @@ describe('deep research outline approval integration', () => {
     expect(await screen.findByText('Resumed research report')).toBeInTheDocument()
     expect(apiMocks.resumeResearch).toHaveBeenCalledWith('session-1')
     expect(apiMocks.deepsearch).not.toHaveBeenCalled()
+  })
+
+  it('restores and resumes when only the user message was persisted', async () => {
+    let resolveCheckpoint!: (value: unknown) => void
+    const checkpointResponse = new Promise((resolve) => {
+      resolveCheckpoint = resolve
+    })
+
+    apiMocks.getSession.mockResolvedValue({
+      data: {
+        messages: [
+          { role: 'user', content: 'NVIDIA growth outlook' },
+        ],
+      },
+    })
+    apiMocks.getFullResearchCheckpoint.mockReturnValue(checkpointResponse)
+    apiMocks.resumeResearch.mockResolvedValue({
+      data: eventStream([]),
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('NVIDIA growth outlook')).toBeInTheDocument()
+
+    resolveCheckpoint({
+      data: {
+        success: true,
+        checkpoint: {
+          id: 'checkpoint-1',
+          session_id: 'session-1',
+          query: 'NVIDIA growth outlook',
+          phase: 'reviewing',
+          status: 'running',
+          final_report: 'Durable report draft',
+          state_json: { references: [], charts: [] },
+          ui_state_json: {
+            research_steps: [],
+            search_results: [],
+            charts: [],
+            knowledge_graph: null,
+            streaming_report: 'Durable report draft',
+          },
+        },
+      },
+    })
+
+    expect(await screen.findByText('Durable report draft')).toBeInTheDocument()
+    expect(apiMocks.resumeResearch).toHaveBeenCalledWith('session-1')
+    expect(apiMocks.addMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'Durable report draft',
+      }),
+    )
+    expect(apiMocks.deepsearch).not.toHaveBeenCalled()
+  })
+
+  it('materializes a completed checkpoint when the assistant message is missing', async () => {
+    let resolveCheckpoint!: (value: unknown) => void
+    const checkpointResponse = new Promise((resolve) => {
+      resolveCheckpoint = resolve
+    })
+
+    apiMocks.getSession.mockResolvedValue({
+      data: {
+        messages: [
+          { role: 'user', content: 'Completed research question' },
+        ],
+      },
+    })
+    apiMocks.getFullResearchCheckpoint.mockReturnValue(checkpointResponse)
+
+    renderPage()
+
+    expect(await screen.findByText('Completed research question')).toBeInTheDocument()
+
+    resolveCheckpoint({
+      data: {
+        success: true,
+        checkpoint: {
+          id: 'checkpoint-1',
+          session_id: 'session-1',
+          query: 'Completed research question',
+          phase: 'completed',
+          status: 'completed',
+          final_report: 'Completed durable report',
+          state_json: { references: [], charts: [] },
+          ui_state_json: {
+            research_steps: [],
+            search_results: [],
+            charts: [],
+            knowledge_graph: null,
+            streaming_report: 'Completed durable report',
+          },
+        },
+      },
+    })
+
+    expect(await screen.findByText('Completed durable report')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(apiMocks.addMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'Completed durable report',
+        }),
+      ),
+    )
+    expect(apiMocks.resumeResearch).not.toHaveBeenCalled()
+  })
+
+  it('keeps the persisted final assistant report over a stale checkpoint draft', async () => {
+    apiMocks.getSession.mockResolvedValue({
+      data: {
+        messages: [
+          { role: 'user', content: 'Completed research question' },
+          {
+            role: 'assistant',
+            content: 'Persisted final revision',
+            references_data: {
+              references: [
+                {
+                  title: 'Persisted final source',
+                  link: 'https://final.example/source',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    apiMocks.getFullResearchCheckpoint.mockResolvedValue({
+      data: {
+        success: true,
+        checkpoint: {
+          id: 'checkpoint-1',
+          session_id: 'session-1',
+          query: 'Completed research question',
+          phase: 'reviewing',
+          status: 'completed',
+          final_report: 'Stale pre-review draft',
+          state_json: { references: [], charts: [] },
+          ui_state_json: {
+            research_steps: [],
+            search_results: [],
+            charts: [],
+            knowledge_graph: null,
+            streaming_report: 'Stale pre-review draft',
+            references: [
+              {
+                title: 'Stale checkpoint source',
+                link: 'https://stale.example/source',
+                source: 'web',
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Persisted final revision')).toBeInTheDocument()
+    expect(screen.queryByText('Stale pre-review draft')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Persisted final source' }),
+    ).toHaveAttribute('href', 'https://final.example/source')
+    expect(
+      screen.queryByRole('link', { name: 'Stale checkpoint source' }),
+    ).not.toBeInTheDocument()
+    expect(apiMocks.addMessage).not.toHaveBeenCalled()
+    expect(apiMocks.resumeResearch).not.toHaveBeenCalled()
+  })
+
+  it('waits for user-only history when the checkpoint response arrives first', async () => {
+    let resolveSession!: (value: unknown) => void
+    const sessionResponse = new Promise((resolve) => {
+      resolveSession = resolve
+    })
+    apiMocks.getSession.mockReturnValue(sessionResponse)
+    apiMocks.getFullResearchCheckpoint.mockResolvedValue({
+      data: {
+        success: true,
+        checkpoint: {
+          id: 'checkpoint-1',
+          session_id: 'session-1',
+          query: 'Checkpoint-first question',
+          phase: 'completed',
+          status: 'completed',
+          final_report: 'Checkpoint-first final report',
+          state_json: { references: [], charts: [] },
+          ui_state_json: {
+            research_steps: [],
+            search_results: [],
+            charts: [],
+            knowledge_graph: null,
+            streaming_report: 'Checkpoint-first final report',
+          },
+        },
+      },
+    })
+
+    renderPage()
+    await waitFor(() =>
+      expect(apiMocks.getFullResearchCheckpoint).toHaveBeenCalled(),
+    )
+    resolveSession({
+      data: {
+        messages: [{ role: 'user', content: 'Checkpoint-first question' }],
+      },
+    })
+
+    expect(await screen.findByText('Checkpoint-first final report')).toBeInTheDocument()
+    expect(apiMocks.addMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('creates a new assistant after the latest user turn in multi-turn history', async () => {
+    apiMocks.getSession.mockResolvedValue({
+      data: {
+        messages: [
+          { role: 'user', content: 'Earlier question' },
+          { role: 'assistant', content: 'Earlier answer' },
+          { role: 'user', content: 'Latest research question' },
+        ],
+      },
+    })
+    apiMocks.getFullResearchCheckpoint.mockResolvedValue({
+      data: {
+        success: true,
+        checkpoint: {
+          id: 'checkpoint-1',
+          session_id: 'session-1',
+          query: 'Latest research question',
+          phase: 'completed',
+          status: 'completed',
+          final_report: 'Latest durable report',
+          state_json: { references: [], charts: [] },
+          ui_state_json: {
+            research_steps: [],
+            search_results: [],
+            charts: [],
+            knowledge_graph: null,
+            streaming_report: 'Latest durable report',
+          },
+        },
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Earlier answer')).toBeInTheDocument()
+    expect(await screen.findByText('Latest durable report')).toBeInTheDocument()
+    expect(apiMocks.addMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'Latest durable report',
+      }),
+    )
+  })
+
+  it('ignores a delayed previous session while the new session is loading', async () => {
+    const user = userEvent.setup()
+    let resolveSessionOne!: (value: unknown) => void
+    let resolveSessionTwo!: (value: unknown) => void
+    const sessionOneResponse = new Promise((resolve) => {
+      resolveSessionOne = resolve
+    })
+    const sessionTwoResponse = new Promise((resolve) => {
+      resolveSessionTwo = resolve
+    })
+    apiMocks.getSession.mockImplementation((sessionId: string) =>
+      sessionId === 'session-1' ? sessionOneResponse : sessionTwoResponse,
+    )
+    apiMocks.getFullResearchCheckpoint.mockImplementation((sessionId: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          checkpoint: {
+            id: `checkpoint-${sessionId}`,
+            session_id: sessionId,
+            query: `${sessionId} question`,
+            phase: 'completed',
+            status: 'completed',
+            final_report: `${sessionId} final report`,
+            state_json: { references: [], charts: [] },
+            ui_state_json: {
+              research_steps: [],
+              search_results: [],
+              charts: [],
+              knowledge_graph: null,
+              streaming_report: `${sessionId} final report`,
+            },
+          },
+        },
+      }),
+    )
+
+    renderPageWithSessionSwitcher()
+    await waitFor(() =>
+      expect(apiMocks.getFullResearchCheckpoint).toHaveBeenCalledWith('session-1'),
+    )
+    await user.click(screen.getByRole('button', { name: 'Switch session' }))
+    await waitFor(() =>
+      expect(apiMocks.getFullResearchCheckpoint).toHaveBeenCalledWith('session-2'),
+    )
+
+    await act(async () => {
+      resolveSessionOne({
+        data: { messages: [{ role: 'user', content: 'Late session-1 history' }] },
+      })
+      await Promise.resolve()
+    })
+    expect(screen.queryByText('Late session-1 history')).not.toBeInTheDocument()
+    expect(screen.queryByText('session-2 final report')).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveSessionTwo({
+        data: { messages: [{ role: 'user', content: 'session-2 question' }] },
+      })
+    })
+
+    expect(await screen.findByText('session-2 final report')).toBeInTheDocument()
+    expect(screen.queryByText('session-1 final report')).not.toBeInTheDocument()
+  })
+
+  it('ignores a delayed resume stream after switching sessions', async () => {
+    const user = userEvent.setup()
+    let resolveResume!: (value: unknown) => void
+    const resumeResponse = new Promise((resolve) => {
+      resolveResume = resolve
+    })
+    apiMocks.resumeResearch.mockReturnValue(resumeResponse)
+    apiMocks.getSession.mockImplementation((sessionId: string) =>
+      Promise.resolve({
+        data: {
+          messages:
+            sessionId === 'session-1'
+              ? [{ role: 'user', content: 'Running session question' }]
+              : [{ role: 'user', content: 'New session question' }],
+        },
+      }),
+    )
+    apiMocks.getFullResearchCheckpoint.mockImplementation((sessionId: string) =>
+      Promise.resolve(
+        sessionId === 'session-1'
+          ? {
+              data: {
+                success: true,
+                checkpoint: {
+                  id: 'checkpoint-running',
+                  session_id: sessionId,
+                  query: 'Running session question',
+                  phase: 'reviewing',
+                  status: 'running',
+                  final_report: 'Running checkpoint draft',
+                  state_json: { references: [], charts: [] },
+                  ui_state_json: {
+                    research_steps: [],
+                    search_results: [],
+                    charts: [],
+                    knowledge_graph: null,
+                    streaming_report: 'Running checkpoint draft',
+                  },
+                },
+              },
+            }
+          : { data: { success: false } },
+      ),
+    )
+
+    renderPageWithSessionSwitcher()
+    await waitFor(() => expect(apiMocks.resumeResearch).toHaveBeenCalledWith('session-1'))
+    await user.click(screen.getByRole('button', { name: 'Switch session' }))
+    expect(await screen.findByText('New session question')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveResume({
+        data: eventStream([
+          {
+            type: 'research_step',
+            content: {
+              step_id: 'writing',
+              step_type: 'writing',
+              title: 'Old session writing',
+              status: 'running',
+            },
+          },
+          { type: 'research_complete', final_report: 'Old resumed final report' },
+        ]),
+      })
+    })
+
+    expect(screen.queryByText('Old resumed final report')).not.toBeInTheDocument()
+    expect(screen.queryByText('Running checkpoint draft')).not.toBeInTheDocument()
+    expect(apiMocks.addMessage).not.toHaveBeenCalled()
   })
 })
