@@ -1326,7 +1326,8 @@ export default function Index() {
 
     // 辅助函数：将消息数组填充到 chat.list
     function populateMessages(messages: any[]) {
-      chat.list.length = 0
+      const liveItems = [...chat.list]
+      const restoredItems: API.ChatItem[] = []
       for (const msg of messages) {
         const chatItem: API.ChatItem = {
           id: createChatId(),
@@ -1345,8 +1346,31 @@ export default function Index() {
           }
         }
 
-        chat.list.push(chatItem)
+        restoredItems.push(chatItem)
       }
+
+      for (const liveItem of liveItems) {
+        let matchingIndex = -1
+        for (let index = restoredItems.length - 1; index >= 0; index -= 1) {
+          const restoredItem = restoredItems[index]
+          if (
+            restoredItem.role === liveItem.role &&
+            restoredItem.content === liveItem.content
+          ) {
+            matchingIndex = index
+            break
+          }
+        }
+
+        if (matchingIndex >= 0) {
+          restoredItems[matchingIndex] = liveItem
+        } else {
+          restoredItems.push(liveItem)
+        }
+      }
+
+      chat.list.length = 0
+      chat.list.push(...restoredItems)
     }
 
     // 优先使用 store 中预加载的数据

@@ -56,12 +56,16 @@ vi.mock('./component/chat-message', () => ({
     list: Array<{
       content?: string
       reference?: Array<{ title: string; link: string }>
+      reactSteps?: Array<{ content?: string }>
     }>
   }) => (
     <div data-testid="chat-messages">
       {list.map((item, index) => (
         <div key={index}>
           {item.content}
+          {item.reactSteps?.map((step, stepIndex) => (
+            <div key={stepIndex}>{step.content}</div>
+          ))}
           {item.reference?.map((reference) => (
             <a key={reference.title} href={reference.link}>
               {reference.title}
@@ -174,6 +178,45 @@ describe('deep research outline approval integration', () => {
     await waitFor(() =>
       expect(apiMocks.getResearchTimeline).toHaveBeenCalledWith('session-1'),
     )
+  })
+
+  it('keeps the live research process when delayed history contains only the user turn', async () => {
+    const user = userEvent.setup()
+    let resolveSession!: (value: unknown) => void
+    apiMocks.getSession.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve
+      }),
+    )
+    apiMocks.deepsearch.mockResolvedValue({
+      data: eventStream([
+        {
+          type: 'research_step',
+          content: {
+            step_id: 'researching',
+            step_type: 'researching',
+            title: 'Information retrieval',
+            status: 'running',
+          },
+        },
+        { type: 'thought', content: 'Live DeepScout reasoning' },
+      ]),
+    })
+    renderPage()
+
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Start research' }))
+    expect(await screen.findByText('Live DeepScout reasoning')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveSession({
+        data: {
+          messages: [{ role: 'user', content: 'Battery industry outlook' }],
+        },
+      })
+    })
+
+    expect(screen.getByText('Live DeepScout reasoning')).toBeInTheDocument()
   })
 
   it('submits edited content once and consumes the approval stream', async () => {
