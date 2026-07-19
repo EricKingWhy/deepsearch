@@ -9,7 +9,9 @@ import logging
 from observability import (
     ObservabilityMiddleware,
     configure_logging,
+    initialize_tracing,
     metrics_response,
+    shutdown_tracing,
 )
 
 # 加载环境变量
@@ -43,6 +45,8 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize and close application-level background services."""
+    initialize_tracing()
     """应用生命周期管理"""
     # 启动时执行
     logger.info("应用启动中...")
@@ -65,6 +69,7 @@ async def lifespan(app: FastAPI):
         scheduler.stop()
     except Exception as e:
         logger.error(f"定时任务调度器关闭失败: {e}")
+    shutdown_tracing(timeout_seconds=5.0)
 
 
 app = FastAPI(

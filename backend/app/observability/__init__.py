@@ -10,12 +10,22 @@ from .context import (
 from .logging import JsonFormatter, configure_logging, redact
 from .metrics import ApplicationMetrics, application_metrics, metrics_response
 from .middleware import ObservabilityMiddleware
+from .tracing import (
+    TraceObservation,
+    TracingManager,
+    generation,
+    initialize_tracing,
+    shutdown_tracing,
+    span,
+)
 
 __all__ = [
     "JsonFormatter",
     "ApplicationMetrics",
     "ObservabilityContext",
     "ObservabilityMiddleware",
+    "TraceObservation",
+    "TracingManager",
     "application_metrics",
     "bind_context",
     "configure_logging",
@@ -24,4 +34,8 @@ __all__ = [
     "normalize_correlation_id",
     "redact",
     "metrics_response",
+    "generation",
+    "initialize_tracing",
+    "shutdown_tracing",
+    "span",
 ]
