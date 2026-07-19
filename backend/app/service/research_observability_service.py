@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal
+from models.chat import ChatSession
 from models.observability import ResearchEvent, ResearchRun
 from observability.events import sanitize_event_payload
 
@@ -200,5 +201,47 @@ class ResearchObservabilityService:
             return {
                 "items": [event.to_dict() for event in page],
                 "next_cursor": page[-1].sequence if has_more and page else None,
+            }
+
+    def get_timeline(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        run_limit: int = 50,
+        event_limit: int = 500,
+    ) -> dict[str, object] | None:
+        """Return a bounded chronological view after verifying session ownership."""
+
+        session_uuid = UUID(session_id)
+        user_uuid = UUID(user_id)
+        with self._session_factory() as db:
+            owns_session = (
+                db.query(ChatSession.id)
+                .filter(ChatSession.id == session_uuid, ChatSession.user_id == user_uuid)
+                .one_or_none()
+            )
+            if owns_session is None:
+                return None
+
+            runs = (
+                db.query(ResearchRun)
+                .filter(ResearchRun.session_id == session_uuid, ResearchRun.user_id == user_uuid)
+                .order_by(ResearchRun.started_at.desc())
+                .limit(min(max(run_limit, 1), 100))
+                .all()
+            )
+            events = (
+                db.query(ResearchEvent)
+                .join(ResearchRun, ResearchRun.id == ResearchEvent.run_id)
+                .filter(ResearchRun.session_id == session_uuid, ResearchRun.user_id == user_uuid)
+                .order_by(ResearchEvent.created_at.asc(), ResearchEvent.sequence.asc())
+                .limit(min(max(event_limit, 1), 1000))
+                .all()
+            )
+            return {
+                "runs": [run.to_dict() for run in runs],
+                "events": [event.to_dict() for event in events],
+                "next_cursor": None,
             }
 

@@ -20,6 +20,7 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 from router import document_router, search_router, chat_router, research_router
+from router.observability_router import router as observability_router
 from router.auth_router import router as auth_router
 from router.session_router import router as session_router
 from router.knowledge_router import router as knowledge_router
@@ -94,6 +95,7 @@ app.include_router(document_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(research_router)
+app.include_router(observability_router)
 app.include_router(news_router)
 
 

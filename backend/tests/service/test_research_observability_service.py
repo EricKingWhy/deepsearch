@@ -141,6 +141,16 @@ def test_run_event_lifecycle_sequence_pagination_and_user_scope():
             session_id=str(chat_session.id),
             user_id=str(second_user.id),
         )["items"] == []
+        timeline = service.get_timeline(
+            session_id=str(chat_session.id),
+            user_id=str(first_user.id),
+        )
+        assert timeline is not None
+        assert [event["sequence"] for event in timeline["events"]] == [1, 2]
+        assert service.get_timeline(
+            session_id=str(chat_session.id),
+            user_id=str(second_user.id),
+        ) is None
 
         repeated_research = service.start_run(
             session_id=str(chat_session.id),
