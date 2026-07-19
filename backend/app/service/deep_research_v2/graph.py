@@ -12,8 +12,12 @@ Plan -> Research -> Analyze -> Write -> Review -> (Revise) -> Complete
 
 import logging
 import asyncio
+from time import perf_counter
 from typing import Dict, Any, List, Literal, AsyncGenerator
 from datetime import datetime
+
+from observability.events import record_research_event
+from observability.tracing import span
 
 # 导入取消检查函数
 try:
@@ -420,7 +424,49 @@ class DeepResearchGraph:
             logger.info(f"Starting agent: {agent.name}")
 
             # 启动 agent 处理任务
-            task = asyncio.create_task(agent.process(state))
+            async def execute_agent():
+                started_at = perf_counter()
+                record_research_event(
+                    "agent.started",
+                    phase=state.get("phase"),
+                    payload={"agent": agent.name, "role": agent.role},
+                )
+                outcome = "success"
+                try:
+                    with span(
+                        f"agent.{agent.name.lower()}",
+                        kind="agent",
+                        attributes={"agent": agent.name, "role": agent.role},
+                    ) as observation:
+                        result = await agent.process(state)
+                        observation.update(
+                            output={
+                                "phase": state.get("phase"),
+                                "fact_count": len(state.get("facts", [])),
+                                "chart_count": len(state.get("charts", [])),
+                            }
+                        )
+                        return result
+                except Exception as exc:
+                    outcome = "failure"
+                    record_research_event(
+                        "agent.failed",
+                        phase=state.get("phase"),
+                        status="error",
+                        payload={"agent": agent.name, "error_type": type(exc).__name__},
+                        duration_ms=round((perf_counter() - started_at) * 1000),
+                    )
+                    raise
+                finally:
+                    record_research_event(
+                        "agent.finished",
+                        phase=state.get("phase"),
+                        status="error" if outcome == "failure" else "info",
+                        payload={"agent": agent.name, "outcome": outcome},
+                        duration_ms=round((perf_counter() - started_at) * 1000),
+                    )
+
+            task = asyncio.create_task(execute_agent())
 
             msg_count = 0
             # 在任务执行期间持续从队列获取消息

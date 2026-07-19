@@ -73,6 +73,12 @@ class ApplicationMetrics:
             ("tool", "outcome"),
             registry=registry,
         )
+        self.tool_duration = Histogram(
+            "industry_tool_duration_seconds",
+            "Research tool call latency in seconds.",
+            ("tool", "outcome"),
+            registry=registry,
+        )
         self.queue_depth = Gauge(
             "industry_research_queue_depth",
             "Number of research jobs waiting to run.",
@@ -93,4 +99,3 @@ def metrics_response(registry: CollectorRegistry = REGISTRY) -> Response:
     """Render a Prometheus text exposition response."""
 
     return Response(content=generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
-

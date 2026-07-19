@@ -20,6 +20,7 @@ from datetime import datetime
 
 from .base import BaseAgent
 from ..state import ResearchState, ResearchPhase
+from observability.instrumentation import observe_retrieval
 
 # 网页文本提取库（可选依赖）
 try:
@@ -1002,6 +1003,7 @@ URL: {url}
 
         return self.parse_json_response(response)
 
+    @observe_retrieval("milvus")
     async def _execute_local_search(self, query: str, top_k: int = 10) -> List[Dict]:
         """
         执行本地知识库搜索 - 使用 Milvus 向量检索
@@ -1057,6 +1059,7 @@ URL: {url}
             self.logger.error(f"Local search error for '{query}': {e}")
             return []
 
+    @observe_retrieval("web")
     async def _execute_search(self, query: str, count: int = 10) -> List[Dict]:
         """执行网络搜索 - 使用 Bocha Web Search API"""
         # 检查缓存

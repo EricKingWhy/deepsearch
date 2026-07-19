@@ -1,6 +1,12 @@
 from contextlib import contextmanager
 
 from observability.context import ObservabilityContext, bind_context, current_context
+from observability.events import (
+    add_run_usage,
+    bind_event_recorder,
+    bind_run_usage,
+    record_research_event,
+)
 from observability.tracing import TracingManager
 
 
@@ -115,3 +121,26 @@ def test_shutdown_flushes_and_stops_client():
     assert manager.shutdown(timeout_seconds=1.0) is True
     assert client.flushed is True
     assert client.stopped is True
+
+
+def test_event_recorder_and_usage_are_scoped_to_current_run():
+    recorded = []
+
+    with bind_event_recorder(lambda **event: recorded.append(event)):
+        with bind_run_usage() as usage:
+            record_research_event("llm.completed", phase="planning", payload={"input_tokens": 3})
+            add_run_usage(input_tokens=3, output_tokens=2, cost=0.01)
+            add_run_usage(input_tokens=4, output_tokens=1, cost=0.02)
+
+    assert recorded == [
+        {
+            "event_type": "llm.completed",
+            "phase": "planning",
+            "status": "info",
+            "payload": {"input_tokens": 3},
+            "duration_ms": None,
+        }
+    ]
+    assert usage.input_tokens == 7
+    assert usage.output_tokens == 3
+    assert usage.estimated_cost == 0.03

@@ -19,7 +19,7 @@ from observability.events import sanitize_event_payload
 
 logger = logging.getLogger(__name__)
 SessionFactory = Callable[[], Session]
-_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "paused"}
 
 
 class ResearchObservabilityService:
@@ -244,4 +244,3 @@ class ResearchObservabilityService:
                 "events": [event.to_dict() for event in events],
                 "next_cursor": None,
             }
-
