@@ -13,7 +13,7 @@ Plan -> Research -> Analyze -> Write -> Review -> (Revise) -> Complete
 import logging
 import asyncio
 from time import perf_counter
-from typing import Dict, Any, List, Literal, AsyncGenerator
+from typing import Dict, Any, Literal, AsyncGenerator
 from datetime import datetime
 
 from observability.events import record_research_event
@@ -134,7 +134,7 @@ class DeepResearchGraph:
             config.agents.writer.model
         )
 
-        logger.info(f"DeepResearchGraph initialized with models:")
+        logger.info("DeepResearchGraph initialized with models:")
         logger.info(f"  - Architect: {config.agents.architect.model}")
         logger.info(f"  - Scout: {config.agents.scout.model}")
         logger.info(f"  - DataAnalyst: {config.agents.data_analyst.model}")
@@ -826,7 +826,7 @@ class DeepResearchGraph:
                     break
 
             # 完成
-            logger.info(f"[Graph] ========== 研究完成 ==========")
+            logger.info("[Graph] ========== 研究完成 ==========")
             logger.info(f"[Graph] 最终统计: facts={len(state.get('facts', []))}, charts={len(state.get('charts', []))}, iterations={state.get('iteration', 0)}")
             logger.info(f"[Graph] 报告长度: {len(state.get('final_report', ''))}")
 

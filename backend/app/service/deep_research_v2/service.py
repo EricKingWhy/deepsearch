@@ -14,7 +14,6 @@ import logging
 from contextlib import nullcontext
 from time import perf_counter
 from typing import AsyncGenerator, Dict, Any, Optional
-from datetime import datetime
 
 from observability.context import bind_context, current_context
 from observability.events import bind_event_recorder, bind_run_usage, record_research_event
