@@ -1142,7 +1142,7 @@ export default function Index() {
             sections: plan.sections,
             research_questions: plan.researchQuestions,
           },
-          { signal: controller.signal },
+          { signal: controller.signal, errorToast: false },
         )
         const consume = researchStreamConsumerRef.current
         if (!consume) {
@@ -1717,6 +1717,19 @@ export default function Index() {
 
   // 确定右侧面板显示内容
   const rightPanelContent = useMemo(() => {
+    if (pendingOutline) {
+      return (
+        <OutlineApprovalPanel
+          sessionId={pendingOutline.session_id}
+          outlineRevision={pendingOutline.outline_revision}
+          initialSections={pendingOutline.sections}
+          initialResearchQuestions={pendingOutline.research_questions}
+          approving={approvingOutline}
+          error={outlineApprovalError}
+          onApprove={handleApproveOutline}
+        />
+      )
+    }
     // 新版: 深度研究模式，显示研究详情面板
     if (isDeepResearchMode) {
       return (
@@ -1741,7 +1754,18 @@ export default function Index() {
       )
     }
     return null
-  }, [currentChatItem, selectedStepDetail, isDeepResearchMode, aggregatedResearchData, researchSteps, handleResearchStepClick])
+  }, [
+    aggregatedResearchData,
+    approvingOutline,
+    currentChatItem,
+    handleApproveOutline,
+    handleResearchStepClick,
+    isDeepResearchMode,
+    outlineApprovalError,
+    pendingOutline,
+    researchSteps,
+    selectedStepDetail,
+  ])
 
   return (
     <ComPageLayout
@@ -1762,17 +1786,6 @@ export default function Index() {
     >
       <div className={styles['chat-page']}>
         <ChatMessage list={list} onSend={send} onStepClick={handleStepClick} />
-        {pendingOutline ? (
-          <OutlineApprovalPanel
-            sessionId={pendingOutline.session_id}
-            outlineRevision={pendingOutline.outline_revision}
-            initialSections={pendingOutline.sections}
-            initialResearchQuestions={pendingOutline.research_questions}
-            approving={approvingOutline}
-            error={outlineApprovalError}
-            onApprove={handleApproveOutline}
-          />
-        ) : null}
       </div>
     </ComPageLayout>
   )

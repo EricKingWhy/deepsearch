@@ -160,6 +160,7 @@ function researchStreamConfig(options?: AxiosRequestConfig): AxiosRequestConfig 
     responseType: 'stream',
     adapter: 'fetch',
     loading: false,
+    errorToast: false,
     ...options,
   }
 }

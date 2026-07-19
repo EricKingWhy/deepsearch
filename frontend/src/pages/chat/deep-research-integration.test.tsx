@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,10 +31,17 @@ vi.mock('@/store/session', () => ({
 }))
 vi.mock('ahooks', () => ({ useUnmount: vi.fn() }))
 vi.mock('@/components/page-layout', () => ({
-  default: ({ children, sender }: { children: React.ReactNode; sender: React.ReactNode }) => (
+  default: ({ children, sender, right }: {
+    children: React.ReactNode
+    sender: React.ReactNode
+    right?: React.ReactNode
+  }) => (
     <main>
-      {children}
-      {sender}
+      <section data-testid="chat-main">
+        {children}
+        {sender}
+      </section>
+      <aside data-testid="right-workspace">{right}</aside>
     </main>
   ),
 }))
@@ -137,6 +144,16 @@ describe('deep research outline approval integration', () => {
 
     await user.click(screen.getByRole('button', { name: 'Start research' }))
     const firstTitle = await screen.findByLabelText('Chapter 1 title')
+    expect(
+      within(screen.getByTestId('right-workspace')).getByText(
+        'Review the research outline',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('chat-main')).queryByText(
+        'Review the research outline',
+      ),
+    ).not.toBeInTheDocument()
     await user.clear(firstTitle)
     await user.type(firstTitle, 'Edited market overview')
     const approveButton = screen.getByRole('button', {
@@ -155,7 +172,7 @@ describe('deep research outline approval integration', () => {
           expect.objectContaining({ title: 'Edited market overview' }),
         ]),
       }),
-      expect.any(Object),
+      expect.objectContaining({ errorToast: false }),
     )
     expect(await screen.findByText('Approved research report')).toBeInTheDocument()
     expect(screen.queryByText('Review the research outline')).not.toBeInTheDocument()
