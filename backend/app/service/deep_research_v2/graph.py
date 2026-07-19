@@ -426,17 +426,18 @@ class DeepResearchGraph:
             # 启动 agent 处理任务
             async def execute_agent():
                 started_at = perf_counter()
+                agent_role = getattr(agent, "role", agent.__class__.__name__)
                 record_research_event(
                     "agent.started",
                     phase=state.get("phase"),
-                    payload={"agent": agent.name, "role": agent.role},
+                    payload={"agent": agent.name, "role": agent_role},
                 )
                 outcome = "success"
                 try:
                     with span(
                         f"agent.{agent.name.lower()}",
                         kind="agent",
-                        attributes={"agent": agent.name, "role": agent.role},
+                        attributes={"agent": agent.name, "role": agent_role},
                     ) as observation:
                         result = await agent.process(state)
                         observation.update(
