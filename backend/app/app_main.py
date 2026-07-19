@@ -6,12 +6,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
+from observability import (
+    ObservabilityMiddleware,
+    configure_logging,
+    metrics_response,
+)
 
 # 加载环境变量
 load_dotenv()
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 from router import document_router, search_router, chat_router, research_router
@@ -75,6 +80,7 @@ app.add_middleware(
     allow_methods=["*"],  # 允许所有方法
     allow_headers=["*"],  # 允许所有头
 )
+app.add_middleware(ObservabilityMiddleware)
 
 # 注册路由
 app.include_router(auth_router)
@@ -88,6 +94,13 @@ app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(research_router)
 app.include_router(news_router)
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    """Expose application metrics for Prometheus scraping."""
+
+    return metrics_response()
 
 @app.get("/hello")
 async def hello_world():
