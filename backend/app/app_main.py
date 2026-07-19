@@ -32,7 +32,8 @@ from core.database import engine, Base
 from models import (
     User, ChatSession, ChatMessage, ChatAttachment, LongTermMemory,
     KnowledgeBase, Document, IndustryStats, CompanyData, PolicyData,
-    ResearchCheckpoint, IndustryNews, BiddingInfo, NewsCollectionTask
+    ResearchCheckpoint, IndustryNews, BiddingInfo, NewsCollectionTask,
+    ResearchEvent, ResearchRun,
 )
 
 # 创建所有数据表（如果不存在）
