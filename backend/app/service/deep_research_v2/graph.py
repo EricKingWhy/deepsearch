@@ -615,8 +615,13 @@ class DeepResearchGraph:
                     },
                     status="paused",
                 )
-                if cp_event:
-                    yield cp_event
+                if not cp_event:
+                    yield {
+                        "type": "error",
+                        "content": "研究大纲保存失败，请重新发起深度研究。",
+                    }
+                    return
+                yield cp_event
                 yield {
                     "type": "outline_pending_approval",
                     "session_id": session_id,
