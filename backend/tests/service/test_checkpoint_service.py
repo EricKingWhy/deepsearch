@@ -1,4 +1,7 @@
+import asyncio
+import json
 from copy import deepcopy
+from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -235,3 +238,24 @@ def test_save_checkpoint_persists_explicit_status():
     assert checkpoint_id is not None
     assert row.status == "paused"
     assert session.committed is True
+
+
+def test_clean_state_drops_runtime_objects_and_produces_json():
+    created_at = datetime(2026, 7, 19, 8, 30, tzinfo=timezone.utc)
+    state = {
+        "query": "产业研究",
+        "_message_queue": asyncio.Queue(),
+        "nested": {
+            "owner": UUID(USER_ID),
+            "created_at": created_at,
+            "items": ["kept", asyncio.Queue()],
+        },
+    }
+
+    cleaned = CheckpointService()._clean_state_for_storage(state)
+
+    assert "_message_queue" not in cleaned
+    assert cleaned["nested"]["owner"] == USER_ID
+    assert cleaned["nested"]["created_at"] == created_at.isoformat()
+    assert cleaned["nested"]["items"] == ["kept"]
+    json.dumps(cleaned)

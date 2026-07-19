@@ -474,20 +474,38 @@ class CheckpointService:
 
         移除不可序列化的内容，保留可恢复的数据
         """
-        clean = {}
-        for key, value in state.items():
-            try:
-                # 尝试序列化测试
-                json.dumps(value, default=str)
-                clean[key] = value
-            except (TypeError, ValueError):
-                # 跳过不可序列化的值，或转换为字符串
-                if isinstance(value, (list, tuple)):
-                    clean[key] = [str(v) for v in value]
-                elif isinstance(value, dict):
-                    clean[key] = self._clean_state_for_storage(value)
-                else:
-                    clean[key] = str(value)
+        unsupported = object()
+
+        def clean_value(value: Any):
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return value
+            if isinstance(value, UUID):
+                return str(value)
+            if isinstance(value, datetime):
+                return value.isoformat()
+            if isinstance(value, dict):
+                result = {}
+                for key, item in value.items():
+                    key_text = str(key)
+                    if key_text.startswith("_"):
+                        continue
+                    cleaned_item = clean_value(item)
+                    if cleaned_item is not unsupported:
+                        result[key_text] = cleaned_item
+                return result
+            if isinstance(value, (list, tuple)):
+                result = []
+                for item in value:
+                    cleaned_item = clean_value(item)
+                    if cleaned_item is not unsupported:
+                        result.append(cleaned_item)
+                return result
+            return unsupported
+
+        clean = clean_value(state)
+        if clean is unsupported or not isinstance(clean, dict):
+            clean = {}
+        json.dumps(clean)
         return clean
 
 
