@@ -11,8 +11,15 @@ import os
 import json
 import uuid
 import logging
+from contextlib import nullcontext
+from time import perf_counter
 from typing import AsyncGenerator, Dict, Any, Optional
-from datetime import datetime
+
+from observability.context import bind_context, current_context
+from observability.events import bind_event_recorder, bind_run_usage, record_research_event
+from observability.metrics import application_metrics
+from observability.tracing import span
+from service.research_observability_service import ResearchObservabilityService
 
 from .graph import DeepResearchGraph
 
@@ -48,7 +55,8 @@ class DeepResearchV2Service:
         llm_base_url: Optional[str] = None,
         search_api_key: Optional[str] = None,
         model: Optional[str] = None,
-        max_iterations: Optional[int] = None
+        max_iterations: Optional[int] = None,
+        observability_service: Optional[ResearchObservabilityService] = None,
     ):
         """
         初始化服务
@@ -70,6 +78,7 @@ class DeepResearchV2Service:
         self.search_api_key = search_api_key or config.search_api_key
         self.model = model or config.default_model
         self.max_iterations = max_iterations or config.research.max_iterations
+        self.observability_service = observability_service or ResearchObservabilityService()
 
         # 创建工作流图（使用配置）
         self.graph = DeepResearchGraph(
@@ -83,6 +92,175 @@ class DeepResearchV2Service:
         logger.info(f"DeepResearch V2 Service initialized with default model: {self.model}")
 
     async def research(
+        self,
+        query: str,
+        session_id: Optional[str] = None,
+        kb_name: Optional[str] = None,
+        resume: bool = False,
+        user_id: Optional[str] = None,
+        search_web: bool = True,
+        search_local: bool = False,
+    ) -> AsyncGenerator[str, None]:
+        """Execute a correlated deep-research run and stream enriched SSE events."""
+
+        session_id = session_id or str(uuid.uuid4())
+        previous_research_id = None
+        if resume and user_id:
+            try:
+                previous_runs = self.observability_service.list_runs(
+                    session_id=session_id,
+                    user_id=user_id,
+                    limit=1,
+                )["items"]
+                if previous_runs:
+                    previous_research_id = previous_runs[0]["research_id"]
+            except Exception:
+                logger.exception(
+                    "Failed to find a previous run; starting a new research lineage",
+                    extra={"event": "research.previous_run_lookup_failed"},
+                )
+
+        run = None
+        terminal_status = None
+        with bind_context(session_id=session_id):
+            with span(
+                "deep_research.run",
+                kind="agent",
+                attributes={
+                    "resume": resume,
+                    "search_web": search_web,
+                    "search_local": search_local,
+                },
+            ) as root_trace:
+                if user_id:
+                    try:
+                        context = current_context()
+                        run = self.observability_service.start_run(
+                            session_id=session_id,
+                            user_id=user_id,
+                            query=query,
+                            research_id=previous_research_id,
+                            request_id=context.request_id if context else None,
+                            trace_id=root_trace.trace_id,
+                            metadata={
+                                "resume": resume,
+                                "search_web": search_web,
+                                "search_local": search_local,
+                                "kb_name": kb_name,
+                            },
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to create run ledger; research will continue",
+                            extra={"event": "research.run_start_persistence_failed"},
+                        )
+
+                with bind_context(
+                    research_id=run["research_id"] if run else None,
+                    run_id=run["run_id"] if run else None,
+                    trace_id=root_trace.trace_id,
+                    span_id=root_trace.span_id,
+                ):
+                    def persist_event(**event_fields):
+                        context = current_context()
+                        return self.observability_service.record_event(
+                            run_id=run["run_id"],
+                            trace_id=context.trace_id if context else None,
+                            span_id=context.span_id if context else None,
+                            **event_fields,
+                        )
+
+                    recorder_context = bind_event_recorder(persist_event) if run else nullcontext()
+                    with recorder_context, bind_run_usage() as usage:
+                        phase_name = None
+                        phase_started_at = None
+                        try:
+                            async for chunk in self._research_stream(
+                                query=query,
+                                session_id=session_id,
+                                kb_name=kb_name,
+                                resume=resume,
+                                user_id=user_id,
+                                search_web=search_web,
+                                search_local=search_local,
+                            ):
+                                if chunk == "data: [DONE]\n\n":
+                                    continue
+                                try:
+                                    event = json.loads(chunk.removeprefix("data: "))
+                                except (json.JSONDecodeError, TypeError):
+                                    yield chunk
+                                    continue
+
+                                event_type = str(event.get("type", "unknown"))
+                                event_phase = event.get("phase")
+                                record_research_event(
+                                    event_type,
+                                    phase=str(event_phase) if event_phase else None,
+                                    status="error" if event_type == "error" else "info",
+                                    payload=event,
+                                )
+
+                                if event_type == "phase" and event_phase:
+                                    now = perf_counter()
+                                    if phase_name and phase_started_at is not None:
+                                        application_metrics.research_phase_duration.labels(
+                                            phase_name,
+                                            "success",
+                                        ).observe(now - phase_started_at)
+                                    phase_name = str(event_phase)[:48]
+                                    phase_started_at = now
+
+                                terminal_status = {
+                                    "research_complete": "completed",
+                                    "outline_pending_approval": "paused",
+                                    "research_cancelled": "cancelled",
+                                    "error": "failed",
+                                }.get(event_type, terminal_status)
+
+                                if run:
+                                    event.update(
+                                        run_id=run["run_id"],
+                                        research_id=run["research_id"],
+                                        trace_id=root_trace.trace_id,
+                                    )
+                                yield self._format_sse(event)
+                        finally:
+                            if phase_name and phase_started_at is not None:
+                                outcome = "failure" if terminal_status == "failed" else "success"
+                                application_metrics.research_phase_duration.labels(
+                                    phase_name,
+                                    outcome,
+                                ).observe(perf_counter() - phase_started_at)
+
+                            final_status = terminal_status or "cancelled"
+                            if run:
+                                try:
+                                    self.observability_service.finish_run(
+                                        run_id=run["run_id"],
+                                        status=final_status,
+                                        input_tokens=usage.input_tokens,
+                                        output_tokens=usage.output_tokens,
+                                        estimated_cost=usage.estimated_cost,
+                                        error_code="research_failed" if final_status == "failed" else None,
+                                    )
+                                    application_metrics.research_runs.labels(final_status).inc()
+                                except Exception:
+                                    logger.exception(
+                                        "Failed to finalize run ledger",
+                                        extra={"event": "research.run_finalize_failed"},
+                                    )
+                            root_trace.update(
+                                output={
+                                    "status": final_status,
+                                    "input_tokens": usage.input_tokens,
+                                    "output_tokens": usage.output_tokens,
+                                }
+                            )
+
+        yield "data: [DONE]\n\n"
+
+    async def _research_stream(
         self,
         query: str,
         session_id: Optional[str] = None,

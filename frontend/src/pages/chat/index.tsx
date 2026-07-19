@@ -4,9 +4,17 @@
  */
 
 import * as api from '@/api'
+import type { ResearchTimeline } from '@/api/session'
 import ComPageLayout from '@/components/page-layout'
 import ComSender, { AttachmentInfo } from '@/components/sender'
 import { ChatRole, ChatType } from '@/configs'
+import { OutlineApprovalPanel } from '@/features/deep-research/OutlineApprovalPanel'
+import { consumeResearchStream } from '@/features/deep-research/research-stream'
+import type {
+  EditableResearchPlan,
+  OutlinePendingApprovalEvent,
+  ResearchEvent,
+} from '@/features/deep-research/types'
 import { deviceActions, deviceState } from '@/store/device'
 import { sessionState } from '@/store/session'
 import { usePageTransport } from '@/utils'
@@ -41,6 +49,33 @@ async function scrollToBottom() {
   }
 }
 
+async function getApprovalErrorMessage(error: unknown): Promise<string> {
+  const requestError = error as {
+    message?: string
+    response?: { data?: unknown }
+  }
+  const data = requestError.response?.data
+
+  if (data && typeof data === 'object' && 'detail' in data) {
+    const detail = (data as { detail?: unknown }).detail
+    if (typeof detail === 'string' && detail) return detail
+  }
+
+  if (data instanceof ReadableStream) {
+    try {
+      const raw = await new Response(data).text()
+      const parsed = JSON.parse(raw) as { detail?: unknown }
+      if (typeof parsed.detail === 'string' && parsed.detail) {
+        return parsed.detail
+      }
+    } catch {
+      // Fall through to the transport error message.
+    }
+  }
+
+  return requestError.message || 'Unable to approve the outline'
+}
+
 export default function Index() {
   const { id } = useParams()
   const { data: ctx } = usePageTransport(transportToChatEnter)
@@ -60,6 +95,18 @@ export default function Index() {
   const researchDetailsRef = useRef<Map<string, ResearchDetailData>>(new Map())
   // 版本计数器 - 用于触发 aggregatedResearchData 重新计算
   const [researchDataVersion, setResearchDataVersion] = useState(0)
+  const [diagnostics, setDiagnostics] = useState<ResearchTimeline | null>(null)
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false)
+  const [diagnosticsError, setDiagnosticsError] = useState<string>()
+  const [pendingOutline, setPendingOutline] =
+    useState<OutlinePendingApprovalEvent | null>(null)
+  const [approvingOutline, setApprovingOutline] = useState(false)
+  const [outlineApprovalError, setOutlineApprovalError] = useState<string>()
+  const approvalInFlightRef = useRef(false)
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const researchStreamConsumerRef = useRef<
+    ((stream: ReadableStream<Uint8Array>) => Promise<void>) | null
+  >(null)
 
   // 同步 researchSteps 到 ref
   useEffect(() => {
@@ -84,6 +131,34 @@ export default function Index() {
   }, [list])
   const loadingRef = useRef(loading)
   loadingRef.current = loading
+
+  const loadDiagnostics = useCallback(async () => {
+    if (!id) return
+    setDiagnosticsLoading(true)
+    setDiagnosticsError(undefined)
+    try {
+      const response = await api.session.getResearchTimeline(id)
+      setDiagnostics(response.data)
+    } catch (error) {
+      const requestError = error as { response?: { status?: number } }
+      if (requestError.response?.status === 404) {
+        setDiagnostics({ runs: [], events: [], next_cursor: null })
+      } else {
+        setDiagnosticsError('诊断记录加载失败，请检查后端服务')
+      }
+    } finally {
+      setDiagnosticsLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    setDiagnostics(null)
+    setDiagnosticsError(undefined)
+  }, [id])
+
+  useEffect(() => {
+    if (!loading) void loadDiagnostics()
+  }, [loadDiagnostics, loading])
   useEffect(() => {
     deviceActions.setChatting(loading)
   }, [loading])
@@ -95,24 +170,22 @@ export default function Index() {
     }
   })
 
-  // 用于取消请求的 ref
-  const readerRef = useRef<ReadableStreamDefaultReader<any> | null>(null)
   const currentSessionIdRef = useRef<string | null>(null)
+  const activeRouteSessionIdRef = useRef<string | undefined>(id)
+
+  useEffect(() => {
+    if (activeRouteSessionIdRef.current !== id) {
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+    }
+    activeRouteSessionIdRef.current = id
+  }, [id])
 
   // 停止生成
   const handleStop = useCallback(async () => {
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
     console.log('[handleStop] 用户点击停止按钮')
-
-    // 取消读取流
-    if (readerRef.current) {
-      try {
-        await readerRef.current.cancel()
-        console.log('[handleStop] 读取流已取消')
-      } catch (e) {
-        console.error('[handleStop] 取消读取流失败:', e)
-      }
-      readerRef.current = null
-    }
 
     // 调用后端取消 API
     if (currentSessionIdRef.current) {
@@ -225,88 +298,98 @@ export default function Index() {
   }, [])
 
   const sendChat = useCallback(
-    async (target: API.ChatItem, message: string, attachmentIds?: string[]) => {
+    async (
+      target: API.ChatItem,
+      chatMessage: string,
+      attachmentIds?: string[],
+      streamOverride?: ReadableStream<Uint8Array>,
+      expectedSessionId?: string,
+    ) => {
+      const streamSessionId = expectedSessionId || id
+      if (activeRouteSessionIdRef.current !== streamSessionId) return
       setCurrentChatItem(target)
       target.loading = true
+      const controller = new AbortController()
+      streamAbortRef.current = controller
       try {
         let res
-        if (target.type === ChatType.Deepsearch) {
+        if (streamOverride) {
+          res = { data: streamOverride }
+        } else if (target.type === ChatType.Deepsearch) {
           res = await api.session.deepsearch({
-            query: message,
+            query: chatMessage,
             session_id: id,  // 传递会话 ID 用于检查点保存
             search_modes: deviceState.searchModes as string[],  // 传递搜索模式
-          })
+          }, { signal: controller.signal })
         } else if (attachmentIds && attachmentIds.length > 0) {
           // 使用带附件的聊天接口
           res = await api.session.chatWithAttachments({
             session_id: id!,
-            question: message,
+            question: chatMessage,
             attachment_ids: attachmentIds,
-          })
+          }, { signal: controller.signal })
         } else {
           res = await api.session.chat({
             session_id: id!,
-            question: message,
+            question: chatMessage,
+          }, { signal: controller.signal })
+        }
+
+        if (activeRouteSessionIdRef.current !== streamSessionId) return
+
+        const consumeTargetStream = async (
+          stream: ReadableStream<Uint8Array>,
+        ) => {
+          await consumeResearchStream(stream, {
+            onEvent: (event) => {
+              if (activeRouteSessionIdRef.current !== streamSessionId) return
+              parseData(event)
+              void scrollToBottom()
+            },
+            onProtocolError: (error, raw) => {
+              if (activeRouteSessionIdRef.current !== streamSessionId) return
+              console.error('Research stream protocol error', error, raw)
+            },
+            onConnectionError: (error) => {
+              if (
+                activeRouteSessionIdRef.current === streamSessionId &&
+                !controller.signal.aborted
+              ) {
+                console.error('Research stream connection error', error)
+                message.error(
+                  'Research stream disconnected. You can resume it later.',
+                )
+              }
+            },
           })
         }
 
-        const reader = res.data.getReader()
-        if (!reader) return
-
         // 存储 reader 和 session ID 用于取消
-        readerRef.current = reader
-        currentSessionIdRef.current = id || null
+        currentSessionIdRef.current = streamSessionId || null
 
-        await read(reader)
+        researchStreamConsumerRef.current = consumeTargetStream
+        await consumeTargetStream(res.data as ReadableStream<Uint8Array>)
 
-        // 清理 reader ref
-        readerRef.current = null
-      } catch (error) {
-        throw error
       } finally {
+        if (streamAbortRef.current === controller) {
+          streamAbortRef.current = null
+        }
         target.loading = false
       }
 
-      async function read(reader: ReadableStreamDefaultReader<any>) {
-        let temp = ''
-        const decoder = new TextDecoder('utf-8')
-        while (true) {
-          const { value, done } = await reader.read()
-          temp += decoder.decode(value)
-
-          while (true) {
-            const index = temp.indexOf('\n')
-            if (index === -1) break
-
-            const slice = temp.slice(0, index)
-            temp = temp.slice(index + 1)
-
-            if (slice.startsWith('data: ')) {
-              parseData(slice)
-              scrollToBottom()
-            }
-          }
-
-          if (done) {
-            console.debug('数据接受完毕', temp)
-            target.loading = false
-            break
-          }
-        }
-      }
-
-      function parseData(slice: string) {
+      function parseData(event: ResearchEvent) {
         try {
-          const str = slice
-            .trim()
-            .replace(/^data\: /, '')
-            .trim()
-          if (str === '[DONE]') {
-            return
-          }
-
-          const json = JSON.parse(str)
+          // The legacy chat reducer accepts the backend's open event schema.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const json: any = event
           if (target.type === ChatType.Deepsearch) {
+            if (json.type === 'outline_pending_approval') {
+              setPendingOutline(json as OutlinePendingApprovalEvent)
+              setOutlineApprovalError(undefined)
+              target.loading = false
+              return
+            }
+
             // 辅助函数：从 V2 格式中提取实际内容
             const extractContent = (data: any): string => {
               if (typeof data === 'string') return data
@@ -321,6 +404,8 @@ export default function Index() {
 
             // V2 研究开始事件
             if (json.type === 'research_start') {
+              setPendingOutline(null)
+              setOutlineApprovalError(undefined)
               target.reactMode = true
               if (!target.reactSteps) {
                 target.reactSteps = []
@@ -591,6 +676,7 @@ export default function Index() {
 
             // V2 研究完成事件
             if (json.type === 'research_complete') {
+              setPendingOutline(null)
               console.log('研究完成事件:', json)
               // 设置最终报告为内容
               if (json.final_report) {
@@ -1082,11 +1168,52 @@ export default function Index() {
           }
         } catch {
           console.debug('解析失败')
-          console.debug(slice)
+          console.debug(event)
         }
       }
     },
-    [chat],
+    [id],
+  )
+
+  const handleApproveOutline = useCallback(
+    async (plan: EditableResearchPlan) => {
+      if (!id || !pendingOutline || approvalInFlightRef.current) return
+
+      approvalInFlightRef.current = true
+      setApprovingOutline(true)
+      setOutlineApprovalError(undefined)
+      const controller = new AbortController()
+      streamAbortRef.current = controller
+
+      try {
+        const response = await api.session.approveResearchOutline(
+          id,
+          {
+            outline_revision: pendingOutline.outline_revision,
+            sections: plan.sections,
+            research_questions: plan.researchQuestions,
+          },
+          { signal: controller.signal, errorToast: false },
+        )
+        const consume = researchStreamConsumerRef.current
+        if (!consume) {
+          throw new Error('Research stream handler is unavailable')
+        }
+
+        setPendingOutline(null)
+        await consume(response.data as ReadableStream<Uint8Array>)
+      } catch (error) {
+        setOutlineApprovalError(await getApprovalErrorMessage(error))
+        throw error
+      } finally {
+        approvalInFlightRef.current = false
+        setApprovingOutline(false)
+        if (streamAbortRef.current === controller) {
+          streamAbortRef.current = null
+        }
+      }
+    },
+    [id, pendingOutline],
   )
 
   const send = useCallback(
@@ -1150,6 +1277,15 @@ export default function Index() {
   const hasLoadedCheckpoint = useRef(false)
   const hasLoadedMessages = useRef(false)
   const previousIdRef = useRef<string | undefined>(undefined)
+  const messagesLoadBarrierRef = useRef<{
+    sessionId: string | undefined
+    promise: Promise<void>
+    resolve: () => void
+  }>({
+    sessionId: undefined,
+    promise: Promise.resolve(),
+    resolve: () => undefined,
+  })
 
   // 当 session ID 变化时，重置加载状态
   useEffect(() => {
@@ -1159,6 +1295,15 @@ export default function Index() {
       hasLoadedMessages.current = false
       hasLoadedCheckpoint.current = false
       hasSentInitialMessage.current = false
+      let resolveMessagesLoaded = () => undefined
+      const messagesLoadedPromise = new Promise<void>((resolve) => {
+        resolveMessagesLoaded = resolve
+      })
+      messagesLoadBarrierRef.current = {
+        sessionId: id,
+        promise: messagesLoadedPromise,
+        resolve: resolveMessagesLoaded,
+      }
       // 清空消息列表和研究状态
       console.log(`[前端] ⚠️ 会话切换: 清空 researchDetailsRef`)
       chat.list.length = 0
@@ -1168,12 +1313,16 @@ export default function Index() {
       setSelectedResearchDetail(null)
       setResearchDataVersion(0)
       setCurrentChatItem(null)
+      setPendingOutline(null)
+      setOutlineApprovalError(undefined)
     }
   }, [id, chat])
 
   // 加载会话历史消息
   useEffect(() => {
     if (!id || hasLoadedMessages.current) return
+    const loadId = id
+    const loadBarrier = messagesLoadBarrierRef.current
 
     // 辅助函数：将消息数组填充到 chat.list
     function populateMessages(messages: any[]) {
@@ -1206,6 +1355,7 @@ export default function Index() {
       console.log('[加载消息] 使用预加载的数据:', cachedSession.messages.length, '条')
       hasLoadedMessages.current = true
       populateMessages(cachedSession.messages)
+      loadBarrier.resolve()
       return
     }
 
@@ -1216,7 +1366,12 @@ export default function Index() {
         const res = await api.session.getSession(id!)
         const session = (res as any).data || res
 
-        if (session && session.messages && session.messages.length > 0) {
+        if (
+          previousIdRef.current === loadId &&
+          session &&
+          session.messages &&
+          session.messages.length > 0
+        ) {
           hasLoadedMessages.current = true
           console.log('[加载消息] 找到消息:', session.messages.length, '条')
           populateMessages(session.messages)
@@ -1224,6 +1379,11 @@ export default function Index() {
         }
       } catch (e) {
         console.log('[加载消息] 加载失败或无消息:', e)
+      } finally {
+        if (previousIdRef.current === loadId) {
+          hasLoadedMessages.current = true
+        }
+        loadBarrier.resolve()
       }
     }
 
@@ -1233,11 +1393,27 @@ export default function Index() {
   // 加载并恢复研究检查点状态
   useEffect(() => {
     if (!id || hasLoadedCheckpoint.current) return
+    const loadId = id
+    const loadBarrier = messagesLoadBarrierRef.current
 
     async function loadCheckpoint() {
       try {
         console.log('[恢复状态] 开始加载检查点, session_id:', id)
-        const res = await api.session.getFullResearchCheckpoint(id!)
+        let checkpointResponse: any
+        let checkpointError: unknown
+        const checkpointRequest = api.session
+          .getFullResearchCheckpoint(id!)
+          .then((response) => {
+            checkpointResponse = response
+          })
+          .catch((error) => {
+            checkpointError = error
+          })
+        await loadBarrier.promise
+        await checkpointRequest
+        if (checkpointError) throw checkpointError
+        if (previousIdRef.current !== loadId) return
+        const res = checkpointResponse
         const response = (res as any).data || res
         console.log('[恢复状态] API响应:', { success: response?.success, hasCheckpoint: !!response?.checkpoint })
         if (response?.success && response?.checkpoint) {
@@ -1251,7 +1427,58 @@ export default function Index() {
           })
 
           // 只恢复已完成或正在运行的研究
-          if (checkpoint.status === 'completed' || checkpoint.status === 'running') {
+          const checkpointState = checkpoint.state_json as
+            | {
+                outline_revision?: string
+                outline?: OutlinePendingApprovalEvent['sections']
+                research_questions?: OutlinePendingApprovalEvent['research_questions']
+              }
+            | undefined
+          if (
+            checkpoint.phase === 'awaiting_outline_approval' &&
+            checkpointState?.outline_revision
+          ) {
+            hasLoadedCheckpoint.current = true
+            let approvalTarget = chat.list
+              .filter((item) => item.role === ChatRole.Assistant)
+              .pop()
+            if (!approvalTarget) {
+              approvalTarget = {
+                id: createChatId(),
+                role: ChatRole.Assistant,
+                type: ChatType.Deepsearch,
+                content: '',
+              }
+              chat.list.push(approvalTarget)
+            }
+            approvalTarget.type = ChatType.Deepsearch
+            setCurrentChatItem(approvalTarget)
+            const emptyStream = new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close()
+              },
+            })
+            await sendChat(
+              approvalTarget,
+              checkpoint.query || '',
+              undefined,
+              emptyStream,
+            )
+            setPendingOutline({
+              type: 'outline_pending_approval',
+              session_id: checkpoint.session_id,
+              outline_revision: checkpointState.outline_revision,
+              sections: checkpointState.outline || [],
+              research_questions: checkpointState.research_questions || [],
+            })
+            return
+          }
+
+          if (
+            checkpoint.status === 'completed' ||
+            checkpoint.status === 'running' ||
+            checkpoint.status === 'paused'
+          ) {
             hasLoadedCheckpoint.current = true
 
             // 恢复 UI 状态
@@ -1358,55 +1585,72 @@ export default function Index() {
             // 触发数据更新
             setResearchDataVersion(v => v + 1)
 
-            // 恢复聊天记录（仅当消息列表为空时）
-            if (stateJson && chat.list.length === 0) {
-              // 添加用户问题
-              chat.list.push({
-                id: createChatId(),
-                role: ChatRole.User,
-                type: ChatType.Normal,
-                content: checkpoint.query || '',
-              })
-
-              // 添加助手回复
-              const assistantItem: API.ChatItem = {
-                id: createChatId(),
-                role: ChatRole.Assistant,
-                type: ChatType.Deepsearch,
-                content: checkpoint.final_report || uiState?.streaming_report || '',
-                reactMode: true,
-                charts: uiState?.charts || stateJson.charts || [],
+            let restoredAssistant: API.ChatItem | undefined
+            let shouldPersistRestoredAssistant = false
+            if (stateJson) {
+              if (chat.list.length === 0) {
+                chat.list.push({
+                  id: createChatId(),
+                  role: ChatRole.User,
+                  type: ChatType.Normal,
+                  content: checkpoint.query || '',
+                })
               }
 
-              // 恢复引用 - 优先使用 ui_state 中的 references
+              let latestUserIndex = -1
+              for (let index = chat.list.length - 1; index >= 0; index -= 1) {
+                if (chat.list[index].role === ChatRole.User) {
+                  latestUserIndex = index
+                  break
+                }
+              }
+              restoredAssistant = chat.list
+                .slice(latestUserIndex + 1)
+                .filter((item) => item.role === ChatRole.Assistant)
+                .pop()
+              if (!restoredAssistant) {
+                shouldPersistRestoredAssistant = true
+                chat.list.push({
+                  id: createChatId(),
+                  role: ChatRole.Assistant,
+                  type: ChatType.Deepsearch,
+                  content: '',
+                })
+                restoredAssistant = chat.list[chat.list.length - 1]
+              }
+
+              const restoredReport =
+                restoredAssistant.content ||
+                checkpoint.final_report ||
+                uiState?.streaming_report ||
+                ''
+              if (restoredReport) {
+                restoredAssistant.content = restoredReport
+                const writingDetail = researchDetailsRef.current.get('writing')
+                if (writingDetail) {
+                  writingDetail.streamingReport = restoredReport
+                }
+              }
+              restoredAssistant.type = ChatType.Deepsearch
+              restoredAssistant.reactMode = true
+              restoredAssistant.charts = uiState?.charts || stateJson.charts || []
+
               const refs = uiState?.references || stateJson.references || []
-              if (refs.length > 0) {
-                assistantItem.reference = refs.map((ref: any, i: number) => ({
+              if (refs.length > 0 && !restoredAssistant.reference?.length) {
+                restoredAssistant.reference = refs.map((ref: any, i: number) => ({
                   id: i + 1,
                   title: ref.title || ref.source_name || '来源',
-                  link: ref.url || ref.source_url || '',
+                  link: ref.link || ref.url || ref.source_url || '',
                   content: ref.content || ref.summary || '',
-                  source: ref.source_type === 'local' ? 'knowledge' : 'web',
+                  source:
+                    ref.source === 'knowledge' || ref.source_type === 'local'
+                      ? 'knowledge'
+                      : 'web',
                 }))
               }
 
-              chat.list.push(assistantItem)
-              setCurrentChatItem(assistantItem)
-
-              console.log('[恢复状态] 已恢复聊天记录和研究状态')
-            } else if (chat.list.length > 0) {
-              // 消息已通过 loadSessionMessages 加载，只需设置 currentChatItem
-              const lastAssistant = chat.list.filter(m => m.role === ChatRole.Assistant).pop()
-              if (lastAssistant) {
-                // 补充图表数据到已加载的消息
-                lastAssistant.charts = uiState?.charts || stateJson?.charts || []
-                lastAssistant.reactMode = true
-                // 关键：设置类型为深度研究，否则 isDeepResearchMode 会是 false
-                lastAssistant.type = ChatType.Deepsearch
-                setCurrentChatItem(lastAssistant)
-                console.log('[恢复状态] 已设置消息类型为 Deepsearch, type=', lastAssistant.type)
-              }
-              console.log('[恢复状态] 消息已存在，仅恢复研究UI状态')
+              setCurrentChatItem(restoredAssistant)
+              console.log('[恢复状态] 已恢复助手消息和研究状态')
             }
 
             // 最终状态汇总
@@ -1423,6 +1667,35 @@ export default function Index() {
                 hasReport: !!detail.streamingReport,
               }
             })
+            if (checkpoint.status !== 'completed' && restoredAssistant) {
+                const resumeResponse = await api.session.resumeResearch(id!)
+                if (previousIdRef.current !== loadId) return
+                await sendChat(
+                  restoredAssistant,
+                  checkpoint.query || '',
+                  undefined,
+                  resumeResponse.data as ReadableStream<Uint8Array>,
+                  loadId,
+                )
+            }
+            if (previousIdRef.current !== loadId) return
+            if (
+              shouldPersistRestoredAssistant &&
+              restoredAssistant?.content
+            ) {
+              try {
+                await api.session.addMessage(id!, {
+                  role: 'assistant',
+                  content: restoredAssistant.content,
+                  thinking: restoredAssistant.think,
+                  references_data: restoredAssistant.reference
+                    ? { references: restoredAssistant.reference }
+                    : undefined,
+                })
+              } catch (error) {
+                console.error('[恢复状态] 保存恢复后的助手消息失败:', error)
+              }
+            }
             console.log('[恢复状态] ✅ 恢复完成，最终状态:', finalSummary)
           }
         } else {
@@ -1434,7 +1707,7 @@ export default function Index() {
     }
 
     loadCheckpoint()
-  }, [id, chat])
+  }, [id, chat, sendChat])
 
   useEffect(() => {
     if (ctx?.data?.message && !hasSentInitialMessage.current) {
@@ -1574,14 +1847,30 @@ export default function Index() {
 
   // 确定右侧面板显示内容
   const rightPanelContent = useMemo(() => {
+    if (pendingOutline) {
+      return (
+        <OutlineApprovalPanel
+          sessionId={pendingOutline.session_id}
+          outlineRevision={pendingOutline.outline_revision}
+          initialSections={pendingOutline.sections}
+          initialResearchQuestions={pendingOutline.research_questions}
+          approving={approvingOutline}
+          error={outlineApprovalError}
+          onApprove={handleApproveOutline}
+        />
+      )
+    }
     // 新版: 深度研究模式，显示研究详情面板
     if (isDeepResearchMode) {
       return (
         <ResearchDetail
           data={aggregatedResearchData}
           steps={researchSteps}
+          diagnostics={diagnostics}
+          diagnosticsLoading={diagnosticsLoading}
+          diagnosticsError={diagnosticsError}
+          onRefreshDiagnostics={loadDiagnostics}
           onStepClick={handleResearchStepClick}
-          onClose={() => setSelectedResearchDetail(null)}
         />
       )
     }
@@ -1598,7 +1887,22 @@ export default function Index() {
       )
     }
     return null
-  }, [currentChatItem, selectedStepDetail, isDeepResearchMode, aggregatedResearchData, researchSteps, handleResearchStepClick])
+  }, [
+    aggregatedResearchData,
+    approvingOutline,
+    currentChatItem,
+    handleApproveOutline,
+    handleResearchStepClick,
+    isDeepResearchMode,
+    outlineApprovalError,
+    pendingOutline,
+    diagnostics,
+    diagnosticsError,
+    diagnosticsLoading,
+    loadDiagnostics,
+    researchSteps,
+    selectedStepDetail,
+  ])
 
   return (
     <ComPageLayout

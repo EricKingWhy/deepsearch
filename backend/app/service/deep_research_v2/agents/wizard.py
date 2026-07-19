@@ -23,6 +23,7 @@ from contextlib import redirect_stdout, redirect_stderr
 
 from .base import BaseAgent
 from ..state import ResearchState, ResearchPhase
+from observability.instrumentation import observe_tool
 
 
 class CodeWizard(BaseAgent):
@@ -1011,6 +1012,7 @@ df = df.dropna()
 
         self.logger.debug(f"[CodeWizard] 已保存: {file_path}")
 
+    @observe_tool("python")
     async def _execute_code(self, code: str) -> Dict[str, Any]:
         """
         安全执行Python代码

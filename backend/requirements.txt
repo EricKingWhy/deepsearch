@@ -60,3 +60,17 @@ wordcloud>=1.9.0
 # Utils
 pyyaml>=6.0.0
 python-dateutil>=2.8.0
+
+# Observability
+prometheus-client>=0.21.0,<1.0.0
+langfuse>=4.0.0,<5.0.0
+opentelemetry-api>=1.35.0,<2.0.0
+opentelemetry-sdk>=1.35.0,<2.0.0
+opentelemetry-instrumentation-fastapi>=0.56b0,<1.0.0
+opentelemetry-exporter-otlp-proto-http>=1.35.0,<2.0.0
+
+# Testing
+pytest>=8.2.0
+pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
+ruff>=0.12.0,<1.0.0

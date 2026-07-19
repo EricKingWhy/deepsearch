@@ -6,15 +6,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
+from observability import (
+    ObservabilityMiddleware,
+    configure_logging,
+    initialize_tracing,
+    metrics_response,
+    shutdown_tracing,
+)
 
 # 加载环境变量
 load_dotenv()
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 from router import document_router, search_router, chat_router, research_router
+from router.observability_router import router as observability_router
 from router.auth_router import router as auth_router
 from router.session_router import router as session_router
 from router.knowledge_router import router as knowledge_router
@@ -27,7 +35,8 @@ from core.database import engine, Base
 from models import (
     User, ChatSession, ChatMessage, ChatAttachment, LongTermMemory,
     KnowledgeBase, Document, IndustryStats, CompanyData, PolicyData,
-    ResearchCheckpoint, IndustryNews, BiddingInfo, NewsCollectionTask
+    ResearchCheckpoint, IndustryNews, BiddingInfo, NewsCollectionTask,
+    ResearchEvent, ResearchRun,
 )
 
 # 创建所有数据表（如果不存在）
@@ -36,6 +45,8 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize and close application-level background services."""
+    initialize_tracing()
     """应用生命周期管理"""
     # 启动时执行
     logger.info("应用启动中...")
@@ -58,6 +69,7 @@ async def lifespan(app: FastAPI):
         scheduler.stop()
     except Exception as e:
         logger.error(f"定时任务调度器关闭失败: {e}")
+    shutdown_tracing(timeout_seconds=5.0)
 
 
 app = FastAPI(
@@ -75,6 +87,7 @@ app.add_middleware(
     allow_methods=["*"],  # 允许所有方法
     allow_headers=["*"],  # 允许所有头
 )
+app.add_middleware(ObservabilityMiddleware)
 
 # 注册路由
 app.include_router(auth_router)
@@ -87,7 +100,15 @@ app.include_router(document_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(research_router)
+app.include_router(observability_router)
 app.include_router(news_router)
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    """Expose application metrics for Prometheus scraping."""
+
+    return metrics_response()
 
 @app.get("/hello")
 async def hello_world():

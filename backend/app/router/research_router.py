@@ -1,16 +1,29 @@
 # Copyright © 2026 深圳市深维智见教育科技有限公司 版权所有
 # 未经授权，禁止转售或仿制。
 
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional, Literal, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
+from pydantic import BaseModel, Field, field_validator
+from starlette.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 import logging
 
 from service import ResearchService, ServiceConfig
 from service.dr_g import serialize_event  # 导入序列化函数
 from core.redis_client import cache  # 导入 Redis 缓存
+from models.user import User
+from router.auth_router import get_current_user_required
+from service.checkpoint_service import (
+    CheckpointNotFound,
+    OutlineApprovalConflict,
+    get_checkpoint_service,
+)
 
 # V2 导入
 from service.deep_research_v2.service import DeepResearchV2Service
@@ -60,6 +73,53 @@ class ResearchRequest(BaseModel):
             return 'local' in self.search_modes
         return self.search_local if self.search_local is not None else False
 
+
+class OutlineSectionRequest(BaseModel):
+    id: str
+    title: str
+    description: str
+    section_type: Literal["qualitative", "quantitative", "mixed"] = "mixed"
+    requires_data: bool = False
+    requires_chart: bool = False
+
+    @field_validator("id", "title", "description")
+    @classmethod
+    def require_nonblank_section_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value must not be blank")
+        return value
+
+
+class ResearchQuestionRequest(BaseModel):
+    id: str
+    text: str
+
+    @field_validator("id", "text")
+    @classmethod
+    def require_nonblank_question_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value must not be blank")
+        return value
+
+
+class ApproveOutlineRequest(BaseModel):
+    outline_revision: str
+    sections: List[OutlineSectionRequest] = Field(min_length=3, max_length=12)
+    research_questions: List[ResearchQuestionRequest] = Field(
+        min_length=3,
+        max_length=12,
+    )
+
+    @field_validator("outline_revision")
+    @classmethod
+    def require_nonblank_revision(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("outline_revision must not be blank")
+        return value
+
 # 获取服务实例
 def get_research_service():
     """获取研究服务实例"""
@@ -80,7 +140,8 @@ def get_research_service_v2():
 @router.post("/stream", status_code=HTTP_200_OK)
 async def stream_research(
     request: ResearchRequest,
-    services: Dict[str, Any] = Depends(get_research_service)
+    services: Dict[str, Any] = Depends(get_research_service),
+    current_user: User = Depends(get_current_user_required),
 ):
     """
     深度研究接口 - 流式输出
@@ -112,7 +173,8 @@ async def stream_research(
                     session_id=request.session_id,
                     kb_name=request.kb_name,
                     search_web=search_web,
-                    search_local=search_local
+                    search_local=search_local,
+                    user_id=str(current_user.id),
                 ):
                     yield event
             except Exception as e:
@@ -157,7 +219,8 @@ async def stream_research_get(
     search_web: bool = Query(True, description="是否搜索网络"),
     search_local: bool = Query(True, description="是否搜索本地知识库"),
     version: str = Query("v1", description="版本: v1 或 v2"),
-    services: Dict[str, Any] = Depends(get_research_service)
+    services: Dict[str, Any] = Depends(get_research_service),
+    current_user: User = Depends(get_current_user_required),
 ):
     """
     深度研究接口 - GET方式流式输出
@@ -186,7 +249,8 @@ async def stream_research_get(
             try:
                 async for event in service_v2.research(
                     query=query,
-                    kb_name=kb_name
+                    kb_name=kb_name,
+                    user_id=str(current_user.id),
                 ):
                     yield event
             except Exception as e:
@@ -225,7 +289,9 @@ async def stream_research_get(
 
 
 @router.get("/test-wizard", status_code=HTTP_200_OK)
-async def test_wizard_endpoint():
+async def test_wizard_endpoint(
+    _current_user: User = Depends(get_current_user_required),
+):
     """
     测试 CodeWizard 数据分析功能（绕过搜索阶段）
 
@@ -311,7 +377,10 @@ async def test_wizard_endpoint():
 
 
 @router.post("/cancel/{session_id}", status_code=HTTP_200_OK)
-async def cancel_research(session_id: str):
+async def cancel_research(
+    session_id: str,
+    current_user: User = Depends(get_current_user_required),
+):
     """
     取消正在进行的研究任务
 
@@ -322,11 +391,23 @@ async def cancel_research(session_id: str):
         取消确认信息
     """
     try:
+        checkpoint_service = get_checkpoint_service()
+        if not checkpoint_service.get_checkpoint_info(
+            session_id,
+            user_id=str(current_user.id),
+        ):
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail="Checkpoint not found",
+            )
+
         # 设置取消标志到 Redis，有效期 5 分钟
         cancel_key = f"{CANCEL_KEY_PREFIX}{session_id}"
         cache.set(cancel_key, {"cancelled": True}, expire=300)
         logger.info(f"Research cancelled for session: {session_id}")
         return {"success": True, "message": "Research cancellation requested"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to cancel research: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -361,7 +442,10 @@ def clear_cancel_flag(session_id: str):
 # ============ 检查点 API ============
 
 @router.get("/checkpoint/{session_id}", status_code=HTTP_200_OK)
-async def get_checkpoint(session_id: str):
+async def get_checkpoint(
+    session_id: str,
+    current_user: User = Depends(get_current_user_required),
+):
     """
     获取研究检查点信息
 
@@ -372,19 +456,29 @@ async def get_checkpoint(session_id: str):
         检查点信息（不含完整状态）
     """
     try:
-        from service.checkpoint_service import get_checkpoint_service
         checkpoint_service = get_checkpoint_service()
-        info = checkpoint_service.get_checkpoint_info(session_id)
+        info = checkpoint_service.get_checkpoint_info(
+            session_id,
+            user_id=str(current_user.id),
+        )
         if info:
             return {"success": True, "checkpoint": info}
-        return {"success": False, "message": "No checkpoint found"}
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="Checkpoint not found",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get checkpoint: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("/checkpoint/{session_id}/full", status_code=HTTP_200_OK)
-async def get_full_checkpoint(session_id: str):
+async def get_full_checkpoint(
+    session_id: str,
+    current_user: User = Depends(get_current_user_required),
+):
     """
     获取完整的研究检查点（包含 UI 状态和报告）
 
@@ -400,12 +494,19 @@ async def get_full_checkpoint(session_id: str):
         - final_report: 最终报告内容
     """
     try:
-        from service.checkpoint_service import get_checkpoint_service
         checkpoint_service = get_checkpoint_service()
-        full_data = checkpoint_service.load_full_checkpoint(session_id)
+        full_data = checkpoint_service.load_full_checkpoint(
+            session_id,
+            user_id=str(current_user.id),
+        )
         if full_data:
             return {"success": True, "checkpoint": full_data}
-        return {"success": False, "message": "No checkpoint found"}
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="Checkpoint not found",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get full checkpoint: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -413,6 +514,7 @@ async def get_full_checkpoint(session_id: str):
 
 @router.get("/checkpoints", status_code=HTTP_200_OK)
 async def list_checkpoints(
+    current_user: User = Depends(get_current_user_required),
     status: Optional[str] = Query(None, description="过滤状态: running/paused/completed/failed"),
     limit: int = Query(20, ge=1, le=100, description="返回数量限制")
 ):
@@ -427,9 +529,12 @@ async def list_checkpoints(
         检查点列表
     """
     try:
-        from service.checkpoint_service import get_checkpoint_service
         checkpoint_service = get_checkpoint_service()
-        checkpoints = checkpoint_service.list_checkpoints(status=status, limit=limit)
+        checkpoints = checkpoint_service.list_checkpoints(
+            user_id=str(current_user.id),
+            status=status,
+            limit=limit,
+        )
         return {"success": True, "checkpoints": checkpoints, "total": len(checkpoints)}
     except Exception as e:
         logger.error(f"Failed to list checkpoints: {e}")
@@ -437,7 +542,10 @@ async def list_checkpoints(
 
 
 @router.delete("/checkpoint/{session_id}", status_code=HTTP_200_OK)
-async def delete_checkpoint(session_id: str):
+async def delete_checkpoint(
+    session_id: str,
+    current_user: User = Depends(get_current_user_required),
+):
     """
     删除研究检查点
 
@@ -448,19 +556,82 @@ async def delete_checkpoint(session_id: str):
         删除结果
     """
     try:
-        from service.checkpoint_service import get_checkpoint_service
         checkpoint_service = get_checkpoint_service()
-        success = checkpoint_service.delete_checkpoint(session_id)
+        success = checkpoint_service.delete_checkpoint(
+            session_id,
+            user_id=str(current_user.id),
+        )
         if success:
             return {"success": True, "message": "Checkpoint deleted"}
-        return {"success": False, "message": "Checkpoint not found"}
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="Checkpoint not found",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to delete checkpoint: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.post("/outline/{session_id}/approve", status_code=HTTP_200_OK)
+async def approve_research_outline(
+    session_id: str,
+    request: ApproveOutlineRequest,
+    current_user: User = Depends(get_current_user_required),
+):
+    """Atomically approve an outline and continue the research as SSE."""
+    try:
+        checkpoint_service = get_checkpoint_service()
+        state = checkpoint_service.approve_outline(
+            session_id=session_id,
+            user_id=str(current_user.id),
+            outline_revision=request.outline_revision,
+            sections=[section.model_dump() for section in request.sections],
+            research_questions=[
+                question.model_dump() for question in request.research_questions
+            ],
+        )
+    except CheckpointNotFound as exc:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except OutlineApprovalConflict as exc:
+        raise HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    service_v2 = get_research_service_v2()
+
+    async def generate_sse():
+        try:
+            async for event in service_v2.research(
+                query=state.get("query", ""),
+                session_id=session_id,
+                resume=True,
+                user_id=str(current_user.id),
+            ):
+                yield event
+        except Exception as exc:
+            logger.error(f"Approved research continuation error: {exc}")
+            error_event = serialize_event({"type": "error", "content": str(exc)})
+            yield f"data: {error_event}\n\n"
+
+    return StreamingResponse(generate_sse(), media_type="text/event-stream")
+
+
 @router.post("/resume/{session_id}", status_code=HTTP_200_OK)
-async def resume_research(session_id: str):
+async def resume_research(
+    session_id: str,
+    current_user: User = Depends(get_current_user_required),
+):
     """
     恢复研究任务（从检查点）
 
@@ -471,20 +642,28 @@ async def resume_research(session_id: str):
         流式响应，从检查点继续研究
     """
     try:
-        from service.checkpoint_service import get_checkpoint_service
         checkpoint_service = get_checkpoint_service()
-        info = checkpoint_service.get_checkpoint_info(session_id)
+        info = checkpoint_service.get_checkpoint_info(
+            session_id,
+            user_id=str(current_user.id),
+        )
 
         if not info:
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="No checkpoint found for this session"
+                status_code=HTTP_404_NOT_FOUND,
+                detail="Checkpoint not found",
             )
 
         if info.get("status") == "completed":
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
+                status_code=HTTP_409_CONFLICT,
                 detail="Research already completed"
+            )
+
+        if info.get("phase") == "awaiting_outline_approval":
+            raise HTTPException(
+                status_code=HTTP_409_CONFLICT,
+                detail="Outline approval required before research can resume",
             )
 
         # 使用 V2 服务恢复
@@ -495,7 +674,8 @@ async def resume_research(session_id: str):
                 async for event in service_v2.research(
                     query=info.get("query", ""),
                     session_id=session_id,
-                    resume=True
+                    resume=True,
+                    user_id=str(current_user.id),
                 ):
                     yield event
             except Exception as e:

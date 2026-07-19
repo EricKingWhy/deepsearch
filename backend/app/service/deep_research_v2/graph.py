@@ -12,8 +12,12 @@ Plan -> Research -> Analyze -> Write -> Review -> (Revise) -> Complete
 
 import logging
 import asyncio
-from typing import Dict, Any, List, Literal, AsyncGenerator
+from time import perf_counter
+from typing import Dict, Any, Literal, AsyncGenerator
 from datetime import datetime
+
+from observability.events import record_research_event
+from observability.tracing import span
 
 # 导入取消检查函数
 try:
@@ -37,6 +41,7 @@ except ImportError:
     logging.warning("LangGraph not installed. Using simplified workflow.")
 
 from .state import ResearchState, ResearchPhase, create_initial_state
+from .phase_dispatch import phases_to_run
 from .agents import ChiefArchitect, DeepScout, CodeWizard, CriticMaster, LeadWriter, DataAnalyst
 
 # 导入检查点服务
@@ -129,7 +134,7 @@ class DeepResearchGraph:
             config.agents.writer.model
         )
 
-        logger.info(f"DeepResearchGraph initialized with models:")
+        logger.info("DeepResearchGraph initialized with models:")
         logger.info(f"  - Architect: {config.agents.architect.model}")
         logger.info(f"  - Scout: {config.agents.scout.model}")
         logger.info(f"  - DataAnalyst: {config.agents.data_analyst.model}")
@@ -150,7 +155,8 @@ class DeepResearchGraph:
         self,
         state: Dict[str, Any],
         user_id: str = None,
-        ui_state: Dict[str, Any] = None
+        ui_state: Dict[str, Any] = None,
+        status: str = "running",
     ) -> bool:
         """保存检查点（包含后端状态和 UI 状态）"""
         if not self.checkpoint_service:
@@ -166,7 +172,8 @@ class DeepResearchGraph:
                 state=state,
                 user_id=user_id,
                 ui_state=ui_state,
-                final_report=state.get("final_report")
+                final_report=state.get("final_report"),
+                status=status,
             )
             if checkpoint_id:
                 logger.info(f"Checkpoint saved: {checkpoint_id}")
@@ -176,13 +183,20 @@ class DeepResearchGraph:
 
         return False
 
-    def _load_checkpoint(self, session_id: str) -> Dict[str, Any]:
+    def _load_checkpoint(
+        self,
+        session_id: str,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
         """加载检查点"""
         if not self.checkpoint_service:
             return None
 
         try:
-            state = self.checkpoint_service.load_checkpoint(session_id)
+            state = self.checkpoint_service.load_checkpoint(
+                session_id,
+                user_id=user_id,
+            )
             if state:
                 logger.info(f"Checkpoint loaded for session: {session_id}")
                 return state
@@ -316,7 +330,7 @@ class DeepResearchGraph:
         # 尝试从检查点恢复
         state = None
         if resume and session_id:
-            state = self._load_checkpoint(session_id)
+            state = self._load_checkpoint(session_id, user_id=user_id)
             if state:
                 yield {
                     "type": "research_resumed",
@@ -410,7 +424,50 @@ class DeepResearchGraph:
             logger.info(f"Starting agent: {agent.name}")
 
             # 启动 agent 处理任务
-            task = asyncio.create_task(agent.process(state))
+            async def execute_agent():
+                started_at = perf_counter()
+                agent_role = getattr(agent, "role", agent.__class__.__name__)
+                record_research_event(
+                    "agent.started",
+                    phase=state.get("phase"),
+                    payload={"agent": agent.name, "role": agent_role},
+                )
+                outcome = "success"
+                try:
+                    with span(
+                        f"agent.{agent.name.lower()}",
+                        kind="agent",
+                        attributes={"agent": agent.name, "role": agent_role},
+                    ) as observation:
+                        result = await agent.process(state)
+                        observation.update(
+                            output={
+                                "phase": state.get("phase"),
+                                "fact_count": len(state.get("facts", [])),
+                                "chart_count": len(state.get("charts", [])),
+                            }
+                        )
+                        return result
+                except Exception as exc:
+                    outcome = "failure"
+                    record_research_event(
+                        "agent.failed",
+                        phase=state.get("phase"),
+                        status="error",
+                        payload={"agent": agent.name, "error_type": type(exc).__name__},
+                        duration_ms=round((perf_counter() - started_at) * 1000),
+                    )
+                    raise
+                finally:
+                    record_research_event(
+                        "agent.finished",
+                        phase=state.get("phase"),
+                        status="error" if outcome == "failure" else "info",
+                        payload={"agent": agent.name, "outcome": outcome},
+                        duration_ms=round((perf_counter() - started_at) * 1000),
+                    )
+
+            task = asyncio.create_task(execute_agent())
 
             msg_count = 0
             # 在任务执行期间持续从队列获取消息
@@ -538,7 +595,10 @@ class DeepResearchGraph:
                        f"references={len(ui_state.get('references', []))}, "
                        f"report_len={len(ui_state.get('streaming_report', ''))}")
 
-        async def save_checkpoint_async(step_info: dict = None):
+        async def save_checkpoint_async(
+            step_info: dict = None,
+            status: str = "running",
+        ):
             """异步保存检查点"""
             # 更新 UI 状态
             update_ui_state()
@@ -560,7 +620,7 @@ class DeepResearchGraph:
             logger.info(f"[检查点保存] session_id={session_id}, phase={state.get('phase', '')}, "
                        f"steps={[s.get('type') for s in ui_state['research_steps']]}")
 
-            if self._save_checkpoint(state, user_id, ui_state):
+            if self._save_checkpoint(state, user_id, ui_state, status=status):
                 logger.info(f"[检查点保存成功] session_id={session_id}")
                 return {"type": "checkpoint_saved", "phase": state.get("phase", ""), "session_id": session_id}
             else:
@@ -568,83 +628,162 @@ class DeepResearchGraph:
             return None
 
         try:
-            # Phase 1: Plan
-            if await check_cancelled():
-                yield {"type": "research_cancelled", "message": "研究已取消"}
+            execution_phases = phases_to_run(
+                state.get("phase", ResearchPhase.INIT.value)
+            )
+            if not execution_phases:
                 return
-            yield {"type": "phase", "phase": "planning", "content": "开始规划研究..."}
-            state["phase"] = ResearchPhase.INIT.value
-            async for msg in run_agent_with_streaming(self.architect):
-                yield msg
-            state["messages"] = []
-            # 保存检查点（含步骤信息）
-            cp_event = await save_checkpoint_async({
-                "type": "planning",
-                "status": "completed",
-                "stats": {"sections": len(state.get("outline", []))}
-            })
-            if cp_event:
-                yield cp_event
 
-            # Phase 2: Research (这是最需要实时输出的阶段)
-            if await check_cancelled():
-                yield {"type": "research_cancelled", "message": "研究已取消"}
-                return
-            yield {"type": "phase", "phase": "researching", "content": "开始深度搜索..."}
-            state["phase"] = ResearchPhase.RESEARCHING.value
-            async for msg in run_agent_with_streaming(self.scout):
-                yield msg
-            state["messages"] = []
-            # 保存检查点（含步骤信息）
-            cp_event = await save_checkpoint_async({
-                "type": "researching",
-                "status": "completed",
-                "stats": {
-                    "facts": len(state.get("facts", [])),
-                    "sources": len(state.get("references", []))
+            # New runs stop after producing a durable approval checkpoint.
+            if "init" in execution_phases:
+                if await check_cancelled():
+                    yield {"type": "research_cancelled", "message": "研究已取消"}
+                    return
+                yield {
+                    "type": "phase",
+                    "phase": "planning",
+                    "content": "开始规划研究...",
                 }
-            })
-            if cp_event:
+                state["phase"] = ResearchPhase.INIT.value
+                async for msg in run_agent_with_streaming(self.architect):
+                    yield msg
+                state["messages"] = []
+                if state["phase"] != ResearchPhase.AWAITING_OUTLINE_APPROVAL.value:
+                    await save_checkpoint_async(
+                        {"type": "planning", "status": "failed"},
+                        status="failed",
+                    )
+                    return
+                cp_event = await save_checkpoint_async(
+                    {
+                        "type": "outline_approval",
+                        "status": "paused",
+                        "stats": {"sections": len(state.get("outline", []))},
+                    },
+                    status="paused",
+                )
+                if not cp_event:
+                    yield {
+                        "type": "error",
+                        "content": "研究大纲保存失败，请重新发起深度研究。",
+                    }
+                    return
                 yield cp_event
-
-            # Phase 3: Analyze
-            if await check_cancelled():
-                yield {"type": "research_cancelled", "message": "研究已取消"}
+                yield {
+                    "type": "outline_pending_approval",
+                    "session_id": session_id,
+                    "outline_revision": state.get("outline_revision"),
+                    "sections": state.get("outline", []),
+                    "research_questions": state.get("research_questions", []),
+                }
                 return
-            yield {"type": "phase", "phase": "analyzing", "content": "开始数据分析..."}
-            state["phase"] = ResearchPhase.ANALYZING.value
-            async for msg in run_agent_with_streaming(self.data_analyst):
-                yield msg
-            state["messages"] = []
-            async for msg in run_agent_with_streaming(self.wizard):
-                yield msg
-            state["messages"] = []
-            # 保存检查点（含步骤信息）
-            cp_event = await save_checkpoint_async({
-                "type": "analyzing",
-                "status": "completed",
-                "stats": {"charts": len(state.get("charts", []))}
-            })
-            if cp_event:
-                yield cp_event
 
-            # Phase 4: Write
-            if await check_cancelled():
-                yield {"type": "research_cancelled", "message": "研究已取消"}
-                return
-            yield {"type": "phase", "phase": "writing", "content": "开始撰写报告..."}
-            state["phase"] = ResearchPhase.WRITING.value
-            async for msg in run_agent_with_streaming(self.writer):
-                yield msg
-            state["messages"] = []
-            # 保存检查点（含步骤信息）
-            cp_event = await save_checkpoint_async({
-                "type": "writing",
-                "status": "completed",
-                "stats": {"report_length": len(state.get("final_report", ""))}
-            })
-            if cp_event:
-                yield cp_event
+            if "planning" in execution_phases:
+                if await check_cancelled():
+                    yield {"type": "research_cancelled", "message": "研究已取消"}
+                    return
+                yield {
+                    "type": "phase",
+                    "phase": "keyword_generation",
+                    "content": "生成搜索关键词与研究假设...",
+                }
+                state["phase"] = ResearchPhase.PLANNING.value
+                async for msg in run_agent_with_streaming(self.architect):
+                    yield msg
+                state["messages"] = []
+                if state["phase"] == ResearchPhase.PLANNING.value:
+                    cp_event = await save_checkpoint_async(
+                        {"type": "planning", "status": "failed"},
+                        status="failed",
+                    )
+                    if cp_event:
+                        yield cp_event
+                    return
+                cp_event = await save_checkpoint_async({
+                    "type": "planning",
+                    "status": "completed",
+                    "stats": {"sections": len(state.get("outline", []))},
+                })
+                if cp_event:
+                    yield cp_event
+
+            if "researching" in execution_phases:
+                if await check_cancelled():
+                    yield {"type": "research_cancelled", "message": "研究已取消"}
+                    return
+                yield {"type": "phase", "phase": "researching", "content": "开始深度搜索..."}
+                state["phase"] = ResearchPhase.RESEARCHING.value
+                async for msg in run_agent_with_streaming(self.scout):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.ANALYZING.value
+                cp_event = await save_checkpoint_async({
+                    "type": "researching",
+                    "status": "completed",
+                    "stats": {
+                        "facts": len(state.get("facts", [])),
+                        "sources": len(state.get("references", [])),
+                    },
+                })
+                if cp_event:
+                    yield cp_event
+
+            if "analyzing" in execution_phases:
+                if await check_cancelled():
+                    yield {"type": "research_cancelled", "message": "研究已取消"}
+                    return
+                yield {"type": "phase", "phase": "analyzing", "content": "开始数据分析..."}
+                state["phase"] = ResearchPhase.ANALYZING.value
+                async for msg in run_agent_with_streaming(self.data_analyst):
+                    yield msg
+                state["messages"] = []
+                async for msg in run_agent_with_streaming(self.wizard):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.WRITING.value
+                cp_event = await save_checkpoint_async({
+                    "type": "analyzing",
+                    "status": "completed",
+                    "stats": {"charts": len(state.get("charts", []))},
+                })
+                if cp_event:
+                    yield cp_event
+
+            if "writing" in execution_phases:
+                if await check_cancelled():
+                    yield {"type": "research_cancelled", "message": "研究已取消"}
+                    return
+                yield {"type": "phase", "phase": "writing", "content": "开始撰写报告..."}
+                state["phase"] = ResearchPhase.WRITING.value
+                async for msg in run_agent_with_streaming(self.writer):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.REVIEWING.value
+                cp_event = await save_checkpoint_async({
+                    "type": "writing",
+                    "status": "completed",
+                    "stats": {"report_length": len(state.get("final_report", ""))},
+                })
+                if cp_event:
+                    yield cp_event
+
+            if "re_researching" in execution_phases:
+                state["phase"] = ResearchPhase.RE_RESEARCHING.value
+                async for msg in run_agent_with_streaming(self.scout):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.WRITING.value
+                async for msg in run_agent_with_streaming(self.writer):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.REVIEWING.value
+
+            if "revising" in execution_phases:
+                state["phase"] = ResearchPhase.REVISING.value
+                async for msg in run_agent_with_streaming(self.writer):
+                    yield msg
+                state["messages"] = []
+                state["phase"] = ResearchPhase.REVIEWING.value
 
             # Phase 5 & 6: Review & Revise/Re-Research Loop
             while state["iteration"] < state["max_iterations"]:
@@ -687,7 +826,7 @@ class DeepResearchGraph:
                     break
 
             # 完成
-            logger.info(f"[Graph] ========== 研究完成 ==========")
+            logger.info("[Graph] ========== 研究完成 ==========")
             logger.info(f"[Graph] 最终统计: facts={len(state.get('facts', []))}, charts={len(state.get('charts', []))}, iterations={state.get('iteration', 0)}")
             logger.info(f"[Graph] 报告长度: {len(state.get('final_report', ''))}")
 
@@ -695,10 +834,16 @@ class DeepResearchGraph:
             for i, chart in enumerate(state.get('charts', [])):
                 logger.info(f"[Graph] 图表 {i+1}: id={chart.get('id')}, title={chart.get('title')}, has_echarts={bool(chart.get('echarts_option'))}, has_image={bool(chart.get('image_base64'))}")
 
-            # 更新检查点状态为已完成
+            # 在通知前端完成前，原子保存最终修订稿和完整 UI 状态。
             state["phase"] = ResearchPhase.COMPLETED.value
-            if self.checkpoint_service and session_id:
-                self.checkpoint_service.update_status(session_id, "completed")
+            final_checkpoint_event = await save_checkpoint_async(status="completed")
+            if not final_checkpoint_event:
+                yield {
+                    "type": "error",
+                    "content": "最终研究报告保存失败，请稍后重试。",
+                }
+                return
+            yield final_checkpoint_event
 
             # 构建前端友好的 references
             final_facts = state.get("facts", [])
@@ -734,7 +879,12 @@ class DeepResearchGraph:
             logger.error(f"Simplified execution error: {e}")
             # 更新检查点状态为失败
             if self.checkpoint_service and session_id:
-                self.checkpoint_service.update_status(session_id, "failed", str(e))
+                self.checkpoint_service.update_status(
+                    session_id,
+                    "failed",
+                    str(e),
+                    user_id=user_id,
+                )
             yield {"type": "error", "content": str(e)}
         finally:
             # 清理队列

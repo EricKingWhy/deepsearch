@@ -4,6 +4,7 @@
  */
 
 import { AxiosRequestConfig } from 'axios'
+import type { EditableResearchPlan } from '@/features/deep-research/types'
 import { request } from './request'
 
 // ============ 新的会话管理 API ============
@@ -41,6 +42,44 @@ export interface UpdateSessionParams {
   title: string
 }
 
+export interface ResearchRunDiagnostic {
+  run_id: string
+  research_id: string
+  session_id: string
+  request_id?: string | null
+  trace_id?: string | null
+  status: 'running' | 'completed' | 'paused' | 'cancelled' | 'failed' | string
+  current_phase?: string | null
+  started_at: string
+  ended_at?: string | null
+  duration_ms?: number | null
+  input_tokens: number
+  output_tokens: number
+  estimated_cost?: number | null
+  error_code?: string | null
+  error_summary?: string | null
+}
+
+export interface ResearchEventDiagnostic {
+  id: number
+  run_id: string
+  sequence: number
+  event_type: string
+  phase?: string | null
+  status: string
+  payload: Record<string, unknown>
+  duration_ms?: number | null
+  trace_id?: string | null
+  span_id?: string | null
+  created_at: string
+}
+
+export interface ResearchTimeline {
+  runs: ResearchRunDiagnostic[]
+  events: ResearchEventDiagnostic[]
+  next_cursor: number | null
+}
+
 export interface CreateMessageParams {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -68,6 +107,14 @@ export function createSession(params?: CreateSessionParams) {
  */
 export function getSession(sessionId: string) {
   return request.get<SessionWithMessages>(`/sessions/${sessionId}`, { loading: false })
+}
+
+/** 获取会话持久化的深度研究诊断时间线。 */
+export function getResearchTimeline(sessionId: string) {
+  return request.get<ResearchTimeline>(`/research/sessions/${sessionId}/timeline`, {
+    loading: false,
+    errorToast: false,
+  })
 }
 
 /**
@@ -100,7 +147,7 @@ export function addMessage(sessionId: string, params: CreateMessageParams) {
 
 // ============ 旧的聊天 API（保持兼容） ============
 
-export function create(params?: {}, options?: AxiosRequestConfig) {
+export function create(params?: Record<string, never>, options?: AxiosRequestConfig) {
   return request.post<
     API.Result<{
       session_id: string
@@ -143,6 +190,48 @@ export function deepsearch(
     loading: false,
     ...options,
   })
+}
+
+export interface ApproveResearchOutlineParams {
+  outline_revision: string
+  sections: EditableResearchPlan['sections']
+  research_questions: EditableResearchPlan['researchQuestions']
+}
+
+function researchStreamConfig(options?: AxiosRequestConfig): AxiosRequestConfig {
+  return {
+    headers: {
+      Accept: 'text/event-stream',
+    },
+    responseType: 'stream',
+    adapter: 'fetch',
+    loading: false,
+    errorToast: false,
+    ...options,
+  }
+}
+
+export function approveResearchOutline(
+  sessionId: string,
+  params: ApproveResearchOutlineParams,
+  options?: AxiosRequestConfig,
+) {
+  return request.post<ReadableStream>(
+    `/research/outline/${sessionId}/approve`,
+    params,
+    researchStreamConfig(options),
+  )
+}
+
+export function resumeResearch(
+  sessionId: string,
+  options?: AxiosRequestConfig,
+) {
+  return request.post<ReadableStream>(
+    `/research/resume/${sessionId}`,
+    {},
+    researchStreamConfig(options),
+  )
 }
 
 // ============ 附件 API ============

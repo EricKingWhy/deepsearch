@@ -4,7 +4,15 @@
 """研究检查点模型"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer
+from sqlalchemy import (
+    Column,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Integer,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -14,6 +22,12 @@ from core.database import Base
 class ResearchCheckpoint(Base):
     """研究检查点模型 - 用于保存和恢复深度研究状态"""
     __tablename__ = "research_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            name="uq_research_checkpoints_session_id",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(String(64), index=True, nullable=False)  # 研究会话 ID

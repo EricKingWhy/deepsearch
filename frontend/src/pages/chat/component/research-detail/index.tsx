@@ -3,13 +3,15 @@
  * 未经授权，禁止转售或仿制。
  */
 
-import { FileTextOutlined, ShareAltOutlined, BarChartOutlined, CheckOutlined, LoadingOutlined, FileMarkdownOutlined } from '@ant-design/icons'
+import { FileTextOutlined, ShareAltOutlined, BarChartOutlined, CheckOutlined, LoadingOutlined, FileMarkdownOutlined, MonitorOutlined } from '@ant-design/icons'
+import type { ResearchTimeline } from '@/api/session'
 import { useState } from 'react'
 import classNames from 'classnames'
 import SearchResults from './search-results'
 import KnowledgeGraph from './knowledge-graph'
 import Visualization from './visualization'
 import ProcessReport, { SectionDraft } from './process-report'
+import DiagnosticsTimeline from './diagnostics-timeline'
 import styles from './index.module.scss'
 
 export interface SearchResult {
@@ -77,11 +79,14 @@ export interface ResearchStep {
 interface ResearchDetailProps {
   data: ResearchDetailData | null
   steps?: ResearchStep[]
+  diagnostics?: ResearchTimeline | null
+  diagnosticsLoading?: boolean
+  diagnosticsError?: string
+  onRefreshDiagnostics?: () => void
   onStepClick?: (stepId: string) => void
-  onClose?: () => void
 }
 
-type TabKey = 'results' | 'graph' | 'charts' | 'report'
+type TabKey = 'results' | 'graph' | 'charts' | 'report' | 'diagnostics'
 
 const stepLabels: Record<ResearchStep['type'], string> = {
   planning: '研究计划',
@@ -94,7 +99,15 @@ const stepLabels: Record<ResearchStep['type'], string> = {
   revising: '内容修订',
 }
 
-export default function ResearchDetail({ data, steps = [], onStepClick, onClose }: ResearchDetailProps) {
+export default function ResearchDetail({
+  data,
+  steps = [],
+  diagnostics,
+  diagnosticsLoading = false,
+  diagnosticsError,
+  onRefreshDiagnostics,
+  onStepClick,
+}: ResearchDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('results')
 
   console.log(`[ResearchDetail] 渲染，data=${data ? 'exists' : 'null'}, steps=${steps.length}`)
@@ -103,7 +116,7 @@ export default function ResearchDetail({ data, steps = [], onStepClick, onClose 
   }
 
   // 空状态
-  if (!data && steps.length === 0) {
+  if (!data && steps.length === 0 && !diagnostics && !diagnosticsLoading) {
     console.log(`[ResearchDetail] 显示空状态`)
     return (
       <div className={styles.panel}>
@@ -144,6 +157,12 @@ export default function ResearchDetail({ data, steps = [], onStepClick, onClose 
       label: '过程报告',
       icon: <FileMarkdownOutlined />,
       count: reportCount > 0 ? reportCount : undefined,
+    },
+    {
+      key: 'diagnostics',
+      label: '链路诊断',
+      icon: <MonitorOutlined />,
+      count: diagnostics?.runs.length,
     },
   ]
 
@@ -202,6 +221,14 @@ export default function ResearchDetail({ data, steps = [], onStepClick, onClose 
         {activeTab === 'graph' && <KnowledgeGraph data={data?.knowledgeGraph} />}
         {activeTab === 'charts' && <Visualization charts={data?.charts} />}
         {activeTab === 'report' && <ProcessReport content={data?.streamingReport} sections={data?.sections} charts={data?.charts} knowledgeGraph={data?.knowledgeGraph} />}
+        {activeTab === 'diagnostics' && (
+          <DiagnosticsTimeline
+            timeline={diagnostics}
+            loading={diagnosticsLoading}
+            error={diagnosticsError}
+            onRefresh={onRefreshDiagnostics}
+          />
+        )}
       </div>
     </div>
   )

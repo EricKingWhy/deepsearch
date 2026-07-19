@@ -12,11 +12,14 @@ import logging
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional
 from datetime import datetime
 from openai import OpenAI
+from observability.events import add_run_usage, record_research_event
+from observability.metrics import application_metrics
+from observability.tracing import generation
 
-from ..state import ResearchState, AgentLog
+from ..state import ResearchState
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 
@@ -78,6 +81,9 @@ class BaseAgent(ABC):
         """
         start_time = time.time()
 
+        provider = "openai-compatible"
+        model_label = self.model[:80]
+
         try:
             kwargs = {
                 "model": self.model,
@@ -92,19 +98,65 @@ class BaseAgent(ABC):
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
 
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                **kwargs
-            )
+            with generation(
+                f"llm.{self.name.lower()}",
+                model=self.model,
+                input_summary={
+                    "system_prompt_length": len(system_prompt),
+                    "user_prompt_length": len(user_prompt),
+                    "json_mode": json_mode,
+                    "max_tokens": max_tokens,
+                },
+                attributes={"agent": self.name, "role": self.role},
+            ) as observation:
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    **kwargs
+                )
 
-            content = response.choices[0].message.content
+                content = response.choices[0].message.content or ""
+                usage = getattr(response, "usage", None)
+                input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+                output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+                observation.record_usage(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
+                observation.update(output={"response_length": len(content)})
+
             duration = int((time.time() - start_time) * 1000)
+
+            application_metrics.llm_calls.labels(provider, model_label, "success").inc()
+            application_metrics.llm_duration.labels(provider, model_label).observe(duration / 1000)
+            application_metrics.llm_tokens.labels(provider, model_label, "input").inc(input_tokens)
+            application_metrics.llm_tokens.labels(provider, model_label, "output").inc(output_tokens)
+            add_run_usage(input_tokens=input_tokens, output_tokens=output_tokens)
+            record_research_event(
+                "llm.completed",
+                payload={
+                    "agent": self.name,
+                    "model": self.model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "response_length": len(content),
+                },
+                duration_ms=duration,
+            )
 
             self.logger.info(f"LLM call completed in {duration}ms, response length: {len(content)}")
 
             return content
 
         except Exception as e:
+            duration = int((time.time() - start_time) * 1000)
+            application_metrics.llm_calls.labels(provider, model_label, "failure").inc()
+            application_metrics.llm_duration.labels(provider, model_label).observe(duration / 1000)
+            record_research_event(
+                "llm.failed",
+                status="error",
+                payload={"agent": self.name, "model": self.model, "error_type": type(e).__name__},
+                duration_ms=duration,
+            )
             self.logger.error(f"LLM call failed: {e}")
             raise
 
@@ -199,10 +251,10 @@ class BaseAgent(ABC):
                 if isinstance(result, dict):
                     self.logger.debug("Parsed using ast.literal_eval")
                     return result
-        except:
+        except (SyntaxError, ValueError, TypeError):
             pass
 
-        self.logger.error(f"JSON parse error, could not extract valid JSON")
+        self.logger.error("JSON parse error, could not extract valid JSON")
         self.logger.warning(f"Raw response (first 800 chars): {response[:800]}")
         return {}
 
