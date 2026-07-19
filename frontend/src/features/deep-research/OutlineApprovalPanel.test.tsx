@@ -60,30 +60,34 @@ describe('OutlineApprovalPanel', () => {
     const user = userEvent.setup()
     renderPanel()
 
-    const firstTitle = screen.getByLabelText('Chapter 1 title')
+    const firstTitle = screen.getByLabelText('第 1 章标题')
     await user.clear(firstTitle)
     await user.type(firstTitle, 'Market overview')
-    await user.click(screen.getByRole('button', { name: 'Move chapter 1 down' }))
-    expect(screen.getAllByLabelText(/Chapter \d+ title/)[1]).toHaveValue(
+    await user.click(screen.getByRole('button', { name: '下移第 1 章' }))
+    expect(screen.getAllByLabelText(/第 \d+ 章标题/)[1]).toHaveValue(
       'Market overview',
     )
 
-    await user.click(screen.getByRole('button', { name: 'Add chapter' }))
-    expect(screen.getAllByLabelText(/Chapter \d+ title/)).toHaveLength(4)
-    await user.click(screen.getByRole('button', { name: 'Delete chapter 4' }))
-    expect(screen.getAllByLabelText(/Chapter \d+ title/)).toHaveLength(3)
+    await user.click(screen.getByRole('button', { name: '添加章节' }))
+    expect(screen.getAllByLabelText(/第 \d+ 章标题/)).toHaveLength(4)
+    await user.click(screen.getByRole('button', { name: '删除第 4 章' }))
+    expect(screen.getAllByLabelText(/第 \d+ 章标题/)).toHaveLength(3)
 
-    await user.click(screen.getByRole('button', { name: 'Add question' }))
-    expect(screen.getAllByLabelText(/Research question \d+/)).toHaveLength(4)
-    await user.click(screen.getByRole('button', { name: 'Delete question 4' }))
-    expect(screen.getAllByLabelText(/Research question \d+/)).toHaveLength(3)
+    await user.click(screen.getByRole('button', { name: '添加研究问题' }))
+    expect(
+      screen.getAllByRole('textbox', { name: /^研究问题 \d+$/ }),
+    ).toHaveLength(4)
+    await user.click(screen.getByRole('button', { name: '删除研究问题 4' }))
+    expect(
+      screen.getAllByRole('textbox', { name: /^研究问题 \d+$/ }),
+    ).toHaveLength(3)
   })
 
   it('debounces draft writes by 800ms', () => {
     vi.useFakeTimers()
     renderPanel()
 
-    fireEvent.change(screen.getByLabelText('Chapter 1 title'), {
+    fireEvent.change(screen.getByLabelText('第 1 章标题'), {
       target: { value: 'Updated title' },
     })
     expect(loadOutlineDraft('session-1', 'revision-1')).toBeNull()
@@ -101,13 +105,13 @@ describe('OutlineApprovalPanel', () => {
     const { props } = renderPanel()
     saveOutlineDraft('session-1', 'revision-1', makePlan())
 
-    const firstTitle = screen.getByLabelText('Chapter 1 title')
+    const firstTitle = screen.getByLabelText('第 1 章标题')
     await user.clear(firstTitle)
-    expect(screen.getByRole('button', { name: 'Approve and start research' })).toBeDisabled()
-    expect(screen.getByText('Chapter titles and descriptions cannot be blank')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '确认大纲并开始研究' })).toBeDisabled()
+    expect(screen.getByText('章节标题和研究内容不能为空')).toBeInTheDocument()
 
     await user.type(firstTitle, 'Valid title')
-    await user.click(screen.getByRole('button', { name: 'Approve and start research' }))
+    await user.click(screen.getByRole('button', { name: '确认大纲并开始研究' }))
     await waitFor(() => expect(props.onApprove).toHaveBeenCalledOnce())
     expect(loadOutlineDraft('session-1', 'revision-1')).toBeNull()
   })
@@ -116,8 +120,8 @@ describe('OutlineApprovalPanel', () => {
     renderPanel({ approving: true, error: 'Outline revision is stale' })
 
     expect(screen.getByText('Outline revision is stale')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Approving outline' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Add chapter' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '正在确认大纲' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '添加章节' })).toBeDisabled()
   })
 
   it('enforces the maximum of twelve chapters and questions', () => {
@@ -137,9 +141,28 @@ describe('OutlineApprovalPanel', () => {
       initialResearchQuestions: plan.researchQuestions,
     })
 
-    expect(screen.getByRole('button', { name: 'Add chapter' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Add question' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Delete chapter 1' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Delete question 1' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '添加章节' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '添加研究问题' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '删除第 1 章' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '删除研究问题 1' })).toBeEnabled()
+  })
+
+  it('renders a Chinese workspace and replaces a bare checkpoint id error', () => {
+    renderPanel({ error: '2974b9e2-3712-4087-b1bb-90d0425dcbe0' })
+
+    expect(
+      screen.getByRole('region', { name: '研究大纲审核工作区' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: '审核研究大纲' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '未找到可审核的研究大纲，请重新发起深度研究。',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('2974b9e2-3712-4087-b1bb-90d0425dcbe0'),
+    ).not.toBeInTheDocument()
   })
 })

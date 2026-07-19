@@ -143,21 +143,21 @@ describe('deep research outline approval integration', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Start research' }))
-    const firstTitle = await screen.findByLabelText('Chapter 1 title')
+    const firstTitle = await screen.findByLabelText('第 1 章标题')
     expect(
       within(screen.getByTestId('right-workspace')).getByText(
-        'Review the research outline',
+        '审核研究大纲',
       ),
     ).toBeInTheDocument()
     expect(
       within(screen.getByTestId('chat-main')).queryByText(
-        'Review the research outline',
+        '审核研究大纲',
       ),
     ).not.toBeInTheDocument()
     await user.clear(firstTitle)
     await user.type(firstTitle, 'Edited market overview')
     const approveButton = screen.getByRole('button', {
-      name: 'Approve and start research',
+      name: '确认大纲并开始研究',
     })
     await user.dblClick(approveButton)
 
@@ -175,7 +175,7 @@ describe('deep research outline approval integration', () => {
       expect.objectContaining({ errorToast: false }),
     )
     expect(await screen.findByText('Approved research report')).toBeInTheDocument()
-    expect(screen.queryByText('Review the research outline')).not.toBeInTheDocument()
+    expect(screen.queryByText('审核研究大纲')).not.toBeInTheDocument()
     expect(
       localStorage.getItem(
         'deep-research-outline-draft:session-1:revision-1',
@@ -191,11 +191,11 @@ describe('deep research outline approval integration', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Start research' }))
-    const firstTitle = await screen.findByLabelText('Chapter 1 title')
+    const firstTitle = await screen.findByLabelText('第 1 章标题')
     await user.clear(firstTitle)
     await user.type(firstTitle, 'Preserved edit')
     await user.click(
-      screen.getByRole('button', { name: 'Approve and start research' }),
+      screen.getByRole('button', { name: '确认大纲并开始研究' }),
     )
 
     expect(await screen.findByText('Outline revision is stale')).toBeInTheDocument()
