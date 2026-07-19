@@ -28,6 +28,9 @@ services:
         curl -fsS -X PUT http://elasticsearch:9200/_ilm/policy/industry-research-logs-30d \
           -H 'Content-Type: application/json' \
           --data '{"policy":{"phases":{"hot":{"actions":{}},"delete":{"min_age":"30d","actions":{"delete":{}}}}}}'
+        curl -fsS -X PUT http://elasticsearch:9200/_index_template/industry-research-logs \
+          -H 'Content-Type: application/json' \
+          --data '{"index_patterns":["industry-research-logs-*"],"priority":150,"template":{"settings":{"index.lifecycle.name":"industry-research-logs-30d"},"mappings":{"properties":{"timestamp":{"type":"date"},"level":{"type":"keyword"},"service":{"type":"keyword"},"environment":{"type":"keyword"},"event":{"type":"keyword"},"request_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"session_id":{"type":"keyword"},"research_id":{"type":"keyword"},"run_id":{"type":"keyword"}}}}}'
     networks:
       - industry_network
 

@@ -17,11 +17,7 @@ processors:
         application: industry-information-assistant
 
 setup.ilm.enabled: false
-setup.template.enabled: true
-setup.template.name: industry-research-logs
-setup.template.pattern: industry-research-logs-*
-setup.template.settings:
-  index.lifecycle.name: industry-research-logs-30d
+setup.template.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
