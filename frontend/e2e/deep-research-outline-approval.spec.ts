@@ -185,7 +185,7 @@ async function loginAndStartResearch(page: Page) {
   await sender.fill('Battery industry outlook')
   await sender.press('Enter')
   await expect(page).toHaveURL(/\/chat\/session-1$/)
-  await expect(page.getByText('Review the research outline')).toBeVisible()
+  await expect(page.getByText('审核研究大纲')).toBeVisible()
 }
 
 test('approve, disconnect, and resume without regenerating the outline', async ({
@@ -194,9 +194,18 @@ test('approve, disconnect, and resume without regenerating the outline', async (
   const state = await mockApplication(page)
   await loginAndStartResearch(page)
 
-  await page.getByLabel('Chapter 1 title').fill('Edited market overview')
-  await page.getByLabel('Research question 1').fill('Edited core question')
-  await page.getByRole('button', { name: 'Approve and start research' }).click()
+  const workspace = page.getByRole('region', {
+    name: '研究大纲审核工作区',
+  })
+  const workspaceBox = await workspace.boundingBox()
+  const chatBox = await page.locator('.com-page-layout__main').boundingBox()
+  expect(workspaceBox?.width).toBeGreaterThan(chatBox?.width ?? 0)
+
+  await page.getByLabel('第 1 章标题').fill('Edited market overview')
+  await page
+    .getByRole('textbox', { name: '研究问题 1', exact: true })
+    .fill('Edited core question')
+  await page.getByRole('button', { name: '确认大纲并开始研究' }).click()
 
   await expect.poll(() => state.approvalBody).toMatchObject({
     outline_revision: 'revision-1',
@@ -207,7 +216,7 @@ test('approve, disconnect, and resume without regenerating the outline', async (
       expect.objectContaining({ text: 'Edited core question' }),
     ]),
   })
-  await expect(page.getByText('Review the research outline')).toBeHidden()
+  await expect(page.getByText('审核研究大纲')).toBeHidden()
 
   await page.reload()
   await expect(page.getByText('Resumed final report')).toBeVisible()
@@ -219,11 +228,11 @@ test('a stale revision keeps the edited draft', async ({ page }) => {
   await mockApplication(page, { staleApproval: true })
   await loginAndStartResearch(page)
 
-  await page.getByLabel('Chapter 1 title').fill('Draft that must survive')
-  await page.getByRole('button', { name: 'Approve and start research' }).click()
+  await page.getByLabel('第 1 章标题').fill('Draft that must survive')
+  await page.getByRole('button', { name: '确认大纲并开始研究' }).click()
 
   await expect(page.getByText('Outline revision is stale')).toBeVisible()
-  await expect(page.getByLabel('Chapter 1 title')).toHaveValue(
+  await expect(page.getByLabel('第 1 章标题')).toHaveValue(
     'Draft that must survive',
   )
   await expect
@@ -235,4 +244,26 @@ test('a stale revision keeps the edited draft', async ({ page }) => {
       ),
     )
     .toContain('Draft that must survive')
+})
+
+test('the approval workspace remains usable on a narrow screen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 768, height: 900 })
+  await mockApplication(page)
+  await loginAndStartResearch(page)
+
+  const workspace = page.getByRole('region', {
+    name: '研究大纲审核工作区',
+  })
+  await workspace.scrollIntoViewIfNeeded()
+  await expect(workspace).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: '确认大纲并开始研究' }),
+  ).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
 })
