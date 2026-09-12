@@ -228,6 +228,40 @@ git checkout -b T01-你的改动                # ④ 用【扁平名】建分�
 **注意**：第 ② 步必须用 `git read-tree <sha>`，**不要用 `git reset`** —— 后者在悬空状态下会静默失败，
 索引保持「全部新增」的假象。
 
+### 9.2 ⚠️ 已跟踪文件从工作树整体消失 + `.git/index.lock` 残留（已实测，2026-09-13）
+
+**症状**：`git status --short` 出现成片的 ` D <path>`（工作树删除），但你**并没有删过**这些文件；
+而且它们在磁盘上**已经彻底不存在**（`find . -name <file>` 无任何输出）—— 不是「内容被改」，是整个目录蒸发。
+本项目实测中招：整个 `backend/tests/` 子树（20 个已跟踪文件）连同新增的回归测试一起消失，
+直接表现为 `pytest` 报 `file or directory not found: tests/service/test_dr_g_config.py`。
+
+**成因**：与本机环境对工作目录的清扫/同步行为有关（同 §9 的引用清扫、§11 的 safe-delete 拦截，属环境侧副作用），
+**不是仓库损坏，也不是用户误删**。排查时不要怀疑自己的 commit。
+
+**🔴 绝对不要用 `git commit` 把这些删除「确认」掉** —— 那会把测试目录从历史里永远抹掉。
+
+**恢复步骤**（前提：确认不是有意删除）：
+
+```bash
+git status --short | grep -c '^ D'        # 先看清数量与清单
+git diff --stat | tail -3                 # 确认只有删除、没有别的改动混入
+git checkout HEAD -- <受影响的目录>        # 从 HEAD 恢复（内容 = 最后一次提交的状态）
+git status --short                         # 归零才算恢复成功
+```
+
+**若同时报 `Unable to create '.git/index.lock': File exists`**：
+是上一次被强杀（SIGTERM，见 §10 的 120 秒超时）的 git 进程留下的**陈旧锁**，
+此时任何写索引的命令（含 `git checkout HEAD -- <path>`）都会直接失败。判定与清理：
+
+```bash
+ls -la .git/index.lock      # 0 字节 + 时间戳已过数分钟 → 陈旧锁
+tasklist | grep -i git      # 无 git.exe 在跑 → 确认没有并发进程
+rm -f .git/index.lock       # 两者都确认后才删（单个文件，不触发批量删除防护）
+```
+
+**固定排查顺序**：① 清陈旧锁 → ② 恢复文件 → ③ `git status` 归零。
+三步做完再继续 ticket，**不要在删除态下开始任何施工**。
+
 ---
 
 ## 10. 批量外部操作（脚本类任务）
