@@ -14,6 +14,11 @@ class DocumentService:
             base_url: Base URL for the API (e.g., 'http://localhost:9380')
             api_key: API key for authorization
         """
+        if not api_key:
+            raise ValueError(
+                "缺少 RAGFlow API 密钥：请配置环境变量 API_KEY。"
+                "该密钥已不再提供内置默认值（历史默认值随源码泄露）。"
+            )
         self.base_url = base_url
         self.api_key = api_key
         self.headers = {

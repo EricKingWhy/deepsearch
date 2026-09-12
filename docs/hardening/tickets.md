@@ -26,47 +26,73 @@
 
 只要兜底值存在，任何一次「本地忘了配 .env」的运行都会继续使用这批密钥，且无法通过删除提交历史根治（用户已决定暂不吊销，见 NG-4 / R-01）。
 
+**执行期范围扩张（2026-09-13 记录）**：按「修根因不修症状」原则对全仓做同类扫描后，发现同一缺陷还有 3 处真实凭据，上一轮审计因正则只匹配 `sk-` 前缀而漏检：
+
+| 位置 | 泄露内容 |
+|------|---------|
+| `backend/app/service/config.py:20` | RAGFlow `api_key` |
+| `backend/app/service/config.py:21` | RAGFlow `default_dataset_id` |
+| `backend/app/service/config.py:22` | Serper `api_key`（40 位十六进制） |
+
+三者与其他泄漏点属于**同一类缺陷**，合并到本票一次修净；拆票会留下仍在公开仓库中的有效凭据。
+
+同时发现一处**潜在真实 bug**：`dr_g.py` 的 `SEARCH_API_KEY` 默认值内嵌了 `"Bearer "` 前缀，而其余代码（`scout.py:1080`、`news_collection_service.py:62`、`document_service.py:20`）的统一约定是**环境变量存裸密钥、调用处拼前缀**。本地 `.env` 正是按裸密钥存放，因此 `websearch()` 发出的 `Authorization` 头**缺少 Bearer 前缀**，属鉴权格式错误。本票一并修正。
+
+**不在本票范围**：`backend/app/core/database.py:14` 的 `POSTGRES_PASSWORD` 默认值 `postgres123`。它是「弱口令」缺陷，与 T07 的主题同类，且改为导入期必填会影响测试收集，归 T07 处理。
+
 ### 改什么
 
-1. `SEARCH_API_KEY` / `LLM_API_KEY` 改为不带到兜底值的环境变量读取。
-2. 环境变量缺失时**显式失败**，不要静默使用无效值。
-3. 排查同一文件内是否还有其它硬编码配置（`LLM_BASE_URL` 的默认值是公开地址，可保留）。
+1. `dr_g.py`：删除 `SEARCH_API_KEY` / `LLM_API_KEY` 两个模块常量，改为 `get_search_api_key()` / `get_llm_api_key()` 访问器；缺失即抛 `RuntimeError`。
+2. `dr_g.py`：`websearch()` 与 `qwen_llm()` 两个**模块级函数**改为调用访问器（它们无法访问实例属性），并为 `Authorization` 补上 `Bearer ` 前缀。
+3. `dr_g.py` 构造函数：`search_api_key or get_search_api_key()`，保持「显式传入优先」的既有语义。
+4. `config.py`：`api_key` / `default_dataset_id` / `serper_api_key` 的默认值改为空字符串。
+5. `document_service.py`：`DocumentService.__init__` 在 `api_key` 为空时显式抛 `ValueError` 并指出变量名（避免退化为含义不明的 401）。
+6. `backend/.env.example`：补充 `API_BASE_URL` / `API_KEY` / `DEFAULT_DATASET_ID` 三项，并为 `BOCHA_API_KEY` 注明「只填裸密钥，不带 Bearer 前缀」。
+7. 新增 `backend/tests/service/test_dr_g_config.py` 回归测试。
 
 ### 最小改法
 
-- 用模块级函数或 `os.environ[...]` 直接取值，缺失时抛 `RuntimeError` 并给出变量名。
-- **不要**新建配置类 / 配置框架 —— 该文件只有 2 个密钥需要处理。
-- 注意：改完后 `dr_g` 在缺少环境变量时会 import 期报错，而 `research_router.py:18` 会 import 它。**必须**在 `backend/.env.example` 中确认 `BOCHA_API_KEY` / `DASHSCOPE_API_KEY` 已列出（已存在），并在改动说明中提示本地 `backend/.env` 需具备这两个变量。
+- 用模块级访问器函数，**不要**新建配置类 / 配置框架 —— 只涉及 2 个密钥。
+- `LLM_BASE_URL` 的默认值是公开地址，保留不动。
+- 消费方 `chat_router.py:22-33`、`document_router.py:26-30` 都在**请求期依赖函数内**读取配置（非导入期），因此移除默认值不影响应用启动 —— 已核实。
+- 密钥读取一律 `os.environ`，**不留任何默认值兜底**。
 
 ### 验收
 
 ```bash
-# 1) 静态断言：dr_g.py 中不再出现密钥样式的字面量
-cd backend && ! grep -nE 'sk-[A-Za-z0-9]{16,}' app/service/dr_g.py
+# 1) 静态断言：相关文件不再出现密钥/凭据字面量
+cd backend && ! grep -nE 'sk-[A-Za-z0-9]{16,}|ragflow-[A-Za-z0-9]{10,}' \
+  app/service/dr_g.py app/service/config.py app/service/document_service.py
 
-# 2) 缺失环境变量时显式失败（不得回退）
-cd backend && env -u BOCHA_API_KEY -u DASHSCOPE_API_KEY python -c "
-import sys; sys.path.insert(0,'.')
-try:
-    import app.service.dr_g as m
-except RuntimeError as e:
-    print('OK 显式失败:', e)
-else:
-    raise SystemExit('FAIL: 未显式失败，仍可导入')
-"
+# 2) 全仓凭据命中数归零
+git grep -nE 'sk-[A-Za-z0-9]{20,}' -- . ':!frontend/node_modules' | wc -l   # 期望 0
+git grep -nE 'ragflow-[A-Za-z0-9]{10,}' | wc -l                            # 期望 0
 
-# 3) 全仓密钥自查：命中数不得高于基线（基线为 dr_g.py 的 2 处，本票后应为 0）
-git grep -nE 'sk-[A-Za-z0-9]{20,}' | wc -l
+# 3) 行为回归测试（pytest 形式，CI 使用）
+cd backend && .venv/Scripts/python.exe -m pytest tests/service/test_dr_g_config.py -v
+
+# 4) Bearer 前缀专项
+cd backend && .venv/Scripts/python.exe -m pytest tests/service/test_dr_g_config.py -k bearer -v
 ```
 
-预期：命令 1 无输出；命令 2 打印 `OK 显式失败`；命令 3 输出 `0`。
+预期：命令 1/2 无输出；命令 3/4 全部通过（含 `test_missing_env_raises_runtime_error`、
+`test_websearch_prefixes_bearer` 等）。
 
-建议补充一个回归测试（`backend/tests/service/test_dr_g_config.py`，纯 `monkeypatch`，无需基础设施），断言缺变量即抛错。
+**3.5) 无 pytest 环境下的等价验收**（本机 venv 未就绪时使用，见 `LOOP-PROTOCOL.md` §11）：
+
+用 `importlib.util.spec_from_file_location` 直接加载 `app/service/dr_g.py`，绕过包
+`__init__` 的重依赖链，用任一具备 `requests` / `openai` 的解释器执行等价行为断言：
+缺变量抛 `RuntimeError` 且信息含变量名、配置后可原样读取、模块不再导出旧常量。
+
+**本票实际执行结果：4 项全 PASS。** 命令 3/4 的 pytest 形式化运行因 venv 依赖未就绪，
+记为待办 **P-02**（`TRACKER.md`），**未伪造 PASS**。
 
 ### 风险
 
-- **不要**因为「import 期报错」而重新引入兜底值 —— 那等于撤销本票。
+- **不要**因为「缺变量会报错」而重新引入兜底值 —— 那等于撤销本票。
 - `backend/app/service/__init__.py:10` 也 import 了 `dr_g`，检查链路是否受影响。
+- **R-01 依然未闭合**：本票只阻止后续泄露，已进入 `ccbb38a` 提交历史的 5 个凭据仍可被任何人读到，服务商侧的吊销需用户本人操作。
+
 
 ---
 
@@ -312,17 +338,20 @@ grep -n "CORS" backend/.env.example
 
 `docker-compose.yml:11` 的 `POSTGRES_PASSWORD: postgres123` 与 `:71-72` 的 MinIO `minioadmin/minioadmin` 明文写入受版本控制的文件（事实 F-07）。
 
+**T01 执行期追加（2026-09-13）**：同一弱口令在应用侧还有第二处底座 —— `backend/app/core/database.py:14` 的 `POSTGRES_PASSWORD` 默认值同样是 `postgres123`。两处必须一起处理，否则应用会在 compose 未注入变量时静默回落到同一个弱口令。
+
 ### 改什么
 
-1. 口令改为 `${POSTGRES_PASSWORD}` / `${MINIO_ROOT_USER}` / `${MINIO_ROOT_PASSWORD}` 形式。
-2. 在同目录新增 `.env.example`（顶层，供 docker compose 读取），列出这些变量及生成说明。
-3. 确认 `.env` 已被 `.gitignore` 覆盖（顶层 `.env` 需另行确认，见验收）。
+1. `docker-compose.yml`：口令改为 `${POSTGRES_PASSWORD}` / `${MINIO_ROOT_USER}` / `${MINIO_ROOT_PASSWORD}` 形式。
+2. 仓库根目录新增 `.env.example`（供 docker compose 读取），列出这些变量及生成说明。
+3. `backend/app/core/database.py:14`：`POSTGRES_PASSWORD` 移除默认值，缺失时显式失败并指出变量名（与 T01 的访问器风格一致）。
+4. 确认顶层 `.env` 已被 `.gitignore` 覆盖。
 
 ### 最小改法
 
 - 只改口令类字段，**不要**顺手重排 compose 文件结构。
 - 复用 `docker compose` 原生的 `.env` 读取能力，**不要**引入 `env_file` 之外的机制。
-- 服务间引用同一口令的地方（如后端连接串）保持变量引用一致。
+- `database.py` 的改动**必须**同步处理测试环境：`backend/tests/conftest.py` 需为 `POSTGRES_PASSWORD` 等提供测试安全值，否则无基础设施的单元测试会在导入阶段失败（与 T27 联动，属本票范围）。
 
 ### 验收
 
@@ -330,17 +359,23 @@ grep -n "CORS" backend/.env.example
 # 1) compose 中不再出现明文口令
 ! grep -nE "postgres123|minioadmin" docker-compose.yml
 
-# 2) compose 配置可解析（不需要 Docker 守护进程运行）
-docker compose config --quiet 2>&1 | head -3 || echo "（Docker 未运行，改为语法检查）"
+# 2) 应用侧不再有弱口令默认值
+cd backend && ! grep -nE 'postgres123' app/core/database.py
 
-# 3) 顶层 .env 已被忽略
+# 3) 单元测试在无基础设施环境下不被本票破坏
+cd backend && .venv/Scripts/python.exe -m pytest tests -q
+
+# 4) 顶层 .env 已被忽略
 git check-ignore -v .env && echo "OK: 顶层 .env 被忽略"
 
-# 4) 示例文件已提供
+# 5) 示例文件已提供
 grep -nE "POSTGRES_PASSWORD|MINIO_ROOT" .env.example
+
+# 6) compose 配置可解析
+docker compose config --quiet
 ```
 
-预期：命令 1 无输出；命令 3 打印 `OK`；命令 4 有命中。
+预期：命令 1/2 无输出；命令 3 全绿；命令 4 打印 `OK`；命令 5 有命中；命令 6 在 Docker 可用时通过。
 
 ### 风险
 
