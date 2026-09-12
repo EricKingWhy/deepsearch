@@ -51,6 +51,12 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("应用启动中...")
 
+    # 安全配置校验：core.security 在导入期校验 JWT 密钥，缺失 / 过弱会抛 RuntimeError 终止启动。
+    # 这里显式导入一次，保证该校验属于「启动路径」的一部分，而不依赖路由模块的导入顺序。
+    from core.security import SECRET_KEY  # noqa: F401
+
+    logger.info("JWT 密钥校验通过（长度 %d）", len(SECRET_KEY))
+
     # 初始化定时任务调度器并检查数据
     try:
         from service.scheduler_service import init_scheduler_and_check_data
