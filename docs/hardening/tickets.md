@@ -108,13 +108,18 @@ cd backend && .venv/Scripts/python.exe -m pytest tests/service/test_dr_g_config.
 
 1. `JWT_SECRET_KEY` 无默认值；未配置时在**应用启动阶段**就报错并终止，而不是等到第一次签发 Token 才暴露。
 2. 增加最短长度校验（建议 ≥ 32 字符），拒绝弱值。
+3. **（实施补充）** 历史默认值本身有 43 个字符，**仅靠长度校验拦不住**，因此额外维护一份
+   「公开已知弱值」拒绝名单。实施时实测发现本机 `backend/.env` 正是沿用了该默认值 ——
+   也就是说这是一处**真实存在的漏洞**，而非理论风险（已随本票轮换为强随机值，见下）。
 
 ### 最小改法
 
 - 在 `security.py` 读取 `os.environ["JWT_SECRET_KEY"]`，缺失或长度不足时抛 `RuntimeError`。
+- 增加 `KNOWN_WEAK_SECRET_KEYS` 名单，命中历史默认值时同样拒绝（长度校验的漏洞补丁）。
 - 在 `app_main.py` 的应用启动逻辑中触发一次该校验（import 或显式调用皆可），确保「启动即失败」。
 - **不要**引入 `pydantic-settings` 等配置框架 —— 单个变量不值得。
-- 同步更新 `backend/.env.example`，把占位符改成明确的强随机示例说明（如 `# 生成方式: python -c "import secrets;print(secrets.token_urlsafe(48))"`）。
+- 同步更新 `backend/.env.example`，把占位符改成明确的强随机示例说明（如 `# 生成方式: python -c "import secrets;print(secrets.token_urlsafe(48))"`），并把示例值留空。
+- **附带操作（不进版本库）**：轮换本机 `backend/.env` 中沿用的历史默认值；`.env` 已 gitignore，备份写入 `.runlogs/`。
 
 ### 验收
 
