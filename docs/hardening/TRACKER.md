@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01 合并） | `b5abdbb73599ba1ec7ce55575a116f0cc6dc10a1` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03 合并） | `5651c985a0b682b1cf460fd550b780cd16d52e14` |
 | 当前批次 | 1 |
 | 当前 fixed point（上一批审查结束 commit） | `9342913` |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 40 |
-| 已完成 | 2 |
+| 已完成 | 3 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -35,7 +35,7 @@
 |----|------|-------|------|------|--------|----|------|------|---------|
 | T01 | 移除 dr_g.py 硬编码 API Key | #32 | DONE | `ticket/T01-remove-hardcoded-credentials` | — | — | PASS（行为验收；pytest 待补跑，见待办） | 1 | PENDING |
 | T02 | JWT 密钥必填并在启动时校验 | #33 | TODO | — | — | — | — | 1 | PENDING |
-| T03 | document_router 上传安全加固 | #34 | TODO | — | — | — | — | 1 | PENDING |
+| T03 | document_router 上传安全加固 | #34 | DONE | `T03-harden-document-upload` | `fef8eca` | #74 | PASS（`pytest tests/router/test_document_upload.py` → 21 passed；路径穿越净化验收打印 OK） | 1 | PENDING |
 | T04 | document_router 增加鉴权 | #35 | TODO | — | — | — | — | 2 | PENDING |
 | T05 | chat / search / news 路由补充鉴权 | #36 | TODO | — | — | — | — | 2 | PENDING |
 | T06 | 收紧 CORS 配置 | #37 | TODO | — | — | — | — | 2 | PENDING |
@@ -84,7 +84,11 @@
 | **P-02** | T01 的 pytest 补跑 | ✅ 已完成 | `pytest tests/service/test_dr_g_config.py -v` → **9 passed**（参数化展开后为 9 个用例，1 warning 为无关的 `asyncio_mode` 配置项告警）。 |
 | **P-03** | 清理 `.runlogs/venv-broken-*`（约 5000 个文件） | 待处理 | 现存 1 个：`.runlogs/venv-broken-025154`。需用户确认后删除（批量删除防护会拦截）。 |
 | **P-04** | 本地 `main` 与远端合并态同步 | ✅ 已完成 | 已 fast-forward 到 `b5abdbb`（PR #72 合并提交），本地＝远端。 |
-| **P-05** | 删除已合并的 T01 本地/远端分支 | 待处理 | `T01-remove-hardcoded-credentials`（本地 + 远端）已并入 `main`，可择机清理，非阻塞。 |
+| **P-05** | 删除已合并的 T01/T02/T03 本地/远端分支 | 待处理 | `T01-remove-hardcoded-credentials`、`T02-require-jwt-secret`、`T03-harden-document-upload` 均已并入 `main`，可择机清理，非阻塞。 |
+| **P-06** | 工作树被反复清空（环境侧） | **反复出现（4 次），每票必查** | 现象从 `backend/tests`（20 文件）升级到 `backend/app` + `backend/tests`（114 → 111 文件），并会**在 git 命令执行中途**发生。已在 `LOOP-PROTOCOL.md` §9.2 / §9.3 固化恢复步骤与六条硬规则（**禁止 `git add -A`**、不 checkout main、commit 前状态必须为空）。 |
+| **P-07** | venv 缺少 `bcrypt` | ✅ 已完成 | `passlib[bcrypt]` 的 extra 未随 primary 依赖装入。已用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐（bcrypt 5.0.0），配方同 §11。 |
+| **P-08** | 文档文件也会被静默回退 | **每票必查** | 实测：某次 `TRACKER.md` 的编辑报「成功」但**未落盘**，被后来的提交带成旧内容；同一批里另一些编辑却保住了。**对策**：写完文档后 `sed -n` / `grep` 复核，再提交。 |
+| **P-09** | `attachment_router` 同源路径穿越 | 待开票 | `attachment_router.py:148` 的 `f"{uuid}_{filename}"` 仍把客户端文件名放进路径，同样可穿越。已在 `tickets.md` T03 标注，建议另开一张票。 |
 | **R-01** | 5 个历史泄露凭据的服务商侧吊销 | **未闭合** | 用户决定暂不处理 |
 
 ## 执行日志
@@ -107,3 +111,9 @@
 | 2026-09-13 | T02 | 实施 + 合并：`security.py` 删除 `JWT_SECRET_KEY` 默认值改为导入期校验（缺失/空 → `RuntimeError`）、加 32 字符长度下限、新增 `KNOWN_WEAK_SECRET_KEYS` 拒绝名单；`app_main.py` lifespan 显式触发校验；`.env.example` 占位符留空；新增 `tests/core/test_security_jwt.py`（6 用例） | commit `bd54b9b`，PR #73 已 merge（`7e210e8`），issue #33 自动关闭 |
 | 2026-09-13 | T02 | **实测发现真实漏洞**：本机 `backend/.env` 的 `JWT_SECRET_KEY` 正是沿用的历史默认值（42 字符，**纯长度校验拦不住**），即本地实例长期使用公开可知的签名密钥。据此把拒绝名单并入本票范围，并轮换本地 `.env` 为 64 字符强随机值（`.env` 已 gitignore，备份在 `.runlogs/`） | 记录于 `tickets.md` T02；本机已可正常启动 |
 | 2026-09-13 | — | **工作树清空现象第 2 次复现**：合并 T02 后 `backend/tests` 再次整体消失，仅本次新建的 `tests/core/` 存活。再次 `git checkout HEAD -- backend/tests` 恢复（20 文件，状态归零） | 新增待办 P-06 |
+| 2026-09-13 | T03 | 实施 + 合并：新增 `core/upload_security.py`（净化 / uuid 落盘名 / 白名单 / 分块限长读取），`document_router` 改为组合该模块，新增 50MB 上限；新增 `tests/router/test_document_upload.py`（21 用例） | commit `fef8eca`，PR #74 已 merge（`5651c98`），issue #34 自动关闭 |
+| 2026-09-13 | T03 | **修正不可执行的验收命令**：原 `from app.router import document_router` 会连带引入 milvus/ES/docmind（实测缺 `tinytag`），且 `sys.path` 用法与项目约定不符；已把纯逻辑抽到 `core/upload_security.py` 并把验收改为可执行形式，修正记录写入 `tickets.md` T03 | 21 passed；路径穿越验收打印 OK |
+| 2026-09-13 | T03 | **同源问题发现**：`attachment_router.py:148` 的 `f"{uuid}_{filename}"` 同样可被穿越（客户端文件名仍进路径）。已标注于 `tickets.md` T03，见待办 P-09 | 建议另开票 |
+| 2026-09-13 | — | **工作树清空现象第 3、4 次复现（升级）**：合并 T03 时 `git checkout main` 被 SIGTERM 打断，留下陈旧 `index.lock` + 半截工作树；随后范围升级为 `backend/app` + `backend/tests` 共 **114 → 111 个文件**消失，`backend/app` 只剩刚被写过的 `core`、`router`。已核实**不是沙箱回滚**（独立进程复核写入可持久）、不是 git 行为、不是 Defender 隔离。恢复采用「清锁 → `git checkout HEAD -- .` → 状态归零」 | 新增/升级 `LOOP-PROTOCOL.md` §9.3（六条硬规则），待办 P-06 升级 |
+| 2026-09-13 | — | **文档编辑静默丢失**：`TRACKER.md` 的部分编辑报成功但未落盘，被提交带成旧内容（主 tip / P-05 / P-06 / P-07 四处）。已逐项复核并重写，沉淀为「写完必复核」规则 | 新增待办 P-08 |
+| 2026-09-13 | — | **第一阶段审查批次边界到达**：T01–T03 已完成，进入第 1 批 `code-review`（fixed point `9342913`，终点 `5651c98`） | 见批次审查记录 |

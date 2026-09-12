@@ -278,6 +278,37 @@ git status --short | awk '{print $1}' | sort | uniq -c
 not found`」这类**看起来像自己改错了**的假象（T01/T02 都踩过），也可能让
 `git add -A` 把整个测试目录的删除**提交进历史**。**先查状态，再干活。**
 
+### 9.3 🔴 硬规则：在这种环境下的提交与同步纪律（因 9.2 升级而来，必须遵守）
+
+**升级记录（2026-09-13，第 3、4 次复现）**：该现象已从「`backend/tests` 消失（20 文件）」
+升级为「**`backend/app` + `backend/tests` 同时大范围消失（114 → 111 文件）**」，
+并且会**在一条 git 命令执行到一半时发生**，留下**半个工作树 + 陈旧 `index.lock`**
+（实测 `git checkout main` 被打断，`backend/app` 只剩 `core`、`router` 两个刚被写过的目录）。
+
+已排除的可能：不是沙箱回滚（单独进程复核写入可持久）、不是 git 自身行为
+（同一命令的 diff 只应触及 4 个文件）、不是 Defender 隔离（无检测记录）。
+**根因仍未确定**，因此按「随时会发生」来设计流程，而不是等它消失：
+
+| # | 硬规则 | 原因 |
+|---|--------|------|
+| 1 | **禁止 `git add -A` / `git add .` / `git commit -a`**，必须**逐条显式列出路径** | 清空发生时会把「整个 `app` 目录被删」当成一次正常提交写进历史 |
+| 2 | **commit 前必须 `git status --short` 为空**（除本票自己的改动） | 一旦出现成片 ` D`，先按 9.2 恢复，再提交 |
+| 3 | **不要 `git checkout main`**。用 `git fetch origin main:main` 推进本地 `main` 引用 | 该 refspec **不触碰工作树**；`checkout` 才会整树改写、也最容易被打断 |
+| 4 | 新票从 `main` 开分支：`git checkout -b T<nn>-xxx main` | 上一票已合并且本分支树＝main 树时，这是一次**零文件变更**的切换 |
+| 5 | 长命令（`checkout` / `merge` / `fetch`）**拆成单条执行** | 实测合并超 120 秒会被 SIGTERM，留下半截工作树 |
+| 6 | 任何写操作前先 `[ -f .git/index.lock ] && rm -f .git/index.lock`（确认无 git 进程后） | 被打断的 git 会留下陈旧锁，导致后续所有写索引操作失败 |
+
+**恢复的唯一权威动作**（不丢改动）：
+
+```bash
+rm -f .git/index.lock            # ① 陈旧锁（先确认 tasklist 里没有 git）
+git checkout HEAD -- .           # ② 从当前 HEAD 恢复整棵被清空的树
+git status --short               # ③ 必须为空
+```
+
+> 已提交的内容**不会丢**：它们既在 `.git` 对象库、也已推到 GitHub。
+> 工作树被清空只是「检出的副本」消失，**不要慌，也不要重做已完成的票**。
+
 ---
 
 ## 10. 批量外部操作（脚本类任务）
