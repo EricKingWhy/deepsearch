@@ -136,5 +136,17 @@ ticket 6 ─┘
 
 1. 读 `docs/hardening/LOOP-PROTOCOL.md`（本文件）→ 2. 读 `docs/hardening/prd.md` → 3. 读 `docs/hardening/TRACKER.md` 恢复进度 → 4. 从 TRACKER 里第一个 `TODO` 且非 `BLOCKED` 的 ticket 继续。
 
-ticket 的完整定义在 `docs/hardening/tickets/T<编号>-*.md`，与 GitHub issue 一一对应。
-**本地 ticket 文件是权威定义（source of truth）**，issue 是它的镜像；两者不一致时以本地文件为准，并把 issue 同步过来。
+ticket 的完整定义在 `docs/hardening/tickets.md`，按 `## T<编号>` 分节，与 GitHub issue 一一对应。
+
+**本地 `tickets.md` 是权威定义（source of truth）**，GitHub issue 是它的镜像；两者不一致时以本地文件为准，并把 issue 同步过来。
+
+### 不得触碰的既有设计（避免误判为死代码）
+
+以下内容是**有意保留**的设计，不是死代码，**任何 ticket 都不得删除**：
+
+- `backend/app/service/deep_research_v2/graph.py` 中的 LangGraph 运行时路径（`_build_langgraph`、6 个 `_*_node` 方法、`_run_with_langgraph`）：保留以便后续在「手写异步状态机」与「LangGraph 运行时」之间切换。
+- V1 ReAct 编排三件套：`backend/app/service/dr_g.py`、`backend/app/service/react_controller.py`、`backend/app/service/tool_executor.py`：保留为 `version=v1` 的备选研究路线。
+
+**允许的动作**：加注释 / 文档标注 / 抽离被外部引用的公共函数。
+**禁止的动作**：删除实现、把依赖从 `requirements.txt` 移除、标注 `@deprecated` 后清理。
+
