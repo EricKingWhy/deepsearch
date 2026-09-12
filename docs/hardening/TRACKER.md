@@ -18,7 +18,7 @@
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 40 |
-| 已完成 | 1 |
+| 已完成 | 2 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -103,3 +103,7 @@
 | 2026-09-13 | — | **工作树事故与恢复**：开工前核查发现整个 `backend/tests/` 子树（20 个已跟踪文件）从工作树消失、且磁盘上已无副本，`.git/index.lock` 残留为陈旧锁。已清除锁 → `git checkout HEAD -- backend/tests` 恢复全部 20 个文件，工作树归零。原因未定，与镜像/杀软清理有关。新增 `LOOP-PROTOCOL.md` §9.2 记录该现象与恢复步骤 | 工作树干净，20 文件复原 |
 | 2026-09-13 | — | **本地 main 同步**：远端 `main` 实为 `b5abdbb`（PR #72 合并提交），本地 `main` 仍停在 `bc58bc7` 且无 `b5abdbb` 对象。用 `git fetch origin main:main` 完成 fast-forward，本地＝远端＝`b5abdbb`。核实 `git ls-remote origin refs/heads/main` 一致 | 待办 P-04 关闭 |
 | 2026-09-13 | T01 | **验收补跑**：`pytest tests/service/test_dr_g_config.py -v` → 9 passed（1 warning 为无关配置项告警）。T01 形式化验收闭合 | 待办 P-02 关闭，T01 全绿 |
+| 2026-09-13 | — | **环境补丁**：跑 T02 测试时暴露 venv 缺 `bcrypt`（`passlib[bcrypt]` 的 extra 未装入）。用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐至 5.0.0 | 待办 P-07 关闭 |
+| 2026-09-13 | T02 | 实施 + 合并：`security.py` 删除 `JWT_SECRET_KEY` 默认值改为导入期校验（缺失/空 → `RuntimeError`）、加 32 字符长度下限、新增 `KNOWN_WEAK_SECRET_KEYS` 拒绝名单；`app_main.py` lifespan 显式触发校验；`.env.example` 占位符留空；新增 `tests/core/test_security_jwt.py`（6 用例） | commit `bd54b9b`，PR #73 已 merge（`7e210e8`），issue #33 自动关闭 |
+| 2026-09-13 | T02 | **实测发现真实漏洞**：本机 `backend/.env` 的 `JWT_SECRET_KEY` 正是沿用的历史默认值（42 字符，**纯长度校验拦不住**），即本地实例长期使用公开可知的签名密钥。据此把拒绝名单并入本票范围，并轮换本地 `.env` 为 64 字符强随机值（`.env` 已 gitignore，备份在 `.runlogs/`） | 记录于 `tickets.md` T02；本机已可正常启动 |
+| 2026-09-13 | — | **工作树清空现象第 2 次复现**：合并 T02 后 `backend/tests` 再次整体消失，仅本次新建的 `tests/core/` 存活。再次 `git checkout HEAD -- backend/tests` 恢复（20 文件，状态归零） | 新增待办 P-06 |
