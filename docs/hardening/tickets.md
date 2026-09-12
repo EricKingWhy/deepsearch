@@ -1784,6 +1784,57 @@ cd backend && pytest tests -q
 
 ---
 
+## T41 — 合并三处上传实现，消除 attachment / knowledge 路由的路径穿越（决策票）
+
+- **类型**：security　**阶段**：1　**依赖**：T03　**标记**：`needs-decision`
+
+> 来源：第 1 批 `code-review` 的两条**独立** findings —— 标准轴的「Duplicated Code / 未并轨」，
+> 与规格轴的「T03 白名单未与 `attachment_router` 对齐」。两条指向同一处根因。
+
+### 背景
+
+T03 把「安全的上传落盘」抽到了 `core/upload_security.py`，但**只有 `document_router` 接上了它**。
+另外两个上传入口仍是同一类漏洞，客户端文件名照样进路径：
+
+- `backend/app/router/attachment_router.py:148` —— `unique_filename = f"{uuid.uuid4()}_{file.filename}"`
+- `backend/app/router/knowledge_router.py:327` —— `file_path = os.path.join(UPLOAD_DIR, f"{kb_uuid}_{file.filename}")`
+
+`os.path.join(UPLOAD_DIR, "uuid_../../x")` 依旧能穿越出 `UPLOAD_DIR`。此外三处各有
+`ALLOWED_EXTENSIONS` 与 `get_file_extension` 的**副本**，已经开始漂移（见下方裁决点）。
+
+### 改什么
+
+1. 把 `get_file_extension` / `ALLOWED_EXTENSIONS` 收拢进 `core/upload_security.py`，三个路由共用一份。
+2. `attachment_router` / `knowledge_router` 改用 `safe_filename()`，删除「客户端文件名进路径」的写法。
+3. 两个入口补单文件大小上限（复用 `read_upload_with_limit`）。
+
+### 🔴 需要用户裁决
+
+**白名单是否并轨** —— 三者不一致，并轨会**放宽**文档上传的类型，而放宽后的类型能否被下游
+docmind 正确处理**未知**：
+
+| 路由 | 当前白名单 |
+|------|-----------|
+| `document_router` | `pdf, docx, xlsx, xls, txt` |
+| `attachment_router` / `knowledge_router` | `pdf, docx, doc, txt, md, html, xlsx, xls, pptx, ppt,` 图片、代码 |
+
+- **方案 A（推荐）**：只统一**代码实现**，白名单各自保留 —— 零行为变更，只堵路径穿越。
+- **方案 B**：统一为 attachment 的集合 —— 行为变更，需先验证 docmind 兼容性。
+- **方案 C**：定义一个更小的「文档类」统一子集 —— 需要新定义，收益不明。
+
+### 验收
+
+```bash
+cd backend && pytest tests/router -q -k "upload"
+# 断言：三个路由的落盘名都不含客户端文件名；非法扩展名 400；超限 413
+```
+
+### 风险
+
+- 属**跨路由行为变更**，故标 `needs-decision`，**不进入自动循环**，等用户裁决后再执行。
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -1794,8 +1845,9 @@ cd backend && pytest tests -q
 | 4 · 工程化底座 | T21–T31 | 11 |
 | 5 · 前端质量 | T32–T37 | 6 |
 | 6 · 后端质量 | T38–T40 | 3 |
-| **合计** | | **40** |
+| 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
+| **合计** | | **41** |
 
-**其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37 —— 共 4 张。
+**其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41 —— 共 5 张。
 **`needs-human`**：T10 —— 1 张。
 **`needs-infra`**：T07（部分）、T08、T28、T29、T30、T31 —— 6 张。

@@ -14,10 +14,10 @@
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03 合并） | `5651c985a0b682b1cf460fd550b780cd16d52e14` |
 | 当前批次 | 1 |
-| 当前 fixed point（上一批审查结束 commit） | `9342913` |
+| 当前 fixed point（上一批审查结束 commit） | `19547b0`（第 1 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
-| 总 ticket 数 | 40 |
+| 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
 | 已完成 | 3 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
@@ -25,7 +25,22 @@
 
 | 批次 | 覆盖 ticket | fixed point（起点） | 审查 commit（终点） | findings 数 | 修复 commit | 状态 |
 |------|------------|--------------------|--------------------|------------|------------|------|
-| 1 | T01–T03 | `9342913` | — | — | — | PENDING |
+| 1 | T01–T03 | `9342913` | `5651c98` | 5 | `19547b0` | FIXED |
+
+### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
+
+双轴并行审查：**标准轴 4 条 + 规格轴 3 条**，去重后 **5 条**。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 | `READMED.md:~96` 仍把**已失效**的 `JWT_SECRET_KEY` 示例值写成可用配置，照抄该文档会启动失败，与 T02 的强校验直接冲突（文档/代码漂移） | **已修** `19547b0` |
+| 2 | 规格 | T02 令 `core.security` 在导入期校验，而 `core/__init__.py` 会导入 security → 任何 `import core.*` 都要求密钥存在；`tests/conftest.py` 未提供，导致 `tests/router/test_observability_router.py` 收集失败 | **已修** `19547b0`（conftest 用 `setdefault` 提供测试占位值） |
+| 3 | 标准 + 规格 | 三处上传实现**重复且未并轨**：`attachment_router.py:148`、`knowledge_router.py:327` 仍把客户端文件名拼进路径（可穿越出 `UPLOAD_DIR`），三份 `ALLOWED_EXTENSIONS` 已漂移 | **转 T41（#75）**，决策票 |
+| 4 | 标准 | 导入期校验偏离仓库其它配置「惰性读取 + 静默默认」的风格 | **保留判定**：T02 明确要求「启动即失败」，属有意设计 |
+| 5 | 标准 | 源码 grep 型测试（`test_no_getenv_default_for_secret_key`、`test_module_source_contains_no_key_literals`）偏脆 | **保留判定**：作为回归锁可接受 |
+
+**验收复核**：T01 / T02 的验收标准实质可满足；T03 可满足，但白名单一致性转入 T41。
+T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**（T03 #4 明允原始文件名仅作数据字段），无静默行为回归。
 
 ## ticket 明细
 
@@ -73,6 +88,7 @@
 | T38 | 清除 print 调试残留 | #69 | TODO | — | — | — | — | 12 | PENDING |
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | TODO | — | — | — | — | 12 | PENDING |
 | T40 | 补 security 鉴权单元测试 | #71 | TODO | — | — | — | — | 13 | PENDING |
+| T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | BLOCKED | — | — | — | 等待用户裁决（白名单是否并轨） | — | — |
 
 ## 待办 / 未闭合项
 
@@ -88,7 +104,7 @@
 | **P-06** | 工作树被反复清空（环境侧） | **反复出现（4 次），每票必查** | 现象从 `backend/tests`（20 文件）升级到 `backend/app` + `backend/tests`（114 → 111 文件），并会**在 git 命令执行中途**发生。已在 `LOOP-PROTOCOL.md` §9.2 / §9.3 固化恢复步骤与六条硬规则（**禁止 `git add -A`**、不 checkout main、commit 前状态必须为空）。 |
 | **P-07** | venv 缺少 `bcrypt` | ✅ 已完成 | `passlib[bcrypt]` 的 extra 未随 primary 依赖装入。已用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐（bcrypt 5.0.0），配方同 §11。 |
 | **P-08** | 文档文件也会被静默回退 | **每票必查** | 实测：某次 `TRACKER.md` 的编辑报「成功」但**未落盘**，被后来的提交带成旧内容；同一批里另一些编辑却保住了。**对策**：写完文档后 `sed -n` / `grep` 复核，再提交。 |
-| **P-09** | `attachment_router` 同源路径穿越 | 待开票 | `attachment_router.py:148` 的 `f"{uuid}_{filename}"` 仍把客户端文件名放进路径，同样可穿越。已在 `tickets.md` T03 标注，建议另开一张票。 |
+| **P-09** | `attachment_router` / `knowledge_router` 同源路径穿越 | **已转 T41（#75）** | 第 1 批审查的两条 findings 合并为决策票 T41，等用户裁决白名单策略后执行。 |
 | **R-01** | 5 个历史泄露凭据的服务商侧吊销 | **未闭合** | 用户决定暂不处理 |
 
 ## 执行日志
@@ -117,3 +133,5 @@
 | 2026-09-13 | — | **工作树清空现象第 3、4 次复现（升级）**：合并 T03 时 `git checkout main` 被 SIGTERM 打断，留下陈旧 `index.lock` + 半截工作树；随后范围升级为 `backend/app` + `backend/tests` 共 **114 → 111 个文件**消失，`backend/app` 只剩刚被写过的 `core`、`router`。已核实**不是沙箱回滚**（独立进程复核写入可持久）、不是 git 行为、不是 Defender 隔离。恢复采用「清锁 → `git checkout HEAD -- .` → 状态归零」 | 新增/升级 `LOOP-PROTOCOL.md` §9.3（六条硬规则），待办 P-06 升级 |
 | 2026-09-13 | — | **文档编辑静默丢失**：`TRACKER.md` 的部分编辑报成功但未落盘，被提交带成旧内容（主 tip / P-05 / P-06 / P-07 四处）。已逐项复核并重写，沉淀为「写完必复核」规则 | 新增待办 P-08 |
 | 2026-09-13 | — | **第一阶段审查批次边界到达**：T01–T03 已完成，进入第 1 批 `code-review`（fixed point `9342913`，终点 `5651c98`） | 见批次审查记录 |
+| 2026-09-13 | — | **第 1 批 `code-review`（双轴并行）**：标准轴 4 条 + 规格轴 3 条，去重后 5 条。修复 commit `19547b0`（conftest 补测试占位密钥；READMED 文档与强校验对齐）；2 条记为保留判定；1 条衍生决策票 | 三个回归测试文件 **36 passed**，JWT 相关收集错误归零 |
+| 2026-09-13 | — | **新建 T41（#75）**：合并三处上传实现，消除 `attachment_router` / `knowledge_router` 的路径穿越。标 `needs-decision`（白名单是否并轨会改变上传类型），等用户裁决 | ticket 总数 40 → **41**；P-09 转 T41 |
