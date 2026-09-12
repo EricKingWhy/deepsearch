@@ -26,9 +26,32 @@ from collections import Counter
 import logging
 
 # --- Configuration ---
-SEARCH_API_KEY = os.getenv("BOCHA_API_KEY", "Bearer sk-392ef5953eaa4c43be43e6daab4e82a4")
-LLM_API_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-f02db5a079ab41588b1cab09ad2777a2")
+# 密钥一律从环境变量读取，且不提供默认值。
+# 历史上这里带有真实密钥作为兜底值，已随源码泄露到公开仓库；任何形式的兜底都会
+# 让「本地忘了配 .env」变成「静默使用泄露密钥」，因此改为缺失即显式失败。
 LLM_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+
+def _require_env(name: str) -> str:
+    """读取必需的环境变量；缺失时立即失败并指出变量名。"""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(
+            f"缺少必需的环境变量 {name}。请在 backend/.env 中配置后重试，"
+            f"不要把真实密钥写入受版本控制的文件。"
+        )
+    return value
+
+
+def get_search_api_key() -> str:
+    """博查搜索密钥（BOCHA_API_KEY）。"""
+    return _require_env("BOCHA_API_KEY")
+
+
+def get_llm_api_key() -> str:
+    """百炼 LLM 密钥（DASHSCOPE_API_KEY）。"""
+    return _require_env("DASHSCOPE_API_KEY")
+
 
 # 优化配置
 MAX_CONCURRENT_SEARCHES = 3
@@ -136,8 +159,8 @@ class ResearchService:
             db_connection_string: 数据库连接字符串 (用于 Text2SQL)
             use_react: 是否使用 ReAct 模式
         """
-        self.search_api_key = search_api_key or SEARCH_API_KEY
-        self.llm_api_key = llm_api_key or LLM_API_KEY
+        self.search_api_key = search_api_key or get_search_api_key()
+        self.llm_api_key = llm_api_key or get_llm_api_key()
         self.llm_base_url = llm_base_url or LLM_BASE_URL
         self.db_connection_string = db_connection_string
         self.use_react = use_react
@@ -743,7 +766,9 @@ def websearch(query, count=5):
         "page": 1
     })
     headers = {
-        'Authorization': SEARCH_API_KEY,
+        # 环境变量中存放裸密钥，Bearer 前缀在此处拼接 —— 与 scout.py / news_collection_service.py 的既有写法一致。
+        # 历史实现把 "Bearer " 写进了常量默认值，导致从环境变量读取时缺少前缀，已一并修正。
+        'Authorization': f'Bearer {get_search_api_key()}',
         'Content-Type': 'application/json'
     }
 
@@ -771,7 +796,7 @@ def qwen_llm(prompt, model="qwen-max", response_format=None, system_message_cont
     """调用 Qwen LLM"""
     logging.info(f"Calling Qwen LLM: {prompt[:100]}...")
     try:
-        client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+        client = OpenAI(api_key=get_llm_api_key(), base_url=LLM_BASE_URL)
 
         completion_args = {
             "model": model,

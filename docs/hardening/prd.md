@@ -86,6 +86,8 @@
 | # | 位置 | 事实 |
 |---|------|------|
 | F-01 | `backend/app/service/dr_g.py:29-30` | 硬编码真实密钥：`SEARCH_API_KEY = os.getenv("BOCHA_API_KEY", "Bearer sk-...")`、`LLM_API_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-...")`。已随 `ccbb38a Initial project import` 进入提交历史，仓库为 PUBLIC |
+| F-01b | `backend/app/service/config.py:20-22` | 同类缺陷，**上一轮审计漏检**（正则只匹配 `sk-` 前缀，未覆盖 `'api_key': os.environ.get(..., '<值>')` 这种字典键写法）。泄露 3 项：RAGFlow `api_key`、RAGFlow `default_dataset_id`、Serper `api_key`（40 位十六进制） |
+| F-01c | `backend/app/service/dr_g.py:29` | **潜在鉴权 bug**：该常量默认值内嵌 `"Bearer "` 前缀，而全仓统一约定是「环境变量存裸密钥、调用处拼前缀」（`scout.py:1080`、`news_collection_service.py:62`、`document_service.py:20`）。本地 `.env` 按裸密钥存放，因此 `websearch()` 发出的 `Authorization` 头缺少 `Bearer ` 前缀 |
 | F-02 | `backend/app/router/document_router.py:66` | `f"/tmp/{file.filename}"` 直接使用用户上传的原始文件名 → 路径穿越；无大小限制 |
 | F-03 | `backend/app/router/document_router.py` | 全文件无鉴权依赖（`Depends(get_current_user_required)` 计数为 0） |
 | F-04 | `backend/app/router/chat_router.py`、`search_router.py`、`news_router.py` | 同样无鉴权依赖 |
@@ -101,7 +103,7 @@
 | F-09 | `backend/app/service/text2sql_service.py:210-242` | SQL 校验使用黑名单，`FORBIDDEN` 含 `'UNION ALL SELECT'` 但 `UNION` 本身在 `ALLOWED` 中 → `UNION SELECT` 可绕过 |
 | F-10 | `backend/app/service/text2sql_service.py:386` | `execute_sql` 使用 `text(sql)` 直连主库，未使用只读账号兜底 |
 | F-11 | `graph.py:511`、`dr_g.py:370`、`news_collection_service.py:619/643/694`、`smart_analyzer.py:224/276/327` | 使用裸 `except:`，会吞掉 `KeyboardInterrupt` / `SystemExit` |
-| F-12 | `backend/app/core/database.py:19` | 未设置 `pool_size` / `max_overflow` / `pool_recycle` / `pool_pre_ping` |
+| F-12 | `backend/app/core/database.py:19` | **审计更正**：`pool_pre_ping=True` **已经设置**（首轮审计误判为未设置）。实际缺失的是 `pool_size` / `max_overflow` / `pool_recycle`。另 `:14` 的 `POSTGRES_PASSWORD` 默认值为弱口令 `postgres123`（归 T07） |
 | F-13 | `backend/app/app_main.py:43` | 启动时执行 `create_all`，与 `backend/migrations/` 手写 SQL 并存 → schema 漂移风险 |
 
 ### 4.3 可接手性
@@ -153,7 +155,7 @@
 
 | 编号 | 风险 | 影响 | 处置 |
 |------|------|------|------|
-| **R-01** | `dr_g.py` 的历史密钥已存在于 PUBLIC 仓库的 `ccbb38a` 提交中 | 任何人在克隆仓库后都能读到该密钥；只要未在服务商侧吊销，密钥持续有效 | 用户已知悉并决定**暂不吊销**（NG-4）。本期只做「后续不再引入」。**这是已知的未闭合风险**，T01 完成后仍应在 TRACKER 中标注 |
+| **R-01** | **5 个凭据泄露在 PUBLIC 仓库的 `ccbb38a` 提交历史中**：`dr_g.py` 的 Bocha / DashScope 密钥、`config.py` 的 RAGFlow api_key、RAGFlow dataset id、Serper 密钥。任何人在克隆仓库后都能读到；只要未在服务商侧吊销，这些凭据持续有效 | 可被他人盗用配额、产生费用或读取数据 | 用户已知悉并决定**暂不吊销**（NG-4）。本期只做「后续不再引入」（T01）。**这是已知的未闭合风险**，T01 完成后仍应在 TRACKER 中保持标注，并在服务商侧吊销后更新本条 |
 | **R-02** | 新增鉴权（T05/T06）可能打断现有前端调用 | 前端若未携带 Token，接口将返回 401，功能不可用 | ticket 中必须核查前端调用链是否已注入 `Authorization`（`frontend/src/api/request/auth.ts` 统一注入）。如有遗漏，在同一 ticket 内补齐 |
 | **R-03** | 收紧 CORS（T07）可能打断本地开发跨域 | 开发环境前端 :5183 → 后端 :8000 请求失败 | 保留开发环境通配，但必须 `allow_credentials=False`；生产从环境变量读取显式白名单 |
 | **R-04** | 优化过程中误删 NG-2 / NG-3 的既有实现 | 破坏用户有意保留的技术选择 | 协议文件 §8 已列出禁止清单；每张 ticket 的验收含自查步骤 |
@@ -170,7 +172,7 @@
 2. `/implement` 完成 ticket，**跳过其自带的 `/code-review`**，测试全绿后自行 commit 并登记 TRACKER；
 3. 每完成 3 张 ticket（批大小可在 2–4 浮动）对累计 diff 做一次批量审查，fixed point = 上一批审查结束时的 commit SHA；
 4. 全部完成后对整条分支做最终全量审查，fixed point = 基线 commit `9342913`（即本计划开始前的 `main` tip）；
-5. 每张 ticket 一条分支 `ticket/T<编号>-<描述>` → 开 PR → merge commit 合并（**不用 squash**）；
+5. 每张 ticket 一条分支 `T<编号>-<描述>`（**必须扁平，禁止 `/`** —— 带斜杠的分支引用在本机会被清扫导致 `HEAD` 悬空，见 `LOOP-PROTOCOL.md` §9.1）→ 开 PR → merge commit 合并（**不用 squash**）；
 6. 全程自动，**仅**在「规格实质冲突」或「架构分叉」时停下征求用户裁决。
 
 > ⚠️ **不要用 `main` / `origin/main` 作为审查基准。** 本机的 `refs/remotes/**` 会被环境清扫，`origin/main` 不可解析，`git diff origin/main` 会硬失败。统一使用显式 commit SHA，远端真相用 `git ls-remote origin refs/heads/main` 获取。详见 `LOOP-PROTOCOL.md` §9。
