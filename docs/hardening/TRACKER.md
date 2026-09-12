@@ -33,46 +33,46 @@
 
 | ID | 标题 | Issue | 状态 | 分支 | Commit | PR | 验收 | 批次 | 批次审查 |
 |----|------|-------|------|------|--------|----|------|------|---------|
-| T01 | 移除 dr_g.py 硬编码 API Key | — | TODO | — | — | — | — | 1 | PENDING |
-| T02 | JWT 密钥必填并在启动时校验 | — | TODO | — | — | — | — | 1 | PENDING |
-| T03 | document_router 上传安全加固 | — | TODO | — | — | — | — | 1 | PENDING |
-| T04 | document_router 增加鉴权 | — | TODO | — | — | — | — | 2 | PENDING |
-| T05 | chat / search / news 路由补充鉴权 | — | TODO | — | — | — | — | 2 | PENDING |
-| T06 | 收紧 CORS 配置 | — | TODO | — | — | — | — | 2 | PENDING |
-| T07 | docker-compose 明文口令改为环境变量注入 | — | TODO | — | — | — | — | 3 | PENDING |
-| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | — | TODO | — | — | — | — | 3 | PENDING |
-| T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | — | TODO | — | — | — | — | 3 | PENDING |
-| T10 | text2sql 使用只读数据库账号兜底 | — | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
-| T11 | 清除裸 except 并补日志 | — | TODO | — | — | — | — | 4 | PENDING |
-| T12 | 收敛数据库连接池与会话生命周期 | — | TODO | — | — | — | — | 4 | PENDING |
-| T13 | 显式标注 LangGraph 运行时路径为有意保留 | — | TODO | — | — | — | — | 5 | PENDING |
-| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | — | TODO | — | — | — | — | 5 | PENDING |
-| T15 | 抽离 serialize_event | — | TODO | — | — | — | — | 5 | PENDING |
-| T16 | 修复文档与代码漂移 | — | TODO | — | — | — | — | 6 | PENDING |
-| T17 | 新增架构总览文档 | — | TODO | — | — | — | — | 6 | PENDING |
-| T18 | requirements.txt 去重与依赖分区 | — | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
-| T19 | 决策票：alembic 去留 | — | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T20 | 决策票：chat/index.tsx 是否拆分 | — | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T21 | 新增 LICENSE | — | TODO | — | — | — | — | 7 | PENDING |
-| T22 | 新增 CONTRIBUTING.md | — | TODO | — | — | — | — | 7 | PENDING |
-| T23 | 新增 .editorconfig | — | TODO | — | — | — | — | 7 | PENDING |
-| T24 | 新增 issue 与 PR 模板 | — | TODO | — | — | — | — | 8 | PENDING |
-| T25 | 新增 CHANGELOG.md 并初始化版本号 | — | TODO | — | — | — | — | 8 | PENDING |
-| T26 | 新增后端 ruff 配置 | — | TODO | — | — | — | — | 8 | PENDING |
-| T27 | 后端测试分层：无基础设施单测可独立运行 | — | TODO | — | — | — | — | 9 | PENDING |
-| T28 | 新增 CI：后端 pytest | — | TODO | — | — | — | — | 9 | PENDING |
-| T29 | 新增 CI：前端 lint + vitest + build | — | TODO | — | — | — | — | 9 | PENDING |
-| T30 | 新增 backend/Dockerfile 并接入 compose | — | TODO | — | — | — | — | 10 | PENDING |
-| T31 | start-services.sh 现代化 | — | TODO | — | — | — | — | 10 | PENDING |
-| T32 | 清理 console.log 残留 | — | TODO | — | — | — | — | 10 | PENDING |
-| T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | — | TODO | — | — | — | — | 11 | PENDING |
-| T34 | vite 构建分包 + 路由懒加载 | — | TODO | — | — | — | — | 11 | PENDING |
-| T35 | ECharts 真正拆包 | — | TODO | — | — | — | — | 11 | PENDING |
-| T36 | 清理注释死代码 | — | TODO | — | — | — | — | 12 | PENDING |
-| T37 | 决策票：前端 JWT 存储方式 | — | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T38 | 清除 print 调试残留 | — | TODO | — | — | — | — | 12 | PENDING |
-| T39 | 补 text2sql.validate_sql 单元测试 | — | TODO | — | — | — | — | 12 | PENDING |
-| T40 | 补 security 鉴权单元测试 | — | TODO | — | — | — | — | 13 | PENDING |
+| T01 | 移除 dr_g.py 硬编码 API Key | #32 | TODO | — | — | — | — | 1 | PENDING |
+| T02 | JWT 密钥必填并在启动时校验 | #33 | TODO | — | — | — | — | 1 | PENDING |
+| T03 | document_router 上传安全加固 | #34 | TODO | — | — | — | — | 1 | PENDING |
+| T04 | document_router 增加鉴权 | #35 | TODO | — | — | — | — | 2 | PENDING |
+| T05 | chat / search / news 路由补充鉴权 | #36 | TODO | — | — | — | — | 2 | PENDING |
+| T06 | 收紧 CORS 配置 | #37 | TODO | — | — | — | — | 2 | PENDING |
+| T07 | docker-compose 明文口令改为环境变量注入 | #38 | TODO | — | — | — | — | 3 | PENDING |
+| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | TODO | — | — | — | — | 3 | PENDING |
+| T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | TODO | — | — | — | — | 3 | PENDING |
+| T10 | text2sql 使用只读数据库账号兜底 | #41 | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
+| T11 | 清除裸 except 并补日志 | #42 | TODO | — | — | — | — | 4 | PENDING |
+| T12 | 收敛数据库连接池与会话生命周期 | #43 | TODO | — | — | — | — | 4 | PENDING |
+| T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | TODO | — | — | — | — | 5 | PENDING |
+| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | TODO | — | — | — | — | 5 | PENDING |
+| T15 | 抽离 serialize_event | #46 | TODO | — | — | — | — | 5 | PENDING |
+| T16 | 修复文档与代码漂移 | #47 | TODO | — | — | — | — | 6 | PENDING |
+| T17 | 新增架构总览文档 | #48 | TODO | — | — | — | — | 6 | PENDING |
+| T18 | requirements.txt 去重与依赖分区 | #49 | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
+| T19 | 决策票：alembic 去留 | #50 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
+| T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
+| T21 | 新增 LICENSE | #52 | TODO | — | — | — | — | 7 | PENDING |
+| T22 | 新增 CONTRIBUTING.md | #53 | TODO | — | — | — | — | 7 | PENDING |
+| T23 | 新增 .editorconfig | #54 | TODO | — | — | — | — | 7 | PENDING |
+| T24 | 新增 issue 与 PR 模板 | #55 | TODO | — | — | — | — | 8 | PENDING |
+| T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | TODO | — | — | — | — | 8 | PENDING |
+| T26 | 新增后端 ruff 配置 | #57 | TODO | — | — | — | — | 8 | PENDING |
+| T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
+| T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
+| T29 | 新增 CI：前端 lint + vitest + build | #60 | TODO | — | — | — | — | 9 | PENDING |
+| T30 | 新增 backend/Dockerfile 并接入 compose | #61 | TODO | — | — | — | — | 10 | PENDING |
+| T31 | start-services.sh 现代化 | #62 | TODO | — | — | — | — | 10 | PENDING |
+| T32 | 清理 console.log 残留 | #63 | TODO | — | — | — | — | 10 | PENDING |
+| T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | TODO | — | — | — | — | 11 | PENDING |
+| T34 | vite 构建分包 + 路由懒加载 | #65 | TODO | — | — | — | — | 11 | PENDING |
+| T35 | ECharts 真正拆包 | #66 | TODO | — | — | — | — | 11 | PENDING |
+| T36 | 清理注释死代码 | #67 | TODO | — | — | — | — | 12 | PENDING |
+| T37 | 决策票：前端 JWT 存储方式 | #68 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
+| T38 | 清除 print 调试残留 | #69 | TODO | — | — | — | — | 12 | PENDING |
+| T39 | 补 text2sql.validate_sql 单元测试 | #70 | TODO | — | — | — | — | 12 | PENDING |
+| T40 | 补 security 鉴权单元测试 | #71 | TODO | — | — | — | — | 13 | PENDING |
 
 ## 执行日志
 
@@ -82,3 +82,5 @@
 |------|--------|------|------|
 | 2026-09-13 | — | 基线整理：工作树入库、协议落盘、PRD 与 ticket 定义写入 `docs/hardening/` | 基线 commit `9342913` |
 | 2026-09-13 | — | 推送 `main` 时发现 `git status -sb` 报 `[gone]`、`origin/main` 不可解析。核实本地＝远端＝`2047a77`，对象与历史完整，确认为远程跟踪引用被清扫的良性现象。修正文档：所有审查基准改为显式 commit SHA，并新增 `LOOP-PROTOCOL.md` §9 引用可用性说明 | 文档修正 commit（见下） |
+| 2026-09-13 | — | 建立 GitHub 侧结构：16 个新标签（安全/类型/组件/process/阶段）、里程碑 `hardening-v1`、40 张 issue（`#32`–`#71`） | issue `#32`–`#71` 已创建 |
+| 2026-09-13 | — | **事故与纠正**：首次批量创建 issue 的脚本因默认 120 秒执行超时被 SIGTERM，但已实际创建 `#1`–`#31`；输出被缓冲吞掉导致误判为「未创建」，第二次运行又建了一批，产生 31 张重复 issue。已核实映射后删除重复集 `#1`–`#31`，保留完整集 `#32`–`#71` | 现存 40 张，编号连续 |
