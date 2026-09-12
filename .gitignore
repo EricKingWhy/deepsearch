@@ -48,3 +48,15 @@ langfuse/
 .cache/
 *.cache
 USER_ACTION.md
+
+# AI 工具本地状态与产物（不入库）
+.workbuddy/
+.understand-anything/
+.claude/settings.local.json
+
+# 运行时日志
+.runlogs/
+
+# 运行时生成的图表产物（chart_generator 输出，不入库）
+backend/*.png
+backend/test/*.png

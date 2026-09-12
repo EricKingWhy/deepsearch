@@ -367,6 +367,36 @@ industry_information_assistant/
 
 ---
 
+## 监控与全链路追踪（LangFuse）
+
+项目集成了 LangFuse 自托管监控，支持 LLM 全链路追踪、成本分析、错误聚合。
+
+详细部署和使用见：[LangFuse 监控使用指南](docs/langfuse-monitoring.md)
+
+快速启动：
+```bash
+# 1. 启动 LangFuse 服务
+cd docker/langfuse
+cp .env.example .env
+# 编辑 .env 生成密钥（openssl rand -hex 32）
+docker compose up -d
+
+# 2. 在 backend/.env 中启用监控
+# LANGFUSE_ENABLED=true
+# LANGFUSE_BASE_URL=http://localhost:3000
+# LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx
+# LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx
+
+# 3. 安装 SDK 并配置模型价格
+cd backend
+pip install 'langfuse>=3.0.0'
+python -m app.scripts.config_langfuse_models
+```
+
+启动后访问 `http://localhost:3000` 查看 trace。
+
+---
+
 ## API 文档
 
 启动后端后访问：`http://localhost:8000/docs`
