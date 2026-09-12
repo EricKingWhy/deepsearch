@@ -10,6 +10,11 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 
 from service import DocumentService, ServiceConfig
 from service.docmind_service import process_document_with_docmind
+from core.upload_security import (
+    ensure_supported_extension,
+    read_upload_with_limit,
+    safe_filename,
+)
 from schemas.document import (
     DeleteDocumentsRequest,
     RetrieveDocumentsRequest,
@@ -34,6 +39,12 @@ SUPPORTED_FILE_TYPES = {
     '.pdf', '.docx', '.xlsx', '.xls', '.txt'
 }
 
+# 单文件大小上限（取常量即可，不必做成可配置项）
+MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+
+# 上传临时目录；落盘文件名由服务端生成，不使用客户端文件名（见 core.upload_security）
+UPLOAD_TEMP_DIR = os.getenv("DOCUMENT_UPLOAD_TEMP_DIR", "/tmp")
+
 @router.post("/upload", status_code=HTTP_200_OK, response_model=UploadDocumentResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -51,21 +62,20 @@ async def upload_document(
         JSON response with upload status and document details
     """
     try:
-        # 验证文件类型
-        file_extension = os.path.splitext(file.filename)[1].lower()
-        if file_extension not in SUPPORTED_FILE_TYPES:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type: {file_extension}. Supported types: {', '.join(sorted(SUPPORTED_FILE_TYPES))}"
-            )
-        
+        # 验证文件类型：按「剥掉目录片段后的扩展名」比对白名单
+        file_extension = ensure_supported_extension(file.filename, SUPPORTED_FILE_TYPES)
+
         # 生成唯一的文档ID
         document_id = str(uuid.uuid4())
-        
-        # 保存上传的文件到临时位置
-        temp_file_path = f"/tmp/{file.filename}"
+
+        # 保存上传的文件到临时位置。
+        # 落盘文件名由服务端生成（uuid + 规范化扩展名），**不使用 file.filename** ——
+        # 该字符串完全由客户端控制，"../../" 片段足以把文件写到 /tmp 之外（事实 F-02）。
+        # 读取时分块并限长，避免超大文件一次性读入内存。
+        os.makedirs(UPLOAD_TEMP_DIR, exist_ok=True)
+        temp_file_path = os.path.join(UPLOAD_TEMP_DIR, safe_filename(extension=file_extension))
+        content = await read_upload_with_limit(file, MAX_UPLOAD_SIZE_BYTES)
         with open(temp_file_path, "wb") as temp_file:
-            content = await file.read()
             temp_file.write(content)
         
         # 使用 DocMind 处理文档并存储到 Milvus

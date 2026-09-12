@@ -170,34 +170,44 @@ print('OK: 强值通过')
 
 ### 最小改法
 
-- 复用 `attachment_router.py:148` 已有的 UUID 命名模式，**不要**新写一套。
+- 复用 `attachment_router.py:148` 的 **uuid 命名思路**，**不要**新写一套生成逻辑。
+- **⚠️ 但不要照抄它的拼接方式**：该处是 `f"{uuid.uuid4()}_{file.filename}"`，
+  仍然把**客户端文件名**放进了路径 —— `os.path.join(UPLOAD_DIR, "uuid_../../x")` 依旧可以穿越出去。
+  本票的正确形式是 `<uuid><规范化扩展名>`，客户端文件名**一个字符都不进路径**。
 - 扩展名白名单沿用项目已支持的文档类型集合，不要发明新格式。
 - 大小上限取一个常量即可，不必做成可配置项。
+- 纯逻辑（净化 / 白名单 / 限长读取）抽到 `core/upload_security.py`，使 CI 无需基础设施即可验证。
 
 ### 验收
 
 ```bash
-# 1) 路径穿越被拒绝
-cd backend && python - <<'PY'
-import sys; sys.path.insert(0,'.')
-from app.router import document_router as dr
-# 调用该路由用于生成落盘路径的函数（按实际函数名替换）
-fn = getattr(dr, "safe_filename", None) or getattr(dr, "_safe_filename", None)
-assert fn is not None, "未找到文件名净化函数，需先抽出"
+# 1) 路径穿越被净化
+#    注意：`app/core/__init__.py` 会连带导入 security，自 T02 起**必须提供 JWT_SECRET_KEY** 才能导入。
+cd backend && JWT_SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(48))") python - <<'PY'
+import sys; sys.path.insert(0, 'app')
+from core.upload_security import safe_filename as fn
 for bad in ["../../etc/passwd", "..\\..\\win.ini", "a/b/c.txt"]:
     out = fn(bad)
     assert "/" not in out and "\\" not in out and ".." not in out, f"未净化: {bad} -> {out}"
 print("OK: 路径穿越被净化")
 PY
 
-# 2) 非法扩展名被拒绝（mock 上传即可，无需基础设施）
-cd backend && pytest tests -q -k document_upload
-
-# 3) 大文件被拒绝
-#    由 (2) 中的测试用例覆盖，断言超限返回 4xx
+# 2) 类型白名单 / 大小上限 / 边界（21 用例，不依赖基础设施）
+#    由 (2) 覆盖「非法扩展名被拒绝」与「大文件返回 413」两项
+cd backend && pytest tests/router/test_document_upload.py -q -k document_upload
 ```
 
 预期：打印 `OK: 路径穿越被净化`，`pytest` 全绿。
+
+> **⚠️ 实施修正（2026-09-13，已实测）**
+>
+> 1. 原验收写的 `from app.router import document_router` **实际不可执行**：该路由会连带引入
+>    milvus / ES / docmind（实测缺 `tinytag` 即失败），不满足「无基础设施即可验证」。
+>    故把纯逻辑抽到 `core/upload_security.py`（本票允许的必要重构），验收改为直接测该模块。
+> 2. 原 `sys.path.insert(0, '.')` 解析不到 `service` / `core`：项目约定是 **`backend/app` 进
+>    `sys.path`**（见 `tests/conftest.py`），已修正为 `insert(0, 'app')`。
+> 3. `pytest tests -q -k document_upload` 会被**其它无关测试模块**的收集错误中断
+>    （10 个 collection error，属 T27「测试分层」的范畴），故验收改为指定具体文件路径。
 
 ### 风险
 
