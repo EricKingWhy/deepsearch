@@ -92,15 +92,18 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres123
 POSTGRES_DB=industry_assistant
 
-# JWT 密钥（生产环境建议修改）
-JWT_SECRET_KEY=your-super-secret-key-change-in-production
+# JWT 密钥（必填，长度 ≥ 32；留空、过短或沿用示例值都会导致后端【启动失败】）
+# 生成方式: python -c "import secrets; print(secrets.token_urlsafe(48))"
+JWT_SECRET_KEY=
 ```
 
 **注意：**
 - PostgreSQL、Redis、Milvus 的配置已在 Docker Compose 中设置好
 - `.env.example` 文件中的默认值与 Docker 配置匹配
 - 如果使用 Docker，数据库相关配置**通常无需修改**
-- 生产环境务必修改 `JWT_SECRET_KEY` 为随机密钥
+- `JWT_SECRET_KEY` 为**必填项**：留空、长度不足 32 字符、或沿用历史默认值
+  `your-super-secret-key-change-in-production`，后端都会在**启动阶段**直接报错退出。
+  这是有意行为 —— 公开可知的签名密钥可被用来伪造任意 Token。
 
 ### 4. 安装后端依赖 & 启动
 
