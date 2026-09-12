@@ -4,13 +4,19 @@
 
 ## 全局状态
 
+> ⚠️ **审查基准一律使用显式 commit SHA，禁止写 `main` / `origin/main`。**
+> 本机 `refs/remotes/**` 会被环境清扫（`git status -sb` 显示 `[gone]`），`origin/main` 不可解析。
+> 远端真相：`git ls-remote origin refs/heads/main`。详见 `LOOP-PROTOCOL.md` §9。
+
 | 字段 | 值 |
 |------|-----|
-| 基线 commit（第一批审查的 fixed point） | `9342913` |
+| 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
+| PRD / ticket 落盘 commit | `2047a77` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端） | `2047a7728c3679908f4907faa30433442b3767a0` |
 | 当前批次 | 1 |
-| 上一批审查结束 commit（当前 fixed point） | `9342913` |
+| 当前 fixed point（上一批审查结束 commit） | `9342913` |
 | 当前分支前缀 | `ticket/T<编号>-` |
-| 合并目标 | `main`（merge commit，不用 squash） |
+| 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 40 |
 | 已完成 | 0 |
 | 决策票待裁决 | T18、T19、T20、T37 |
@@ -75,3 +81,4 @@
 | 时间 | ticket | 动作 | 结果 |
 |------|--------|------|------|
 | 2026-09-13 | — | 基线整理：工作树入库、协议落盘、PRD 与 ticket 定义写入 `docs/hardening/` | 基线 commit `9342913` |
+| 2026-09-13 | — | 推送 `main` 时发现 `git status -sb` 报 `[gone]`、`origin/main` 不可解析。核实本地＝远端＝`2047a77`，对象与历史完整，确认为远程跟踪引用被清扫的良性现象。修正文档：所有审查基准改为显式 commit SHA，并新增 `LOOP-PROTOCOL.md` §9 引用可用性说明 | 文档修正 commit（见下） |

@@ -70,7 +70,7 @@
 
 1. `docs/hardening/tickets.md` 中**所有非 `needs-decision` ticket** 状态为 `DONE`，且每张都有可复现的验收命令与 `PASS` 记录；
 2. `needs-decision` ticket 要么被用户批准执行并 `DONE`，要么被用户明确驳回并记为 `CANCELLED`（**不允许留在未裁决状态**）；
-3. 批量审查（每 3 张一次）与最终全量审查（fixed point = `main`）的**所有 findings 已消除**，TRACKER 中的批次审查状态全部推进到修复 commit；
+3. 批量审查（每 3 张一次）与最终全量审查（**fixed point 为显式 commit SHA，不是 `origin/main`**）的**所有 findings 已消除**，TRACKER 中的批次审查状态全部推进到修复 commit；
 4. 仓库中**不存在新增的硬编码密钥**：`git grep -nE "sk-[A-Za-z0-9]{20,}"` 的命中数不高于基线；
 5. CI 在 `main` 上为**绿色**；
 6. 未触碰 NG-2 / NG-3 所列的既有实现（用 `git log --diff-filter=D --stat` 自查无删除记录）。
@@ -168,10 +168,12 @@
 
 1. 每张 ticket 开工前**强制重读**协议文件，禁止凭记忆推断流程；
 2. `/implement` 完成 ticket，**跳过其自带的 `/code-review`**，测试全绿后自行 commit 并登记 TRACKER；
-3. 每完成 3 张 ticket（批大小可在 2–4 浮动）对累计 diff 做一次批量审查，fixed point = 上一批审查结束时的 commit；
-4. 全部完成后对整条分支做最终全量审查，fixed point = `main`；
+3. 每完成 3 张 ticket（批大小可在 2–4 浮动）对累计 diff 做一次批量审查，fixed point = 上一批审查结束时的 commit SHA；
+4. 全部完成后对整条分支做最终全量审查，fixed point = 基线 commit `9342913`（即本计划开始前的 `main` tip）；
 5. 每张 ticket 一条分支 `ticket/T<编号>-<描述>` → 开 PR → merge commit 合并（**不用 squash**）；
 6. 全程自动，**仅**在「规格实质冲突」或「架构分叉」时停下征求用户裁决。
+
+> ⚠️ **不要用 `main` / `origin/main` 作为审查基准。** 本机的 `refs/remotes/**` 会被环境清扫，`origin/main` 不可解析，`git diff origin/main` 会硬失败。统一使用显式 commit SHA，远端真相用 `git ls-remote origin refs/heads/main` 获取。详见 `LOOP-PROTOCOL.md` §9。
 
 ---
 

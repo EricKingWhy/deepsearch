@@ -74,7 +74,8 @@ ticket 6 ─┘
 1. 每完成 **3 个 ticket**，对这批 ticket 的**累计 diff** 跑一次 `/code-review`。
    - 批大小由执行者按 ticket 体量决定，可在 **2–4** 之间浮动；
    - 遇到依赖链断点等自然分界可提前收批，但一批不得超过 4 张；
-   - **fixed point = 上一批审查结束时的 commit**（第一批的 fixed point = 基线 commit）。
+   - **fixed point = 上一批审查结束时的 commit SHA**（第一批的 fixed point = 基线 commit `9342913`）。
+   - **必须记录具体的 commit SHA，不要写成 `main` / `origin/main`** —— 见 §9 引用可用性说明。
 2. findings 分级处理：
    - **一眼能定位的** → 直接最小修复 + 跑测试，**不停顿、不询问**；
    - **真正疑难的**（无法稳定复现 / 间歇性 / 回归） → 才用 `/diagnosing-bugs` 先定位根因再修。
@@ -86,9 +87,12 @@ ticket 6 ─┘
 
 ## 4. 总门禁（全部 ticket 完成后）
 
-1. 对整条分支跑一次**最终全量 `/code-review`**，**fixed point = `main`**。
+1. 对整条分支跑一次**最终全量 `/code-review`**，**fixed point = 基线 commit `9342913`**
+   （即本计划开始前的 `main` tip）。**不要写成 `main` 或 `origin/main`** —— 用 §9 的
+   `git ls-remote origin refs/heads/main` 取当前 `main` 的真实 SHA 后填入。
 2. findings 全部按第 3 节第 2、3 条的方式修复并验证后，任务才算结束。
 3. 结束前确认 TRACKER 中不存在 `BLOCKED`（除用户明确驳回的决策票）或未验证项。
+
 
 ---
 
@@ -149,4 +153,41 @@ ticket 的完整定义在 `docs/hardening/tickets.md`，按 `## T<编号>` 分�
 
 **允许的动作**：加注释 / 文档标注 / 抽离被外部引用的公共函数。
 **禁止的动作**：删除实现、把依赖从 `requirements.txt` 移除、标注 `@deprecated` 后清理。
+
+---
+
+## 9. 引用可用性（本机已知现象，务必先读）
+
+在本机工作区，**远程跟踪引用 `refs/remotes/**` 与子目录形式的 `refs/heads/<dir>/**` 会被环境清扫**，`refs/heads/main` 这类直接文件则正常保留。
+
+**症状**（看起来像仓库损坏，实际是良性）：
+
+```bash
+git status -sb          # ## main...origin/main [gone]
+git rev-parse origin/main   # fatal: ambiguous argument 'origin/main': unknown revision
+git log origin/main..HEAD   # fatal
+git show-ref                # 无输出
+```
+
+**事实**：本地分支、对象库、远端三者都完好，**没有任何数据丢失**。已核实：
+本地 `main` = 远端 `main` = `2047a7728c3679908f4907faa30433442b3767a0`，`git cat-file -t` 对两个 commit 均返回 `commit`。
+
+### 强制规则
+
+1. **不要试图修它**：不要 `git update-ref refs/remotes/...`、不要手写 `packed-refs`、不要 `git pack-refs` —— 下一次进程启动会再次清扫。
+2. **文档、ticket、TRACKER、PR 描述里一律写具体 commit SHA**，**禁止**写 `main` / `origin/main` 作为比较基准。`main` 仅可作为分支名用于 `git push` / `git checkout` 等引用**本地**分支的场合。
+3. 需要远端真相时用：`git ls-remote origin refs/heads/main`（不经过本地引用层，直接问远端）。
+4. 比较/审查用**显式 SHA**：
+   ```bash
+   git diff <base-sha>..HEAD
+   git log <base-sha>..HEAD --oneline
+   git merge-base <base-sha> HEAD
+   ```
+   **不要**用 `origin/main..HEAD` 这类范围。
+
+### 交付前的强制自查
+
+任何 ticket 收尾前，**干跑一遍本文档与 ticket 里写给人或 AI 执行的 git 命令**，确认在本机可执行。
+凡是用了 `<remote>/<branch>` 形式的，一律替换为显式 SHA 后再交付。
+
 
