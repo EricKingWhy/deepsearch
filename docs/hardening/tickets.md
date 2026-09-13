@@ -868,6 +868,11 @@ git log -1 --diff-filter=D --name-only -- backend/app/service/dr_g.py backend/ap
 
 - 同 T13：不要顺手删。
 
+### 实施修正（2026-09-13，T14 缺陷记录）
+
+- **PR #96 引入了语法错误**：docstring 保留说明被插到了 `"""` 之前（模块级裸文本），三个 V1 模块全部无法导入。根因有二：① 替换锚点选在 `"""` 之前而非 docstring 内部；② **提交前未执行 `py_compile`**（本类型「纯注释」票同样必须编译验证）。已在 T15 分支修复（保留说明移入 docstring 内部），并对全部五个涉及文件补跑 `py_compile` 通过。
+- **教训落盘**：无论改动多「纯文档」，commit 前一律 `py_compile` 或跑受影响测试；字符串锚点替换后必须查看结果上下文。
+
 ---
 
 ## T15 — 抽离 serialize_event，解除 research_router 对 dr_g 的隐式依赖
@@ -912,6 +917,13 @@ cd backend && pytest tests -q
 
 - 若存在 `service/__init__.py` 的再导出，需一并更新（`service/__init__.py:10` 导出了 `ResearchService`，检查是否也导出 `serialize_event`）。
 - 这是本阶段唯一动到可执行代码的票 —— 务必跑全量 `pytest`。
+
+### 实施修正（2026-09-13，T15 实测后）
+
+1. **新位置取 `core/serialization.py`**：`core/` 已有纯工具模块惯例（`cors.py`、`upload_security.py`），本函数无任何重依赖，符合该目录定位。
+2. **`dr_g.py` 不设转发函数**，改为模块级 `from core.serialization import serialize_event` 同名导入 —— 效果等同转发（`dr_g.serialize_event` 属性仍可用），且 `tests/router/test_research_outline_approval.py:29` 的 `dr_g.serialize_event = ...` monkeypatch 依然生效（dr_g 内部调用走模块全局名查找）。
+3. **验收 #3 的预期「无输出」不成立**：`app/service/__init__.py:10` 的 `from .dr_g import ResearchService` 是 service 包的正常顶层导出（与 serialize_event 无关，票面风险条自己也提到该导出），grep 会命中它。实际判定口径：**除该既有顶层导出外无任何新增遗留**。
+4. 同分支附带了 T14 缺陷的修复（三模块 docstring 错位），见 T14「实施修正」。
 
 ---
 

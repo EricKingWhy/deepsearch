@@ -1,13 +1,13 @@
 # Copyright © 2026 深圳市深维智见教育科技有限公司 版权所有
 # 未经授权，禁止转售或仿制。
 
+"""
 ⚠️ 有意保留（PRD NG-3）：本模块属于 **V1 ReAct 研究路线**（与 deep_research_v2/ 的 V2 多智能体
 路线并行保留的备选实现），由 `POST /research/stream` 显式传 `version=v1` 时触发。
 当前默认走 V2，因此本模块在日常主路径下不可达 —— **但它不是死代码、不得删除**。
 允许的动作：加注释 / 修复缺陷（如 T11 的裸 except）；禁止：删除实现、从 requirements.txt
 移除依赖、标注 @deprecated 后清理。
 
-"""
 DeepResearch Service - 深度研究服务 (ReAct 版本)
 
 基于 ReAct (Reasoning + Acting) 架构的智能研究系统，具备：
@@ -29,6 +29,10 @@ import hashlib
 from typing import Dict, Any, AsyncGenerator, List, Optional, Tuple
 from urllib.parse import urlparse
 from collections import Counter
+
+# serialize_event 已抽离到中立的公共位置（T15）；此处以同名导入保留
+# `dr_g.serialize_event` 可用性（tests/router/test_research_outline_approval.py 依赖该模块属性做替换）。
+from core.serialization import serialize_event
 import logging
 
 # --- Configuration ---
@@ -118,21 +122,6 @@ def is_content_duplicate(new_content: str, existing_contents: List[str], thresho
             return True
     return False
 
-
-def serialize_event(event_data: Dict[str, Any]) -> str:
-    """将事件数据序列化为JSON字符串"""
-    def json_serializer(obj):
-        if isinstance(obj, set):
-            return list(obj)
-        if isinstance(obj, Exception):
-            return str(obj)
-        raise TypeError(f"Type {type(obj)} not serializable")
-
-    try:
-        return json.dumps(event_data, default=json_serializer, ensure_ascii=False)
-    except Exception as e:
-        logging.error(f"Failed to serialize event: {e}")
-        return json.dumps({"type": "error", "content": f"Serialization error: {e}"})
 
 
 # --- ResearchService Class ---

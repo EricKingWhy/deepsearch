@@ -15,7 +15,7 @@ from starlette.status import (
 import logging
 
 from service import ResearchService, ServiceConfig
-from service.dr_g import serialize_event  # 导入序列化函数
+from core.serialization import serialize_event  # 中立公共位置（T15）：不再反向依赖 V1 备选路线模块 dr_g
 from core.redis_client import cache  # 导入 Redis 缓存
 from models.user import User
 from router.auth_router import get_current_user_required
