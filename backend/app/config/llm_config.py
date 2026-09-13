@@ -203,11 +203,13 @@ def print_config():
     """打印当前配置（用于调试）"""
     import json
     config = get_config()
-    logger.info("=" * 60)
-    logger.info("LLM Configuration")
-    logger.info("=" * 60)
-    logger.info(json.dumps(config.to_dict(), indent=2, ensure_ascii=False))
-    logger.info("=" * 60)
+    # 本函数是 __main__ 自检入口（python app/config/llm_config.py）：此处必须用 print，
+    # 因为独立运行未经 observability.configure_logging()，root logger 有效级别为 WARNING，info 会被丢弃（T38 审查发现）
+    print("=" * 60)
+    print("LLM Configuration")
+    print("=" * 60)
+    print(json.dumps(config.to_dict(), indent=2, ensure_ascii=False))
+    print("=" * 60)
 
 
 if __name__ == "__main__":

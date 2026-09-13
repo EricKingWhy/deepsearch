@@ -20,15 +20,6 @@ export default function Drawer(
         <div className={styles['drawer__title']}>
           <span>{title}</span>
         </div>
-        {/* <Button
-          className={styles['drawer__close']}
-          type="text"
-          shape="circle"
-          color="default"
-          size="small"
-        >
-          <CloseOutlined />
-        </Button> */}
       </div>
 
       <div className={classNames(styles['drawer__content'], 'scrollbar-style')}>

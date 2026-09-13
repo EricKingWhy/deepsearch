@@ -68,7 +68,7 @@ def retrieve_content(
         return extracted_data
 
     except Exception as e:
-        logger.info(f"检索错误: {str(e)}")
+        logger.warning(f"检索错误: {str(e)}")
         import traceback
         traceback.print_exc()
         return []
