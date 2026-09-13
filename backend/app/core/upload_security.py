@@ -77,10 +77,14 @@ def ensure_supported_extension(filename: Optional[str], allowed: Iterable[str]) 
 
 
 async def read_upload_with_limit(upload, max_bytes: int) -> bytes:
-    """分块读取上传内容；累计超过 ``max_bytes`` 立即抛 413。
+    """按块累计读取上传内容；累计超过 ``max_bytes`` 立即抛 413。
 
-    之所以不写成 ``content = await upload.read()`` 再比长度：那样会把整个文件先读进
-    内存，大小校验发生在内存已被占满之后，**挡不住超大文件打爆内存**。
+    之所以不写成 ``content = await upload.read()`` 再比长度：那样大小校验发生在读完之后，
+    内存已被占满，**拦不住超大文件**。本函数在超过上限的**那一刻**就失败，
+    因此峰值内存被 ``max_bytes`` 限住。
+
+    注意：返回值仍是完整字节串，**峰值内存 ≈ 文件大小**（上限内），
+    调用方无法避免整体驻留；要真正做到 O(1) 内存需改成边读边写盘。
     """
     chunks = []
     total = 0

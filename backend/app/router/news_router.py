@@ -18,7 +18,7 @@ from config.industry_config import get_all_industries, get_industry_config
 
 logger = logging.getLogger(__name__)
 
-# 全文件无匿名端点：9 个接口中既有资讯读取（/list、/bidding/list、/stats、/industries），
+# 全文件无匿名端点：8 个接口中既有资讯读取（/list、/bidding/list、/stats、/industries），
 # 也有触发采集（/collect）与运维诊断（/scheduler/status、/check）。前端只在登录后的
 # /news、/bidding 页调用它们（未登录会被 AuthGuard 拦到 /login），故一律要求认证。
 # 在 router 级挂一次依赖，避免逐端点重复（新增端点也自动受保护）。
