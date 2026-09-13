@@ -106,6 +106,23 @@ ticket 6 ─┘
 - 合并方式用 merge commit，**不要 squash** —— 保留 commit 粒度是本项目的明确目标。
 - commit message 使用中文正文 + 英文类型前缀，例如：
   `fix(scout): 本地检索按 kb 集合名检索，修复 DeepResearch 搜不到用户文档`
+- **PR 正文必须以「关闭关键字」独立一行开头，让 issue 自动收单**：
+
+  ```
+  Closes #<issue 编号>
+  ```
+
+  规则（§4 总门禁实测补记，见 TRACKER）：
+  - 关键字必须是 `close` / `closes` / `closed` / `fix` / `fixes` / `fixed` / `resolve` /
+    `resolves` / `resolved` **+ `#编号`**，且与编号写在同一行；
+  - **必须放在 HTML 注释之外**，并且**不要**把编号塞进标题或普通句子
+    （`## 改动（ticket T08，issue #39）` 这种写法 GitHub **不会**收单）；
+  - 只有合并到**默认分支**时才触发自动关闭；
+  - **合并后要核验**：`gh issue view <编号> --json state` 应为 `CLOSED`。若仍为 `OPEN`，
+    说明关键字没生效，需人工 `gh issue close <编号>` 并回头检查 PR 正文。
+  - 历史教训：T08–T40 有 **32 个** issue 因正文只写「对应 issue：#N」（或写进标题）而
+    **一直保持 OPEN**，而台账却逐条记成「issue #N 自动关闭」——**未核验的副作用声明**。
+    已在 §4 总门禁统一补关，并把该缺口记入 findings。
 
 ---
 
