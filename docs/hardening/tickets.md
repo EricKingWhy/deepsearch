@@ -318,6 +318,29 @@ cd backend && grep -n "Depends(get_current_user" app/router/chat_router.py app/r
 
 预期：计数均 ≥ 1；测试全绿；grep 有命中。
 
+> **⚠️ 实施修正（2026-09-13，已实测）**
+>
+> 1. **端点清单与实测**：三个路由共 **13 个端点**（chat 4 + search 1 + news 8），
+>    全部未带 Token 时返回 `401 {"detail":"无法验证凭据"}`，即依赖解析先于 body 校验，
+>    空 body 也会先被鉴权拦下。
+> 2. **匿名端点判定：一个都没有，三个路由全部挂 router 级。** 判定依据是**实测前端无匿名调用方**：
+>    - `frontend/src/router/routes.tsx` 把 `/login`、`/404` 之外的所有页面都包在 `AuthGuard` 里，
+>      未登录即 `Navigate to="/login"`（`components/auth-guard/index.tsx`）；`/news`、`/bidding`、
+>      `/chat` 均在受保护子树内。
+>    - `/search/web` 在 `frontend/src` 中**命中 0 处**（也没有 `api/search.ts`）。
+>    - 登录页只调用 `api.auth.login` / `api.auth.register`，不会在登录前触碰这三个路由。
+>    - 仓库内无脚本 / 定时任务调用这三个路由（唯一命中是 `backend/README.md` 的两条 curl 示例）。
+>    → 因此**不存在「公开落地页依赖匿名检索」的场景**，不构成风险条所述的架构分叉，无需停下问用户。
+> 3. **`news_router` 端点数是 8 不是 9**（`/list`、`/bidding/list`、`/stats`、`/collect`、
+>    `/scheduler/status`、`/check`、`/industries`、`/industries/{industry_id}`）。
+>    其中 `/collect` 是**触发采集的写操作**、`/scheduler/status` 与 `/check` 是运维诊断，
+>    本就最该鉴权，因此没有理由为「公开新闻列表」保留匿名。
+> 4. **`backend/README.md` 的两条 curl 示例**（`/chat/session`、`/chat/completion`）已补
+>    `Authorization: Bearer <你的Token>` 头，避免文档里的命令在改动后失效。
+> 5. **conftest 扩展**：T05 的测试需要导入这三个路由，而它们还用到 `WebSearchService`、
+>    `ChatService`、`SessionService` 这三个 `service` 顶层名字；已把 T04 的「按需挂顶层名字」
+>    做法改为显式的 `_SERVICE_PUBLIC_NAMES` 映射，仍不执行重型 `service/__init__.py`。
+
 ### 风险
 
 - 搜索接口若被前端公开落地页调用，加鉴权会影响未登录用户 —— 若存在该场景，**保留匿名并写明理由**，不要为了「统一」而破坏产品行为（属架构分叉，需停下来问用户）。

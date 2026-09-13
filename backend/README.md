@@ -51,15 +51,18 @@ curl -X POST "http://localhost:8000/documents/upload"   -H "Authorization: Beare
 ```
 
 ### 创建会话
+> `/chat/*` 自 T05 起要求认证（router 级 `get_current_user_required`），请先从 `/auth/login` 取 Token 并带上 `Authorization` 头。
 ```sh
-curl -s -X POST http://localhost:8000/chat/session
+curl -s -X POST http://localhost:8000/chat/session -H "Authorization: Bearer <你的Token>"
 
 {"session_id":"02c32f19-b7f0-42ea-b3c1-7d2bc148c21b","created_at":1751194296,"updated_at":1751194296,"message_count":0}
 ```
 
 ### 问答
+> 同上，该端点自 T05 起要求认证。
 ```sh
 curl -N -X POST http://localhost:8000/chat/completion \
+  -H "Authorization: Bearer <你的Token>" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d "{
