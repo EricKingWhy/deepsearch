@@ -1,10 +1,15 @@
-"""回归测试：document / chat / search / news 四个路由的所有端点都必须要求认证。
+"""回归测试：document / chat / search / news / attachment 五个路由的所有端点都必须要求认证。
 
 背景：事实 F-03 —— `document_router.py` 与 `chat_router.py` / `search_router.py` /
 `news_router.py` 原先都**没有任何鉴权依赖**，未登录即可上传与检索文档、创建会话、
 发起补全、消耗第三方搜索配额，甚至触发资讯采集。T04 修了前者，T05 修了后三者。
 
-本文件是这四个路由的**唯一**鉴权回归测试（T04 原有的 `test_document_auth.py` 已在
+`attachment_router.py` 由**第 13 批之后的 §4 总门禁（全量终审）**补入：它是全仓最后一个
+仍在用 `get_current_user`（**可选**认证）的路由 —— 未登录即可读取任意会话的附件清单、
+按 ID 取附件详情、乃至删除任意附件及其落盘文件。此前本文件的 `ROUTER_MODULES` 是硬编码
+清单，附件路由因此**结构性不可见**；现在它被纳入清单，同类漏网会被端点数量护栏挡住。
+
+本文件是这五个路由的**唯一**鉴权回归测试（T04 原有的 `test_document_auth.py` 已在
 第 2 批审查中并入此处，避免同一套断言维护两份）。
 
 「是否需要保留匿名端点」的判定依据（已实测，见 `tickets.md` T05）：
@@ -12,7 +17,7 @@
 所有页面（含 `/404`）都在 `AuthGuard` 子树内，未登录即重定向到 `/login`；
 `/search/web` 在 `frontend/src` 中命中 0 处。因此不存在「公开落地页依赖匿名检索」的场景。
 
-验收优先取**真实请求**：对 17 个端点各发一次不带 Token 的请求，断言一律 401，
+验收优先取**真实请求**：对 21 个端点各发一次不带 Token 的请求，断言一律 401，
 且 detail 为鉴权依赖的固定文案 —— 以确保 401 来自鉴权，而不是恰好某个环节也返回 401。
 """
 
@@ -26,7 +31,13 @@ from fastapi.testclient import TestClient
 
 from router.auth_router import get_current_user_required
 
-ROUTER_MODULES = ("document_router", "chat_router", "search_router", "news_router")
+ROUTER_MODULES = (
+    "document_router",
+    "chat_router",
+    "search_router",
+    "news_router",
+    "attachment_router",
+)
 
 # 端点数量护栏：新增端点时本断言失败，提醒确认新端点是否也应鉴权。
 EXPECTED_ENDPOINT_COUNTS = {
@@ -34,6 +45,7 @@ EXPECTED_ENDPOINT_COUNTS = {
     "chat_router": 4,
     "search_router": 1,
     "news_router": 8,
+    "attachment_router": 4,
 }
 
 # 鉴权依赖抛出的固定文案（`router/auth_router.py` 的 credentials_exception）。
@@ -145,7 +157,11 @@ def test_endpoint_count_is_expected(module_name: str, expected: int) -> None:
     )
 
 
-def test_all_four_routers_are_covered() -> None:
-    """四个路由一个都不能漏 —— 本文件的参数表就是「已鉴权路由」的清单。"""
+def test_every_covered_router_is_listed() -> None:
+    """清单与护栏必须一一对应 —— 本文件的参数表就是「已鉴权路由」的清单。
+
+    新增路由时**两个结构都要改**；只改一个会在这里失败，从而强制复核
+    「这条路由的端点是否也应鉴权」——`attachment_router` 正是这样被漏掉过一次。
+    """
     assert set(ROUTER_MODULES) == set(EXPECTED_ENDPOINT_COUNTS)
     assert isinstance(_MODULES["document_router"], types.ModuleType)

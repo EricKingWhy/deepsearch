@@ -3,7 +3,6 @@
 
 """聊天附件路由"""
 import os
-from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.orm import Session
@@ -18,10 +17,18 @@ from core.upload_security import (
 )
 from models.chat import ChatAttachment, ChatSession
 from models.user import User
-from router.auth_router import get_current_user
+from router.auth_router import get_current_user_required
 from schemas.chat import AttachmentResponse, AttachmentListResponse
 
-router = APIRouter(prefix="/attachments", tags=["聊天附件"])
+# 全文件无匿名端点：上传 / 详情 / 列表 / 删除都作用在会话数据上，一律要求认证。
+# 与 `document_router.py`（T04）保持同一写法：依赖挂在 router 级，新增端点自动受保护。
+# 背景：本文件原先是全仓**唯一**仍用 `get_current_user`（可选认证）的路由 —— 未登录即可
+# 读取任意会话的附件清单、按 ID 取附件详情、乃至删除任意附件及其落盘文件（终审 §4 发现）。
+router = APIRouter(
+    prefix="/attachments",
+    tags=["聊天附件"],
+    dependencies=[Depends(get_current_user_required)],
+)
 
 # 文件上传目录
 UPLOAD_DIR = "/tmp/chat_attachments"
@@ -119,7 +126,7 @@ async def upload_attachment(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session_id: str = Form(...),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_required),
     db: Session = Depends(get_db),
 ):
     """上传聊天附件"""
@@ -170,7 +177,7 @@ async def upload_attachment(
     # 创建附件记录
     att = ChatAttachment(
         session_id=session_uuid,
-        user_id=current_user.id if current_user else None,
+        user_id=current_user.id,
         filename=file.filename,
         file_type=ext[1:] if ext else "unknown",
         file_size=file_size,
@@ -196,7 +203,6 @@ async def upload_attachment(
 @router.get("/{attachment_id}", response_model=AttachmentResponse)
 async def get_attachment(
     attachment_id: str,
-    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """获取附件详情"""
@@ -221,7 +227,6 @@ async def get_attachment(
 @router.get("/session/{session_id}", response_model=AttachmentListResponse)
 async def get_session_attachments(
     session_id: str,
-    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """获取会话的所有附件"""
@@ -254,7 +259,6 @@ async def get_session_attachments(
 @router.delete("/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attachment(
     attachment_id: str,
-    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """删除附件"""
