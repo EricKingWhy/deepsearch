@@ -13,13 +13,13 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T19 + T41 合并） | `8c0aa12125aee7eb4abdec9c626d8d53027e8e37` |
-| 当前批次 | 6（T17–T19，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `d345685`（第 5 批审查修复 commit） |
+| 当前批次 | 7（T21–T23；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| 当前 fixed point（上一批审查结束 commit） | 本记录 commit（第 6 批审查修复，SHA 于下文回填） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
 | 已完成 | 19 |
-| 决策票待裁决 | T18、T19、T20、T37 |
+| 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
 
 ## 批次审查记录
 
@@ -30,7 +30,7 @@
 | 3 | T07–T09 | `57f69e0` | `fbe55f8` | 6 | `6b73d44` | FIXED |
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
-| 6 | T17–T19 | `d345685` | `8c0aa12` | `（待审查）` | — | — |
+| 6 | T17–T19 | `d345685` | `3e18063` | 4 | `（本记录 commit，SHA 于下文回填）` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -145,7 +145,22 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
   知识图谱宣称收窄且 `knowledge-graph.tsx` 存在；守 NG-1 收窄方向。
 - 另：dr_g.py 中 serialize_event 原定义被删**不构成 NG-3 违规**——系 T15 整体搬迁且同名重导入，V1 能力保留。
 
-## ticket 明细## ticket 明细## ticket 明细
+### 第 6 批审查 findings 明细（`d345685` → `3e18063`，修复 = 本记录 commit）
+
+双轴并行审查：**标准轴 1 硬伤 + 2 judgement call；规格轴三票全部「无发现」**。去重后 **4 条**：3 修 1 保留。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 | `architecture.md` 称「集合名转换只有一处实现」不实——`retrieval_service.py:91`、`knowledge_router.py:97/:466` 共 3 处 | **已修**（改为如实描述：权威实现 + 两处存量重复标注为硬化候选项） |
+| 2 | 标准 | `architecture.md` 把「消费 asyncio.Queue 并 yield SSE」归给 `run()`，实为 `_run_simplified`（`run()` 仅委托转发） | **已修**（归属改正） |
+| 3 | 标准 | TRACKER「决策票待裁决」行仍列 T18/T19，与已裁决记录自相矛盾 | **已修**（改为 T20、T37） |
+| 4 | 标准 | `kb_{name}.lower().replace(" ", "_")` 3 处重复（Duplicated Code，存量问题被 T17 文档背书） | **保留判定**：存量、非本 diff 引入；finding #1 修复时已在文档如实标注；如需收拢应单开硬化票 |
+
+**规格轴的关键复核（独立复验通过）**：T17 五小节齐全、单文件、NG 映射与 prd.md 一致、决策记录未混入；
+T18 langfuse 仅剩一行更严约束、langgraph/alembic 未删、47 条解析口径如实记录；
+T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log 逐项吻合。
+
+## ticket 明细## ticket 明细## ticket 明细## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
@@ -167,9 +182,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | FIXED@d345685 |
 | T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | FIXED@d345685 |
 | T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | FIXED@d345685 |
-| T17 | 新增架构总览文档 | #48 | DONE | `T17-architecture-doc` | `b309036` | #101 | PASS（5 个小节；「有意保留」2 处命中 NG-2/NG-3；目录导航与实际一致；仅 docs/ 变更） | 6 | PENDING |
-| T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | PENDING |
-| T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | PENDING |
+| T17 | 新增架构总览文档 | #48 | DONE | `T17-architecture-doc` | `b309036` | #101 | PASS（5 个小节；「有意保留」2 处命中 NG-2/NG-3；目录导航与实际一致；仅 docs/ 变更） | 6 | FIXED@（本记录，SHA 待回填） |
+| T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | FIXED@（本记录，SHA 待回填） |
+| T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | FIXED@（本记录，SHA 待回填） |
 | T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
 | T21 | 新增 LICENSE | #52 | TODO | — | — | — | — | 7 | PENDING |
 | T22 | 新增 CONTRIBUTING.md | #53 | TODO | — | — | — | — | 7 | PENDING |
@@ -279,3 +294,5 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T17 | 实施 + 合并：新增 `docs/architecture.md`（单文件五小节：两条研究路线 / V2 内部流程含 NG-2 标注 / RAG 数据流指向 RAG架构分析.md / 基础设施依赖矩阵如实标注 ES 未使用、MinIO 仅 Milvus 内部依赖 / 目录导航）；NG-2/NG-3 回链 prd.md | commit `b309036`，PR #101 已 merge（`348da0c`），issue #48 自动关闭 |
 | 2026-09-13 | T18 | 实施 + 合并：删除前段重复 `langfuse>=4.0.0`（保留后段 `>=4.0.0,<5.0.0`）；Observability/AI-LLM 分区补说明（langgraph 标注 NG-2）。**决策：用户裁决选 A**（不引入版本锁文件）。验收 #3 替代口径：venv 无 pip，改 `packaging` 逐行解析 47 条声明全部通过 | commit `68d00b2`，PR #102 已 merge（`3ab40b6`），issue #49 自动关闭 |
 | 2026-09-13 | T19 | 实施 + 合并：**决策：用户裁决选 C**——保留 alembic 依赖，行上注释「预留未使用——迁移实为 backend/migrations/ 手写 SQL（见 READMED 数据库建表）」；未删依赖、未引入 alembic 编排 | commit `f98a81d`，PR #103 已 merge（`8c0aa12`），issue #50 自动关闭 |
+| 2026-09-13 | — | **第 6 批 `code-review`（双轴并行，fixed point `d345685`，终点 `3e18063`）**：标准轴 1 硬伤（architecture.md 集合名「唯一实现」说法不实）+ 2 judgement call；规格轴三票全部「无发现」。去重 **4 条**（3 修 1 保留）。批次末全量 `pytest tests -m "not integration"` → **248 passed / 5 deselected**（393.18s） | 明细见「第 6 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 6 批 findings 修复**：architecture.md 两处（集合名转换如实描述、SSE 产出归属改 `_run_simplified`）；TRACKER 决策票行改 T20/T37。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 7 批 T21–T23）起算 |

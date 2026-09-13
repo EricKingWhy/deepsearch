@@ -20,7 +20,7 @@ Plan（`ChiefArchitect`）→ Research（`DeepScout`）→ Analyze（`DataAnalys
 
 **数据通路**：`research_router` → `service.py` → `graph.py:run()`。实际执行的是
 **手写异步状态机 `_run_simplified`**（支持实时 SSE 流式）；agent 产出的消息写入
-`asyncio.Queue`，`run()` 逐条取出并 yield 为 SSE 事件。
+`asyncio.Queue`，由 `_run_simplified` 逐条取出并 yield 为 SSE 事件（`run()` 仅委托转发）。
 
 ⚠️ `graph.py` 内还有一条 **LangGraph 执行路径**（`_build_langgraph` + 6 个 `_*_node` +
 `_run_with_langgraph`），当前无调用点，属**有意保留（NG-2）**——未来要在两条运行时之间做选择。
@@ -34,7 +34,8 @@ Plan（`ChiefArchitect`）→ Research（`DeepScout`）→ Analyze（`DataAnalys
 检索：research/scout → service/retrieval_service.py → Milvus 相似度检索 → 注入 prompt
 ```
 
-集合名转换只有一处实现（`retrieval_service`）；详情（分块策略、embedding、检索参数）
+集合名转换的**权威实现在 `retrieval_service`**；注意 `knowledge_router.py` 尚有两处直接
+构造集合名的存量重复（硬化候选项）。详情（分块策略、embedding、检索参数）
 见 `docs/RAG架构分析.md`，本文件不复制其内容。
 
 ## 4. 基础设施依赖矩阵
