@@ -112,6 +112,10 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+      # Milvus standalone 启动期（内部 etcd/minio 依赖 + 组件自检）常需 1–2 分钟，
+      # 期间 /healthz 返回 500 或超时。没有 start_period 会在 ~90s 内耗光 3 次重试被判 unhealthy，
+      # 进而使 backend 的 depends_on: service_healthy 直接失败（T30 验收 3 实跑暴露）
+      start_period: 120s
     networks:
       - industry_network
 

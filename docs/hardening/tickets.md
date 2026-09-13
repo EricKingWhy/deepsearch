@@ -1528,6 +1528,7 @@ docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env && echo "OK: �
 - 验收 1/2 PASS（`docker compose config --quiet` 合法）；验收 3/4（真实构建+启动+容器内 .env 检查）因 **Docker daemon 未运行** 按 R-05 记 BLOCKED，Docker 可用后补跑。
 - 补充发现：`backend/app/Dockerfile`（旧式单阶段、构建上下文为 app/）为遗留文件，本票未动——如确认废弃可在后续票清理。
 - **路径澄清（批次 10 审查补充）**：票面验收 1 写「仓库根目录存在 `.dockerignore`」，实际实现为 `backend/.dockerignore`——这是**正确做法**：构建上下文为 `backend/`，根目录的 .dockerignore 对 `docker build ... backend` 不生效。验收 1 按实际路径解释为 PASS。
+- **验收 3/4 补跑（2026-09-13，Docker 已开）**：验收 4 **PASS**（`docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env'` → OK，镜像仅含 app 代码/migrations）。验收 3 **部分 PASS**：`docker build` 成功（4m32s，多阶段 builder→runtime 正常）；`docker compose up -d backend` 失败，暴露两处真实缺陷——① 仓库根 `.env` 缺失时 `MINIO_ROOT_USER/PASSWORD` 展开为空，Milvus 读写 MinIO 报 `Access Denied` 后退出（已在 `.env.example` 有提示，本机补建 `.env` 后需重跑确认）；② **Milvus healthcheck 缺 `start_period`**：启动期 1–2 分钟内 `/healthz` 返回 500/超时，30s×3 次重试在 ~90s 内耗光即被判 `unhealthy`，而 `backend` 声明 `depends_on: postgres/redis/milvus: service_healthy` → compose 直接报 `dependency failed to start`。**已修 `docker-compose.yml`：milvus healthcheck 增加 `start_period: 120s`**。重跑前宿主机 C 盘耗尽（3.7G/201G，Docker Desktop 数据盘位于 C:），daemon 无法启动，验收 3 剩余步骤与 T31 验收 4 一并记 BLOCKED（磁盘），见 TRACKER P-11。
 
 ### 风险
 
@@ -1577,6 +1578,8 @@ bash start-services.sh start && bash start-services.sh status
 
 - 验收 1/2/3 PASS；验收 4（真实执行 start/status）因 **Docker daemon 未运行** 记 BLOCKED。
 - 等待实现取「按容器名轮询 `docker inspect` Health.Status（180s 超时）」而非 `docker compose wait`——理由见票面风险条（wait 语义为等退出而非等 healthy）。
+- **验收 4 补跑（2026-09-13，Docker 已开）**：实跑 `bash start-services.sh start` —— 命令 1/2/3 仍 PASS；命令 4 **未完成**：脚本成功执行 `docker compose up -d`（6 中间件 + backend），postgres/redis/etcd/minio/elasticsearch 均 healthy，但 **milvus 因 healthcheck 缺 `start_period` 被判 unhealthy**，`backend` 的 `depends_on: service_healthy` 使 compose 以 `dependency failed to start` 结束（脚本随该非零退出的 compose 命令中止，未进入 `wait_for_healthy` 的后续流程）。根因与修复见 T30 实施修正（`docker-compose.yml` 已加 `start_period: 120s`）。重跑时宿主机 C 盘耗尽、Docker Desktop 无法启动，故验收 4 记 BLOCKED（磁盘），见 TRACKER P-11。
+- 附带确认：批次 10 审查修复后的脚本尾部指引（「后端已随 compose 启动于 :8000」）与本次实跑观察一致（`industry_backend` 容器被创建，仅因依赖未就绪未启动）。
 
 ### 风险
 
