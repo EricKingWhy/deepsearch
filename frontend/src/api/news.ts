@@ -97,13 +97,11 @@ export const getBiddingList = async (params?: {
 
 // 获取所有统计
 export const getStats = async () => {
-  console.log('[API] getStats 请求')
   const res = await request.get<{
     success: boolean
     news: NewsStats
     bidding: BiddingStats
   }>('/news/stats')
-  console.log('[API] getStats 响应:', res.data)
   return res.data
 }
 
@@ -127,7 +125,6 @@ export const triggerCollection = async (params?: {
 
 // 获取行业列表
 export const getIndustries = async () => {
-  console.log('[API] getIndustries 请求')
   const res = await request.get<{
     success: boolean
     industries: Array<{
@@ -136,13 +133,11 @@ export const getIndustries = async () => {
       description: string
     }>
   }>('/news/industries')
-  console.log('[API] getIndustries 响应:', res.data)
   return res.data
 }
 
 // 获取单个行业配置
 export const getIndustry = async (industryId: string) => {
-  console.log('[API] getIndustry 请求:', industryId)
   const res = await request.get<{
     success: boolean
     industry: {
@@ -153,7 +148,6 @@ export const getIndustry = async (industryId: string) => {
       bidding_keywords: string[]
     }
   }>(`/news/industries/${industryId}`)
-  console.log('[API] getIndustry 响应:', res.data)
   return res.data
 }
 

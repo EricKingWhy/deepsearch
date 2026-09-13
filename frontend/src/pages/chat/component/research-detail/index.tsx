@@ -110,14 +110,11 @@ export default function ResearchDetail({
 }: ResearchDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('results')
 
-  console.log(`[ResearchDetail] 渲染，data=${data ? 'exists' : 'null'}, steps=${steps.length}`)
   if (data) {
-    console.log(`[ResearchDetail] data 详情: searchResults=${data.searchResults?.length || 0}, charts=${data.charts?.length || 0}, hasGraph=${!!data.knowledgeGraph}, hasReport=${!!data.streamingReport}`)
   }
 
   // 空状态
   if (!data && steps.length === 0 && !diagnostics && !diagnosticsLoading) {
-    console.log(`[ResearchDetail] 显示空状态`)
     return (
       <div className={styles.panel}>
         <div className={styles.empty}>

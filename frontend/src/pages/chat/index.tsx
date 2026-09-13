@@ -185,13 +185,11 @@ export default function Index() {
   const handleStop = useCallback(async () => {
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
-    console.log('[handleStop] 用户点击停止按钮')
 
     // 调用后端取消 API
     if (currentSessionIdRef.current) {
       try {
         await api.session.cancelResearch(currentSessionIdRef.current)
-        console.log('[handleStop] 后端取消请求已发送')
       } catch (e) {
         console.error('[handleStop] 调用取消 API 失败:', e)
       }
@@ -417,7 +415,6 @@ export default function Index() {
                 timestamp: Date.now(),
               })
               // 重置研究步骤
-              console.log(`[前端] ⚠️ research_start: 清空 researchDetailsRef`)
               setResearchSteps([])
               researchDetailsRef.current.clear()
               setSelectedResearchDetail(null)
@@ -480,13 +477,11 @@ export default function Index() {
                   charts: [],
                 }
                 researchDetailsRef.current.set(stepType, newDetail)
-                console.log(`[前端] research_step: 创建 detail, key=${stepType}, detailsSize=${researchDetailsRef.current.size}`)
                 // 自动选中新的步骤详情（特别是 searching/researching 步骤）
                 if (stepType === 'searching' || stepType === 'researching' || content.status === 'running') {
                   setSelectedResearchDetail({ ...newDetail })
                 }
               } else {
-                console.log(`[前端] research_step: detail 已存在, key=${stepType}`)
               }
             }
 
@@ -498,7 +493,6 @@ export default function Index() {
               // 使用 stepType 作为 key 查找 detail
               const searchingType = researchStepsRef.current.find(s => s.type === 'searching') ? 'searching' : 'researching'
               const detail = researchDetailsRef.current.get(searchingType)
-              console.log(`[前端] search_results: key=${searchingType}, detail=${detail ? '找到' : '未找到'}, results=${results.length}`)
               if (detail) {
                 const newResults = results.map((r: any, i: number) => ({
                   id: r.id || `sr_${Date.now()}_${i}`,
@@ -534,7 +528,6 @@ export default function Index() {
               const targetType = researchDetailsRef.current.has('analyzing') ? 'analyzing'
                 : researchDetailsRef.current.has('researching') ? 'researching' : 'searching'
               const detail = researchDetailsRef.current.get(targetType)
-              console.log(`[前端] knowledge_graph: key=${targetType}, detail=${detail ? '找到' : '未找到'}, nodes=${graph.nodes?.length || 0}, edges=${graph.edges?.length || 0}`)
               if (detail) {
                 detail.knowledgeGraph = {
                   nodes: graph.nodes || [],
@@ -543,7 +536,6 @@ export default function Index() {
                 }
                 setSelectedResearchDetail({ ...detail })
                 setResearchDataVersion(v => v + 1)
-                console.log(`[前端] knowledge_graph: ✅ 已存储到 detail[${targetType}]`)
               } else {
                 console.warn(`[前端] knowledge_graph: ⚠️ 未找到 detail, 可用 keys:`, Array.from(researchDetailsRef.current.keys()))
               }
@@ -553,11 +545,9 @@ export default function Index() {
             if (json.type === 'charts') {
               const content = json.content || json
               const charts = content.charts || []
-              console.log(`[前端] 收到 charts 事件，图表数量: ${charts.length}`)
 
               // 使用 stepType 作为 key 查找 detail
               const detail = researchDetailsRef.current.get('analyzing')
-              console.log(`[前端] 查找 analyzing detail: ${detail ? '找到' : '未找到'}`)
               if (detail) {
                 detail.charts = charts
                 // 更新步骤统计
@@ -568,14 +558,12 @@ export default function Index() {
                 ))
                 setSelectedResearchDetail({ ...detail })
                 setResearchDataVersion(v => v + 1)
-                console.log(`[前端] ✅ charts 已存储到 detail，触发更新`)
               }
               // 同时保存到 target.charts 供报告使用
               if (!target.charts) {
                 target.charts = []
               }
               target.charts.push(...charts)
-              console.log(`[前端] target.charts 总数: ${target.charts.length}`)
             }
 
             // V2 阶段切换事件
@@ -677,26 +665,20 @@ export default function Index() {
             // V2 研究完成事件
             if (json.type === 'research_complete') {
               setPendingOutline(null)
-              console.log('研究完成事件:', json)
               // 设置最终报告为内容
               if (json.final_report) {
                 target.content = json.final_report
-                console.log('设置报告内容，长度:', json.final_report.length)
 
                 // 同时存储到研究详情中供"过程报告"tab显示 - 使用 stepType 作为 key
                 const writingType = researchDetailsRef.current.has('writing') ? 'writing' : 'generating'
                 const detail = researchDetailsRef.current.get(writingType)
-                console.log(`[前端] research_complete: key=${writingType}, detail=${detail ? '找到' : '未找到'}`)
                 if (detail) {
                   detail.streamingReport = json.final_report
                   setSelectedResearchDetail({ ...detail })
                   setResearchDataVersion(v => v + 1)
-                  console.log(`[前端] research_complete: ✅ 报告已存储`)
                 }
                 // 打印所有 detail 的状态
-                console.log(`[前端] research_complete: 所有 detail keys:`, Array.from(researchDetailsRef.current.keys()))
                 researchDetailsRef.current.forEach((d, k) => {
-                  console.log(`[前端] detail[${k}]: searchResults=${d.searchResults?.length || 0}, charts=${d.charts?.length || 0}, hasGraph=${!!d.knowledgeGraph}, hasReport=${!!d.streamingReport}`)
                 })
               }
               // 设置引用
@@ -713,7 +695,6 @@ export default function Index() {
               // 标记所有研究步骤为完成
               setResearchSteps(prev => prev.map(s => ({ ...s, status: 'completed' as const })))
               // 确保触发重新计算
-              console.log(`[前端] research_complete: ✅ 研究完成，强制触发 researchDataVersion 更新`)
               setResearchDataVersion(v => v + 1)
             }
 
@@ -853,14 +834,12 @@ export default function Index() {
               const sectionTitle = content.section_title || ''
 
               if (sectionContent) {
-                console.log(`section_content 收到章节「${sectionTitle}」，长度:`, sectionContent.length)
 
                 // 使用 stepType 作为 key 查找或创建 detail
                 const writingType = 'writing'
 
                 // 如果没有找到写作步骤，创建一个（兜底逻辑）
                 if (!researchStepsRef.current.find(s => s.type === writingType)) {
-                  console.log('section_content: 未找到写作步骤，创建兜底步骤')
                   const newStep: ResearchStep = {
                     id: writingType,  // 使用 type 作为 id
                     type: writingType,
@@ -878,7 +857,6 @@ export default function Index() {
                 // 获取或创建详情 - 使用 stepType 作为 key
                 let detail = researchDetailsRef.current.get(writingType)
                 if (!detail) {
-                  console.log(`section_content: 未找到详情，创建: ${writingType}`)
                   detail = {
                     stepId: writingType,
                     stepType: writingType,
@@ -913,7 +891,6 @@ export default function Index() {
                     wordCount: sectionContent.length,
                   })
                 }
-                console.log(`section_content: 已添加章节「${sectionTitle}」到 sections，当前数量: ${detail.sections.length}`)
 
                 // 累加章节内容到 streamingReport（保持向后兼容）
                 const existingContent = detail.streamingReport || ''
@@ -952,7 +929,6 @@ export default function Index() {
 
               // 存储报告内容到 streamingReport 用于"过程报告"tab显示 - 使用 stepType 作为 key
               if (reportContent) {
-                console.log('report_draft 收到报告内容，长度:', reportContent.length)
                 const writingType = researchDetailsRef.current.has('writing') ? 'writing' : 'generating'
                 const detail = researchDetailsRef.current.get(writingType)
                 if (detail) {
@@ -1016,7 +992,6 @@ export default function Index() {
               })
             } else if (json.type === 'research_cancelled') {
               // 研究被取消事件
-              console.log('[前端] 收到 research_cancelled 事件')
               if (!target.reactSteps) {
                 target.reactSteps = []
               }
@@ -1035,8 +1010,6 @@ export default function Index() {
             } else if (json.type === 'chart') {
               // 解包 content（后端将数据包在 content 里）
               const content = json.content || json
-              console.log(`[前端] 收到 chart 事件 (单个图表)`)
-              console.log(`[前端] chart 内容: title=${content.title}, has_echarts=${!!content.echarts_option}, has_image=${!!(content.image || content.image_base64)}`)
 
               // 构建图表对象
               const chartObj = {
@@ -1053,11 +1026,9 @@ export default function Index() {
                 target.charts = []
               }
               target.charts.push(chartObj)
-              console.log(`[前端] 图表已添加到 target.charts，总数: ${target.charts.length}`)
 
               // 同时存入 research detail（供可视化面板使用）- 使用 stepType 作为 key
               const detail = researchDetailsRef.current.get('analyzing')
-              console.log(`[前端] 查找 analyzing detail: ${detail ? '找到' : '未找到'}`)
               if (detail) {
                 if (!detail.charts) {
                   detail.charts = []
@@ -1070,7 +1041,6 @@ export default function Index() {
                 ))
                 setSelectedResearchDetail({ ...detail })
                 setResearchDataVersion(v => v + 1)
-                console.log(`[前端] ✅ chart 已存储到 detail.charts，总数: ${detail.charts.length}`)
               } else {
                 console.warn(`[前端] ⚠️ 未找到 analyzing detail，图表可能无法显示在可视化面板`)
               }
@@ -1134,7 +1104,6 @@ export default function Index() {
                   host: json.result?.url ? new URL(json.result.url).host : '',
                 })
               } catch (e) {
-                console.debug('Parse URL error', e)
               }
             } else if (json.type === 'thinking') {
               target.think = `${target.think || ''}${json.content || ''}`
@@ -1167,8 +1136,6 @@ export default function Index() {
             }
           }
         } catch {
-          console.debug('解析失败')
-          console.debug(event)
         }
       }
     },
@@ -1290,7 +1257,6 @@ export default function Index() {
   // 当 session ID 变化时，重置加载状态
   useEffect(() => {
     if (id !== previousIdRef.current) {
-      console.log('[会话切换] 从', previousIdRef.current, '切换到', id)
       previousIdRef.current = id
       hasLoadedMessages.current = false
       hasLoadedCheckpoint.current = false
@@ -1305,7 +1271,6 @@ export default function Index() {
         resolve: resolveMessagesLoaded,
       }
       // 清空消息列表和研究状态
-      console.log(`[前端] ⚠️ 会话切换: 清空 researchDetailsRef`)
       chat.list.length = 0
       setResearchSteps([])
       researchStepsRef.current = []
@@ -1376,7 +1341,6 @@ export default function Index() {
     // 优先使用 store 中预加载的数据
     const cachedSession = sessionState.currentSession
     if (cachedSession && cachedSession.id === id && cachedSession.messages?.length > 0) {
-      console.log('[加载消息] 使用预加载的数据:', cachedSession.messages.length, '条')
       hasLoadedMessages.current = true
       populateMessages(cachedSession.messages)
       loadBarrier.resolve()
@@ -1386,7 +1350,6 @@ export default function Index() {
     // 否则从 API 加载
     async function loadSessionMessages() {
       try {
-        console.log('[加载消息] 开始加载会话消息:', id)
         const res = await api.session.getSession(id!)
         const session = (res as any).data || res
 
@@ -1397,12 +1360,9 @@ export default function Index() {
           session.messages.length > 0
         ) {
           hasLoadedMessages.current = true
-          console.log('[加载消息] 找到消息:', session.messages.length, '条')
           populateMessages(session.messages)
-          console.log('[加载消息] 消息恢复完成')
         }
       } catch (e) {
-        console.log('[加载消息] 加载失败或无消息:', e)
       } finally {
         if (previousIdRef.current === loadId) {
           hasLoadedMessages.current = true
@@ -1422,7 +1382,6 @@ export default function Index() {
 
     async function loadCheckpoint() {
       try {
-        console.log('[恢复状态] 开始加载检查点, session_id:', id)
         let checkpointResponse: any
         let checkpointError: unknown
         const checkpointRequest = api.session
@@ -1439,16 +1398,8 @@ export default function Index() {
         if (previousIdRef.current !== loadId) return
         const res = checkpointResponse
         const response = (res as any).data || res
-        console.log('[恢复状态] API响应:', { success: response?.success, hasCheckpoint: !!response?.checkpoint })
         if (response?.success && response?.checkpoint) {
           const checkpoint = response.checkpoint
-          console.log('[恢复状态] 检查点详情:', {
-            phase: checkpoint.phase,
-            status: checkpoint.status,
-            hasStateJson: !!checkpoint.state_json,
-            hasUiStateJson: !!checkpoint.ui_state_json,
-            hasFinalReport: !!checkpoint.final_report,
-          })
 
           // 只恢复已完成或正在运行的研究
           const checkpointState = checkpoint.state_json as
@@ -1509,13 +1460,6 @@ export default function Index() {
             const uiState = checkpoint.ui_state_json
             const stateJson = checkpoint.state_json as any
 
-            console.log('[恢复状态] UI状态:', {
-              steps: uiState?.research_steps?.length || 0,
-              searchResults: uiState?.search_results?.length || 0,
-              charts: uiState?.charts?.length || 0,
-              hasKnowledgeGraph: !!uiState?.knowledge_graph,
-              hasReport: !!uiState?.streaming_report,
-            })
 
             // 恢复研究步骤 - 如果没有步骤数据，创建默认步骤
             let steps: ResearchStep[] = []
@@ -1529,7 +1473,6 @@ export default function Index() {
               }))
             } else {
               // 创建默认研究步骤（基于可用数据推断）
-              console.log('[恢复状态] 无步骤数据，创建默认步骤')
               const defaultSteps: ResearchStep['type'][] = ['planning', 'researching', 'analyzing', 'writing']
               if (checkpoint.status === 'reviewing') defaultSteps.push('reviewing')
               steps = defaultSteps.map(type => ({
@@ -1554,7 +1497,6 @@ export default function Index() {
               }
               researchDetailsRef.current.set(step.type, detail)  // 使用 type 作为 key
             })
-            console.log('[恢复状态] 已创建步骤详情:', researchDetailsRef.current.size, '个')
 
             if (uiState) {
 
@@ -1571,7 +1513,6 @@ export default function Index() {
                     snippet: r.snippet || r.content || '',
                     date: r.date || '',
                   }))
-                  console.log('[恢复状态] 恢复搜索结果:', detail.searchResults.length, '条')
                 }
               }
 
@@ -1582,7 +1523,6 @@ export default function Index() {
                 const detail = researchDetailsRef.current.get(targetType)
                 if (detail) {
                   detail.knowledgeGraph = uiState.knowledge_graph
-                  console.log('[恢复状态] 恢复知识图谱:', uiState.knowledge_graph.nodes?.length || 0, '节点')
                 }
               }
 
@@ -1591,7 +1531,6 @@ export default function Index() {
                 const detail = researchDetailsRef.current.get('analyzing')
                 if (detail) {
                   detail.charts = uiState.charts
-                  console.log('[恢复状态] 恢复图表:', uiState.charts.length, '个')
                 }
               }
 
@@ -1600,7 +1539,6 @@ export default function Index() {
                 const detail = researchDetailsRef.current.get('writing')
                 if (detail) {
                   detail.streamingReport = uiState.streaming_report || checkpoint.final_report || ''
-                  console.log('[恢复状态] 恢复报告长度:', detail.streamingReport.length)
                 }
               }
 
@@ -1674,7 +1612,6 @@ export default function Index() {
               }
 
               setCurrentChatItem(restoredAssistant)
-              console.log('[恢复状态] 已恢复助手消息和研究状态')
             }
 
             // 最终状态汇总
@@ -1720,13 +1657,10 @@ export default function Index() {
                 console.error('[恢复状态] 保存恢复后的助手消息失败:', error)
               }
             }
-            console.log('[恢复状态] ✅ 恢复完成，最终状态:', finalSummary)
           }
         } else {
-          console.log('[恢复状态] 未找到有效检查点')
         }
       } catch (e) {
-        console.log('[恢复状态] 加载失败:', e)
       }
     }
 
@@ -1796,26 +1730,10 @@ export default function Index() {
   // 判断是否在深度研究模式（只要是 Deepsearch 类型就启用宽布局）
   const isDeepResearchMode = currentChatItem?.type === ChatType.Deepsearch
 
-  // 调试日志：跟踪 currentChatItem 变化
-  useEffect(() => {
-    console.log('[前端] currentChatItem 变化:', {
-      hasItem: !!currentChatItem,
-      type: currentChatItem?.type,
-      isDeepsearch: currentChatItem?.type === ChatType.Deepsearch,
-      ChatTypeDeepsearch: ChatType.Deepsearch,
-    })
-  }, [currentChatItem])
-
   // 聚合所有研究步骤的数据，用于在tab中显示完整信息
   const aggregatedResearchData = useMemo(() => {
-    console.log(`[前端] ========== 计算 aggregatedResearchData ==========`)
-    console.log(`[前端] isDeepResearchMode=${isDeepResearchMode}, detailsSize=${researchDetailsRef.current.size}, version=${researchDataVersion}`)
-    console.log(`[前端] currentChatItem?.type=${currentChatItem?.type}, ChatType.Deepsearch=${ChatType.Deepsearch}`)
-    console.log(`[前端] researchSteps=`, researchSteps.map(s => s.type))
-    console.log(`[前端] detail keys=`, Array.from(researchDetailsRef.current.keys()))
 
     if (!isDeepResearchMode || researchDetailsRef.current.size === 0) {
-      console.log(`[前端] ⚠️ 跳过聚合: isDeepResearchMode=${isDeepResearchMode}, size=${researchDetailsRef.current.size}`)
       return null
     }
 
@@ -1827,7 +1745,6 @@ export default function Index() {
     let allSections: ResearchDetailData['sections'] = []
 
     researchDetailsRef.current.forEach((detail, stepId) => {
-      console.log(`[前端] 聚合步骤 ${stepId}: searchResults=${detail.searchResults?.length || 0}, charts=${detail.charts?.length || 0}, hasGraph=${!!detail.knowledgeGraph}, hasReport=${!!detail.streamingReport}, sections=${detail.sections?.length || 0}`)
 
       // 收集搜索结果
       if (detail.searchResults && detail.searchResults.length > 0) {
@@ -1851,7 +1768,6 @@ export default function Index() {
       }
     })
 
-    console.log(`[前端] 聚合结果: searchResults=${allSearchResults.length}, charts=${allCharts.length}, hasGraph=${!!knowledgeGraph}, hasReport=${!!streamingReport}, sections=${allSections.length}`)
 
     // 创建聚合的数据对象
     const aggregated: ResearchDetailData = {

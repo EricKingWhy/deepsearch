@@ -131,7 +131,6 @@ export interface IndustryState {
 const getStoredIndustryId = (): string => {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('selected_industry_id')
-    console.log('[industry store] 从 localStorage 读取行业:', stored)
     return stored || 'smart_transportation'
   }
   return 'smart_transportation'
@@ -146,7 +145,6 @@ export const industryState = proxy<IndustryState>({
 // 订阅变化，保存到 localStorage
 subscribe(industryState, () => {
   if (typeof window !== 'undefined') {
-    console.log('[industry store] 保存行业到 localStorage:', industryState.currentIndustryId)
     localStorage.setItem('selected_industry_id', industryState.currentIndustryId)
   }
 })
@@ -156,13 +154,11 @@ export const getCurrentIndustry = (): IndustryConfig => {
   const industry = industryState.industries.find(
     (i) => i.id === industryState.currentIndustryId
   )
-  console.log('[industry store] 获取当前行业:', industry?.name)
   return industry || INDUSTRY_CONFIGS[0]
 }
 
 // 切换行业
 export const setCurrentIndustry = (industryId: string) => {
-  console.log('[industry store] 切换行业:', industryId)
   industryState.currentIndustryId = industryId
 }
 

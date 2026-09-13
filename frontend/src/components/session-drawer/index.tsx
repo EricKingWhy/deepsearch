@@ -46,8 +46,8 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
     try {
       await sessionActions.loadSession(session.id)
     } catch (e) {
-      // 即使预加载失败也继续导航，页面会自己重新加载
-      console.log('预加载会话失败，继续导航', e)
+      // 即使预加载失败也继续导航，页面会自己重新加载（错误上报保留：T32）
+      console.warn('预加载会话失败，继续导航', e)
     }
     navigate(`/chat/${session.id}`)
   }

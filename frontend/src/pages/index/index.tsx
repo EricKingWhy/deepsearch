@@ -49,7 +49,6 @@ export default function Index() {
 
   // 点击卡片，切换行业并跳转到聊天页
   const handleCardClick = (industryId: string, title: string) => {
-    console.log('[Index] 点击行业卡片:', industryId, title)
     setCurrentIndustry(industryId)
     navigate(`/chat?title=${encodeURIComponent(title)}`)
   }
