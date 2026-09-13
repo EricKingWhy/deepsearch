@@ -616,8 +616,9 @@ class NewsCollectionService:
                     year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
                     if 2020 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
                         return datetime(year, month, day)
-                except:
-                    pass
+                except Exception:
+                    # 单个候选格式解析失败属多格式尝试的预期分支，debug 级即可
+                    logger.debug(f"Date candidate failed to parse: {match.group(0)!r}")
 
         return None
 
@@ -640,8 +641,9 @@ class NewsCollectionService:
         for fmt in formats:
             try:
                 return datetime.strptime(date_str.split('.')[0].split('+')[0], fmt)
-            except:
-                pass
+            except Exception:
+                # 多格式逐一尝试，单个格式失败属预期分支，debug 级即可
+                logger.debug(f"Date format {fmt!r} did not match: {date_str!r}")
 
         return None
 
@@ -691,7 +693,8 @@ class NewsCollectionService:
             if len(parts) >= 2:
                 return '.'.join(parts[-2:])
             return domain
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to extract source name: {e}")
             return "未知来源"
 
     def _extract_department(self, title: str, content: str) -> Optional[str]:

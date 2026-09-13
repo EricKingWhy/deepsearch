@@ -22,6 +22,8 @@ import statistics
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+logger = logging.getLogger(__name__)
+
 
 class DataType(Enum):
     """数据类型枚举"""
@@ -221,8 +223,8 @@ class SmartDataAnalyzer:
             if numbers:
                 try:
                     item["value"] = float(numbers[0].replace(',', ''))
-                except:
-                    pass
+                except Exception:
+                    logger.debug(f"Value candidate failed to parse as float: {numbers[0]!r}")
 
             # 提取百分比
             percent_match = re.search(r'(\d+(?:\.\d+)?)\s*%', text)
@@ -273,8 +275,9 @@ class SmartDataAnalyzer:
                         }
                         if len(numeric_values) > 1:
                             stats['std'] = statistics.stdev(numeric_values)
-                except:
-                    pass
+                except Exception:
+                    # 统计汇总失败会掩盖该列的统计画像，需要可见
+                    logger.warning(f"Failed to compute stats for column {col_name!r}", exc_info=True)
 
             profile = ColumnProfile(
                 name=col_name,
@@ -324,7 +327,9 @@ class SmartDataAnalyzer:
             try:
                 float(value.replace(',', ''))
                 return True
-            except:
+            except Exception:
+                # 解析失败即判为非数值，属 EAFP 惯用法的预期分支
+                logger.debug(f"Value is not numeric: {value!r}")
                 return False
         return False
 
