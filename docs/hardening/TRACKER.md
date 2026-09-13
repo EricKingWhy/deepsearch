@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T13 + T41 合并） | `1eb4077d69098e6d8c5889f7396fa4e50b771c16` |
-| 当前批次 | 5（T14–T16；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T16 + T41 合并） | `ac4ef4eca0f0be02f42169019130ab4affbfd8c2` |
+| 当前批次 | 5（T14–T16，已收批待审查；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `1f52bfc`（第 4 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 13 |
+| 已完成 | 16 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -140,9 +140,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T11 | 清除裸 except 并补日志 | #42 | DONE | `T11-remove-bare-except` | `d4b1228` | #90 | PASS（`! grep -nE "except\s*:" <四文件>` → 无输出；全仓裸 except 计数 → 0；全量 `-m "not integration"` → 248 passed） | 4 | FIXED@1f52bfc |
 | T12 | 收敛数据库连接池与会话生命周期 | #43 | DONE | `T12-db-pool-schema` | `1f57882` | #91 | PASS（`grep -nE "pool_pre_ping\|pool_recycle\|pool_size" core/database.py` → 有命中；票面脚本（路径+env 占位修正）→ 打印 `OK: 连接池参数存在`；create_all 改 `DB_AUTO_CREATE=1` 显式开关） | 4 | FIXED@1f52bfc |
 | T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | DONE | `T13-langgraph-annotation` | `ad7baa6` | #92 | PASS（`grep -c "NG-2" graph.py` → 7；保留字样 8 处；本票 diff 无删除的函数；`pytest -k deep_research_v2` → 25 passed） | 4 | FIXED@1f52bfc |
-| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | TODO | — | — | — | — | 5 | PENDING |
-| T15 | 抽离 serialize_event | #46 | TODO | — | — | — | — | 5 | PENDING |
-| T16 | 修复文档与代码漂移 | #47 | TODO | — | — | — | — | 6 | PENDING |
+| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | PENDING |
+| T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | PENDING |
+| T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | PENDING |
 | T17 | 新增架构总览文档 | #48 | TODO | — | — | — | — | 6 | PENDING |
 | T18 | requirements.txt 去重与依赖分区 | #49 | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
 | T19 | 决策票：alembic 去留 | #50 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
@@ -245,3 +245,8 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | — | **流程事故与纠正（T13）**：commit 误落在本地 `main` 上（漏开分支）。纠正：把该 commit 挂回 `T13-langgraph-annotation` 分支、`git branch -f main <远端SHA>` 回退 main 引用，未 push、未污染远端历史。后续开分支动作前置 | 已纠正，§5 未被实质违反 |
 | 2026-09-13 | — | **第 4 批 `code-review`（双轴并行，fixed point `6b73d44`，终点 `975eea8`）**：标准轴 3 条 + 规格轴 3 条，去重后 **5 条**（2 修 3 保留）。规格轴独立复验：T11 8 处全替换且控制流不变、T12 迁移说明与 compose/库名假设逐项属实、T13 纯注释且 NG-2/NG-3 零删改 | 明细见「第 4 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 4 批 findings 修复**：T12 验收 grep 补 `max_overflow`（实测命中）；票面 scripts 路径笔误修正。修复后全量 `pytest tests -m "not integration"` → **248 passed / 5 deselected**（381.67s，批次末已跑） | 修复 commit `1f52bfc`；fixed point 推进至此，下一批（T14–T16）起算 |
+| 2026-09-13 | T14 | 实施 + 合并（纯注释）：`dr_g.py` / `react_controller.py` / `tool_executor.py` 三模块 docstring 顶部加 V1 ReAct 保留说明（version=v1 触发、NG-3 不得删除）；`research_router` version 字段注明双路线分工；`CLAUDE.md` 架构章节补双路线关系 | commit `1180182`，PR #96 已 merge（`f8a4acb`），issue #45 自动关闭 |
+| 2026-09-13 | T14 | **缺陷记录**：PR #96 的保留说明被插到 docstring 引号之前成为裸文本 → 三模块 SyntaxError（替换锚点选错 + 提交前未跑 py_compile）。已在 T15 分支修复（说明移入 docstring 内部），根因与教训写入 `tickets.md` T14「实施修正」。**新增纪律：所有票 commit 前必须 py_compile 或跑受影响测试** | 修复随 PR #97 合入 |
+| 2026-09-13 | T15 | 实施 + 合并：`serialize_event` 函数体逐字移动到新建 `core/serialization.py`（中立公共位置）；`research_router` 改从新位置导入，解除对 V1 备选模块 `dr_g` 的反向依赖（F-16）；`dr_g` 以同名导入保留模块属性（`test_research_outline_approval.py` 的 monkeypatch 依赖，实测仍生效） | commit `9839042`，PR #97 已 merge（`6218007`），issue #46 自动关闭 |
+| 2026-09-13 | T15 | 验收修正：票面验收 #3 预期「无输出」不成立 —— `service/__init__.py:10` 的 `from .dr_g import ResearchService` 是既有顶层导出（票面风险条自己提到），grep 必然命中；实际口径为「除该导出外无遗留」 | 记入 `tickets.md` T15「实施修正」 |
+| 2026-09-13 | T16 | 实施 + 合并（仅文案）：READMED langfuse 安装版本对齐 requirements（`>=4.0.0,<5.0.0`）并写清两级开关（`OBSERVABILITY_TRACING_ENABLED` 默认 true / `LANGFUSE_ENABLED` 默认 false）；`knowledge_router` / `docmind_service` 的 ES 旧注释改 Milvus 实际存储（各留一句全拼历史说明，ES 字面计数 0）；首行「知识图谱」宣称收窄为前端渲染的关系视图 | commit `aad9dd4`，PR #98 已 merge（`ac4ef4e`），issue #47 自动关闭 |
