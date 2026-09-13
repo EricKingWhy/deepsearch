@@ -80,8 +80,19 @@ def test_dangerous_sql_is_rejected(service, sql):
         "WITH t AS (SELECT 1 AS v) SELECT v FROM t",      # WITH 开头的 CTE 查询
         "SELECT a FROM t INNER JOIN b ON t.id = b.id WHERE a LIKE '%x%'",
         "SELECT CASE WHEN a > 1 THEN 'high' ELSE 'low' END FROM t",
+        # 词边界回归：含 union 字样的标识符不应被误拦（第 3 批审查 finding）
+        "SELECT union_id FROM t WHERE reunion_tag = 'x'",
+        "SELECT * FROM trade_union ORDER BY id",
     ],
 )
 def test_legitimate_readonly_sql_passes(service, sql):
     ok, msg = service.validate_sql(sql)
     assert ok, f"误拦合法只读查询: {sql!r}（原因: {msg}）"
+
+
+def test_real_union_is_still_blocked(service):
+    """词边界收紧后，真正的 UNION 语句必须仍然被拦截。"""
+    for sql in ("SELECT 1 UNION SELECT 2", "SELECT 1 UNION ALL SELECT 2"):
+        ok, msg = service.validate_sql(sql)
+        assert not ok, f"未拦截: {sql!r}"
+        assert msg
