@@ -1,0 +1,39 @@
+name: frontend-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # .npmrc 已设 legacy-peer-deps=true（React 19 + AntD 5 peer 冲突，T29），npm ci 同样生效
+      - name: Install dependencies
+        run: npm ci
+
+      # ⚠️ 依赖 T33/T34 完成（当前本地 lint 存在 89 errors：no-unused-vars / no-explicit-any /
+      #    console 等）。不得通过关闭规则让 CI 变绿——对应 ticket 完成后再取消注释启用。
+      # - name: Lint (eslint)
+      #   run: npm run lint
+
+      # ⚠️ 依赖 T32/T33 完成（OutlineApprovalPanel 存在时序敏感的 flaky 用例；
+      #    本地 preflight 两次运行分别为 2 failed 与 1 failed）。修稳后取消注释启用。
+      # - name: Test (vitest)
+      #   run: npm run test
+
+      - name: Build (vite)
+        run: npm run build
