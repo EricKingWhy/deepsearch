@@ -14,6 +14,7 @@ from core.upload_security import (
     ensure_supported_extension,
     read_upload_with_limit,
     safe_filename,
+    MAX_UPLOAD_BYTES,
 )
 from schemas.document import (
     DeleteDocumentsRequest,
@@ -38,9 +39,6 @@ def get_document_service():
 SUPPORTED_FILE_TYPES = {
     '.pdf', '.docx', '.xlsx', '.xls', '.txt'
 }
-
-# 单文件大小上限（取常量即可，不必做成可配置项）
-MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 
 # 上传临时目录；落盘文件名由服务端生成，不使用客户端文件名（见 core.upload_security）
 UPLOAD_TEMP_DIR = os.getenv("DOCUMENT_UPLOAD_TEMP_DIR", "/tmp")
@@ -74,7 +72,7 @@ async def upload_document(
         # 读取时分块并限长，避免超大文件一次性读入内存。
         os.makedirs(UPLOAD_TEMP_DIR, exist_ok=True)
         temp_file_path = os.path.join(UPLOAD_TEMP_DIR, safe_filename(extension=file_extension))
-        content = await read_upload_with_limit(file, MAX_UPLOAD_SIZE_BYTES)
+        content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
         with open(temp_file_path, "wb") as temp_file:
             temp_file.write(content)
         

@@ -3,13 +3,19 @@
 
 """知识库管理路由"""
 import os
-import shutil
 from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.upload_security import (
+    MAX_UPLOAD_BYTES,
+    ensure_supported_extension,
+    read_upload_with_limit,
+    safe_filename,
+    sanitize_extension,
+)
 from models.knowledge import KnowledgeBase, Document
 from models.user import User
 from router.auth_router import get_current_user_required
@@ -39,9 +45,8 @@ ALLOWED_EXTENSIONS = {
 }
 
 
-def get_file_extension(filename: str) -> str:
-    """获取文件扩展名"""
-    return os.path.splitext(filename)[1].lower()
+# 扩展名工具已收拢到 core.upload_security（sanitize_extension），避免三处实现各自漂移；
+# 白名单 ALLOWED_EXTENSIONS 仍由本路由自行维护。
 
 
 def kb_to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
@@ -315,19 +320,19 @@ async def upload_document(
             detail="知识库不存在"
         )
 
-    # 验证文件类型
-    ext = get_file_extension(file.filename)
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件类型: {ext}，支持的类型: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
+    # 验证文件类型：先剥离客户端塞入的目录片段，再比对白名单
+    ext = ensure_supported_extension(file.filename, ALLOWED_EXTENSIONS)
 
-    # 保存文件到临时目录
-    file_path = os.path.join(UPLOAD_DIR, f"{kb_uuid}_{file.filename}")
+    # 保存文件到临时目录：落盘名由服务端生成，**不使用 file.filename**
+    # （该字符串完全由客户端控制，"../../" 片段足以写出 UPLOAD_DIR）
+    file_path = os.path.join(UPLOAD_DIR, safe_filename(extension=ext))
     try:
+        content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(content)
+    except HTTPException:
+        # 413 等业务异常直接透出，不要被下面的兜底转成 500
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
