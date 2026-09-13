@@ -12,8 +12,8 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T29 + T41 + T30–T32 合并；SHA 为收批 merge，findings 修复 merge 后回填） | `f50e5c0c9d856c07a50182d984ba0f56afbedd95` |
-| 当前批次 | 10（T30–T32，审查 findings 修复中；T20 为决策票按用户指示由 AI 裁决并记录理由；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T32 + T41 + 批次 10 审查修复） | `9420c8cb7ff78801bc5a0438498caf67e48b32ef` |
+| 当前批次 | 11（T33–T34 待实施；T20 为决策票按用户指示由 AI 裁决并记录理由；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `f1b7219`（第 9 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
@@ -34,7 +34,7 @@
 | 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
 | 9 | T27–T29 | `37a2ec6` | `3e7ea65` | 7 | `f1b7219` | FIXED |
-| 10 | T30–T32 | `f1b7219` | `a99d55c` | `（待审查）` | — | — |
+| 10 | T30–T32 | `f1b7219` | `a99d55c` | 7 | `9420c8c` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -248,7 +248,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | DONE | `T29-ci-frontend` | `1626c18` | #118 | PASS（YAML 合法；.npmrc legacy-peer-deps；build 启用，lint/test 按票面风险条暂不启用并注明依赖 T32–T34；needs-infra 实跑 success 37s） | 9 | FIXED@f1b7219 |
 | T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；验收 1/2 PASS；验收 3/4 needs-infra Docker daemon 未运行记 BLOCKED） | 10 | PENDING |
 | T31 | start-services.sh 现代化 | #62 | DONE | `T31-start-services` | `7a943b0` | #122 | PASS（docker compose 6 处；wait_for_healthy 轮询替代 sleep 10（规避 compose wait 语义陷阱）；restart 二次确认；验收 1/2/3 PASS；验收 4 needs-infra 记 BLOCKED） | 10 | PENDING |
-| T32 | 清理 console.log 残留 | #63 | DONE | `T32-console-cleanup` | `09c3522` | #124 | PASS（删 80 处单行 + chat/index.tsx 3 处多行日志块；session-drawer 错误路径保留上报并降级 console.warn；grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0，剩余 89 errors 属 T33/T34 范围。初版曾引入 7 处 no-empty 空块残留，已在批次 10 审查修复清理） | 10 | FIXED@<审查修复SHA待回填> |
+| T32 | 清理 console.log 残留 | #63 | DONE | `T32-console-cleanup` | `09c3522` | #124 | PASS（删 80 处单行 + chat/index.tsx 3 处多行日志块；session-drawer 错误路径保留上报并降级 console.warn；grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0，剩余 89 errors 属 T33/T34 范围。初版曾引入 7 处 no-empty 空块残留，已在批次 10 审查修复清理） | 10 | FIXED@`9420c8c` |
 | T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | TODO | — | — | — | — | 11 | PENDING |
 | T34 | vite 构建分包 + 路由懒加载 | #65 | TODO | — | — | — | — | 11 | PENDING |
 | T35 | ECharts 真正拆包 | #66 | TODO | — | — | — | — | 11 | PENDING |
@@ -367,3 +367,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | T31 | 实施 + 合并：`start-services.sh` 的 `docker-compose` → `docker compose`（6 处）；`sleep 10` 改 `wait_for_healthy` 按容器名轮询 `docker inspect` Health.Status（180s 超时；规避 `compose wait`「等退出」语义陷阱）；restart 二次确认、clean 补 `down -v` 后果说明。验收 1/2/3 PASS；4 needs-infra 记 BLOCKED | commit `7a943b0`，PR #122 已 merge（`f716105`），issue #62 自动关闭 |
 | 2026-09-13 | T32 | 实施 + 合并：清理 83 处 console.log/debug —— 80 处单行（8 文件，python 逐行括号平衡校验后整行移除）+ `chat/index.tsx` 3 处多行日志块（checkpoint 详情/UI状态/debug useEffect）；`session-drawer/index.tsx` 错误路径按工单精神保留错误上报并降级 `console.warn`（注释标记 T32）。验证：grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0（剩余 104 errors 属 T33/T34 范围，全绿依赖 T33；初版遗留 7 处 no-empty 见审查修复条目） | commit `09c3522`，PR #124 已 merge（`a99d55c`），issue #63 自动关闭；批次 10 收批，fixed point 推进至 `a99d55c` |
 | 2026-09-13 | — | **第 10 批双轴审查**（`f1b7219` → `a99d55c`）：标准轴 3 条 + 规格轴 7 条，去重后有效 **7 条**（规格轴 #5/#6/#7 经核实为收批 PR 部分编辑丢失所致的真实台账不一致，规格轴 #2 与标准轴 F1 同源）。核心 finding：T32 删日志后残留 7 处空块/死代码（no-empty / no-unused-vars，本票自身引入的新 lint error，chat/index.tsx 6 处 + research-detail/index.tsx 1 处 + visualization.tsx 空 forEach）；其余为 start-services.sh 尾部指引与 T30 容器化 backend 冲突（F3）、tickets.md 缺 T30 路径澄清与 T32 实施修正补记、台账措辞不实（「104 errors 全属 T33/T34」不实，no-empty 属本票引入）。修复 = 下一记录条目 commit | 审查基线 a99d55c，双轴并行子代理各出报告；已核实 chat/index.tsx:427 stepId 未使用系 f1b7219 基线存量（T33 范围），不属本批引入 |
+| 2026-09-13 | — | **第 10 批 findings 修复**：T32 残留清理（chat/index.tsx 2 空 else + 空 forEach + 死变量 finalSummary 整块删除、3 空 catch 补语义注释保留吞错语义；research-detail/index.tsx 空 if；visualization.tsx 空 forEach）；start-services.sh 尾部指引改为「后端已随 compose 启动于 :8000」并提示端口冲突；tickets.md 补 T30 路径澄清与 T32 实施修正；TRACKER 补回收批丢失编辑并修正「104 errors 全属 T33/T34」措辞。验证：lint 89 errors 回到 T29 基线（T32 零新增）、test 33 全过、build 25.17s、bash -n 过。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 11 批 T33–T34）起算 | commit `304b04a`，PR #126 已 merge（`9420c8c`） |
