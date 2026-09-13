@@ -1,6 +1,6 @@
 # 行业信息助手 (Industry Information Assistant)
 
-一个基于 AI 的深度研究助手，支持智能搜索、知识图谱、数据可视化等功能。
+一个基于 AI 的深度研究助手，支持智能搜索、数据可视化等功能；研究详情页的关系图谱为前端基于研究结果渲染的可视化视图（无独立图谱后端）。
 
 ## 目录
 - [环境要求](#环境要求)
@@ -423,6 +423,8 @@ cp .env.example .env
 docker compose up -d
 
 # 2. 在 backend/.env 中启用监控
+# 两级开关：OBSERVABILITY_TRACING_ENABLED（默认 true，OTel 主链路总开关）与
+# LANGFUSE_ENABLED（默认 false，仅控制 LangFuse 上报；默认关闭见 backend/.env.example）。
 # LANGFUSE_ENABLED=true
 # LANGFUSE_BASE_URL=http://localhost:3000
 # LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx
@@ -430,7 +432,7 @@ docker compose up -d
 
 # 3. 安装 SDK 并配置模型价格
 cd backend
-pip install 'langfuse>=3.0.0'
+pip install 'langfuse>=4.0.0,<5.0.0'  # 与 backend/requirements.txt 一致（LangFuse SDK v4，OTel-based）
 python -m app.scripts.config_langfuse_models
 ```
 

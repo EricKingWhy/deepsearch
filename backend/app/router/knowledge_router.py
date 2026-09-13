@@ -77,7 +77,7 @@ def doc_to_response(doc: Document) -> DocumentResponse:
 
 
 async def process_document(document_id: str, file_path: str, kb_name: str, db_session_factory):
-    """后台处理文档（使用 DocMind 解析、向量化、存储到ES）"""
+    """后台处理文档（使用 DocMind 解析、向量化、存储到 Milvus 集合 kb_{知识库名}；历史上曾计划写 ES，已弃用）"""
     from service.docmind_service import process_document_with_docmind
 
     # 创建新的数据库会话
