@@ -3,24 +3,28 @@
  * 未经授权，禁止转售或仿制。
  */
 
+import { lazy, Suspense } from 'react'
+import PageLoading from '@/components/page-loading'
 import { AuthGuard } from '@/components/auth-guard'
 import { BaseLayout } from '@/layout/base'
-import NotFound from '@/pages/404'
-import LoginPage from '@/pages/auth/login'
-import Chat from '@/pages/chat'
-import NewChat from '@/pages/chat/newchat'
-import Index from '@/pages/index'
-import KnowledgePage from '@/pages/knowledge'
-import MemoryPage from '@/pages/memory'
-import DatabasePage from '@/pages/database'
-import NewsPage from '@/pages/news'
-import BiddingPage from '@/pages/bidding'
 import {
   Navigate,
   Outlet,
   RouteObject,
   createBrowserRouter,
 } from 'react-router-dom'
+
+// T34：路由级页面全部懒加载（组件内部不拆分）
+const Index = lazy(() => import('@/pages/index'))
+const NewChat = lazy(() => import('@/pages/chat/newchat'))
+const Chat = lazy(() => import('@/pages/chat'))
+const KnowledgePage = lazy(() => import('@/pages/knowledge'))
+const MemoryPage = lazy(() => import('@/pages/memory'))
+const DatabasePage = lazy(() => import('@/pages/database'))
+const NewsPage = lazy(() => import('@/pages/news'))
+const BiddingPage = lazy(() => import('@/pages/bidding'))
+const NotFound = lazy(() => import('@/pages/404'))
+const LoginPage = lazy(() => import('@/pages/auth/login'))
 
 export type IRouteObject = {
   children?: IRouteObject[]
@@ -79,14 +83,21 @@ export const router = createBrowserRouter(
   [
     {
       path: '/login',
-      element: <LoginPage />,
+      element: (
+        <Suspense fallback={<PageLoading />}>
+          <LoginPage />
+        </Suspense>
+      ),
     },
     {
       path: '/',
       element: (
         <AuthGuard>
           <BaseLayout>
-            <Outlet />
+            {/* 单一 Suspense 边界覆盖全部懒加载子路由 */}
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
           </BaseLayout>
         </AuthGuard>
       ),

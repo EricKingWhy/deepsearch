@@ -1719,6 +1719,14 @@ cd frontend && npm run test
 
 预期：命令 1/2 有命中；命令 3 产出含 echarts / antd / react 的独立 chunk 文件；命令 4 通过。
 
+### 实施修正（2026-09-13，T34 实测后）
+
+- `manualChunks` 用**函数形式**（对象形式捕获不到 `echarts/core` 等子路径导入）：`node_modules` 内按 echarts → antd/@ant-design → react 顺序判定，恰好 3 个 chunk。产物：`react` 257.9KB / `antd` 886KB / `echarts` 1054.4KB（gzip 82.9/279.3/350KB），页面级 chunk（login/newchat/404/news 等 0.16–10KB）随懒加载独立产出。
+- Suspense 采用**单一边界**：包在根布局 `<Outlet />` 外层（login 路由单独包一层），全部懒加载子路由共享；fallback = 新增 `components/page-loading`（复用既有 `ComSpinner` + 中文文案「页面加载中…」，独立成文件以满足 react-refresh only-export-components）。
+- 全部页面均有默认导出，`lazy()` 共 10 处（10 个路由级页面）。
+- **验收 4 说明**：全量 `npm run test` 曾出现 2–3 例 OutlineApprovalPanel / deep-research-integration 的 5s 超时——**已在无 T34 改动的基线上复现同类失败**（非确定性、跨用例漂移），判定为环境负载抖动（import 阶段 52–85s）而非本票回归；与 T29 记录的 vitest 偶发超时同源。确定性用例（diagnostics-timeline、session 等）全部通过。
+- lint 78 errors / 9 warnings 均与 T33 后持平（本票零新增）；构建时间 16.9–85s 波动（环境）。
+
 ### 风险
 
 - 懒加载后首屏会出现加载态闪烁，**不要**通过取消懒加载来解决 —— 应调整 Suspense fallback。
