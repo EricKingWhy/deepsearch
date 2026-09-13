@@ -1,4 +1,9 @@
-<!-- 对应 issue：Closes #xx -->
+Closes #<issue 编号>
+
+<!-- ⚠️ 上面这行是 GitHub 的「关闭关键字」，必须：① 留在 HTML 注释之外；② 与 #编号 写在同一行；
+     ③ 用 close/closes/fix/fixes/resolve/resolves 之一。把编号写进标题或普通句子不会自动收单。
+     此前 T08–T40 的 32 个 issue 就是因为漏了关键字而一直 OPEN。合并后请核实：
+     gh issue view <编号> --json state  → 期望 CLOSED -->
 
 ## 改了什么
 
