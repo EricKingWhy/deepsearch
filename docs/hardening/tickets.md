@@ -1773,6 +1773,13 @@ cd frontend && npm run test
 
 预期：命令 2 打印 `OK`；命令 3 通过。
 
+### 实施修正（2026-09-13，T35 实测后）
+
+- 实现：两个文件改为 `const ReactECharts = lazy(() => import('echarts-for-react'))`，在各自渲染点外包 `<Suspense fallback={<PageLoading />}>`（复用 T34 的中文加载态组件，不新建 fallback）。
+- 验收 2 复核：`npm run build` 后入口 chunk（`dist/index.html` 引用的 `index-C1BEEqIA.js`，62.49 KB）中出现的 `echarts` 字符串是 **rollup 动态导入的依赖列表**（`...,"assets/index-bzPxcR4K.js","assets/echarts-Bxh_v0Mb.js"`），非打包进主包 —— 62 KB 入口不可能容纳 1054 KB 的 echarts；该 chunk 仅在懒加载组件 chunk 载入时才请求。命令 1/3 亦通过（`npm run test` 33 passed）。
+- 与 T34 关系：T34 的函数式 manualChunks 已把 echarts 单独成 chunk；本票解决的是「静态引入使动态拆包失效」。
+- **风险条款（浏览器实机验证）未执行**：本机无浏览器自动化环境（agent-browser 不可用），仅以构建产物 + 单元测试佐证；已记入 needs-infra 待补（与 T30/T31 的 Docker 项同批）。
+
 ### 风险
 
 - 若 `echarts-for-react` 与动态 `import('echarts')` 的实例不共享，可能出现「图表不渲染」或「主题丢失」。**必须**在浏览器中实际打开一个含图表的页面验证（可用 `agent-browser` 技能截图），不能只靠构建通过。

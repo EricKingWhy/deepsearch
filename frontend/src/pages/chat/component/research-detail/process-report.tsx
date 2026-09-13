@@ -3,10 +3,13 @@
  * 未经授权，禁止转售或仿制。
  */
 
-import { useState, useMemo } from 'react'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import Markdown from '@/components/markdown'
-import ReactECharts from 'echarts-for-react'
+import PageLoading from '@/components/page-loading'
 import styles from './process-report.module.scss'
+
+// T35：懒加载 echarts-for-react（其依赖完整 echarts），避免静态引入使动态拆包失效
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 export interface SectionDraft {
   id: string
@@ -55,11 +58,13 @@ function ChartRenderer({ chart, inline = false }: { chart: ChartData; inline?: b
       <div className={`${styles.chartCard} ${inline ? styles.inlineChart : ''}`}>
         <div className={styles.chartTitle}>📊 {chart.title}</div>
         <div className={styles.echartsWrapper}>
-          <ReactECharts
-            option={chart.echarts_option}
-            style={{ height: '300px', width: '100%' }}
-            opts={{ renderer: 'canvas' }}
-          />
+          <Suspense fallback={<PageLoading />}>
+            <ReactECharts
+              option={chart.echarts_option}
+              style={{ height: '300px', width: '100%' }}
+              opts={{ renderer: 'canvas' }}
+            />
+          </Suspense>
         </div>
       </div>
     )
