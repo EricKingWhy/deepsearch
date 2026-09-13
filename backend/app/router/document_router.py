@@ -10,6 +10,7 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 
 from service import DocumentService, ServiceConfig
 from service.docmind_service import process_document_with_docmind
+from router.auth_router import get_current_user_required
 from core.upload_security import (
     ensure_supported_extension,
     read_upload_with_limit,
@@ -25,7 +26,13 @@ from schemas.document import (
 )
 
 # Create router instance
-router = APIRouter(prefix="/documents", tags=["documents"])
+# 全文件无匿名端点：上传 / 列出 / 删除 / 检索都属于文档数据操作，一律要求认证。
+# 因此在 router 级挂一次依赖，避免逐端点重复（新增端点也自动受保护）。
+router = APIRouter(
+    prefix="/documents",
+    tags=["documents"],
+    dependencies=[Depends(get_current_user_required)],
+)
 
 # Get service configuration
 def get_document_service():

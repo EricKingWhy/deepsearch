@@ -273,9 +273,12 @@ docker compose down -v
 
 ### 上传测试文档 (可选)
 
+> 该接口自 T04 起要求认证（router 级 `get_current_user_required`），请先从 `/auth/login` 取 Token 并带上 `Authorization` 头。
+
 ```bash
 cd backend
 curl -X POST "http://localhost:8000/documents/upload" \
+  -H "Authorization: Bearer <你的Token>" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@./test/test_doc.pdf"
 ```

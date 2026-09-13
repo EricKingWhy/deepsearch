@@ -238,17 +238,43 @@ cd backend && pytest tests/router/test_document_upload.py -q -k document_upload
 ### 验收
 
 ```bash
-# 1) 未带 Token 请求被拒
+# 1) 未带 Token 请求被拒（真实请求 → 401）
 cd backend && pytest tests -q -k document_auth
 
 # 2) 全文件鉴权依赖计数 > 0
 cd backend && grep -c "get_current_user_required\|get_current_user" app/router/document_router.py
 
 # 3) 前端调用链已注入 Token（见风险 R-02）
-grep -rn "auth" frontend/src/api/request/auth.ts | head
+grep -rn "auth" frontend/src/api/request/plugins/auth.ts | head
 ```
 
-预期：`pytest` 全绿；计数 ≥ 1；前端统一注入存在。
+预期：`pytest` 全绿（10 passed）；计数 = 2；前端统一注入存在。
+
+> **⚠️ 实施修正（2026-09-13，已实测）**
+>
+> 1. **原验收 #3 的路径不存在**：`frontend/src/api/request/auth.ts` 在仓库中查无此文件。
+>    真实的统一注入点是 `frontend/src/api/request/plugins/auth.ts`，已修正路径。该文件是
+>    **无条件的 axios 请求拦截器**（无 URL 白名单），命中即写入 `Authorization: Bearer <token>`，
+>    因此覆盖 `/documents` 链路。
+> 2. **R-02 结论：该链路前端无调用方。** 全仓搜索 `documents/upload|list|delete|retrieve`，
+>    前端源码命中 **0 处**（前端知识库走 `/knowledge-bases/...`，属另一路由）。因此本票
+>    **不需要改前端**。真正的「既有匿名调用方」是两处文档示例：
+>    `backend/README.md` 与 `READMED.md` 的 `/documents/upload` curl 示例，已补
+>    `Authorization: Bearer <你的Token>` 头，避免文档里的命令在改动后失效。
+> 3. **router 级挂依赖的安全性已确认**：该文件共 4 个端点
+>    （`/upload`、`/list`、`/delete`、`/retrieve`），**全部为文档数据操作，无匿名 / 健康检查端点**，
+>    故 router 级挂载不会误伤任何应当匿名访问的接口。
+> 4. **测试基建修正（后续所有 router 类测试共用，含 T05）**：
+>    - `tests/conftest.py` 的 `service` 占位包原先不含顶层名字，导致
+>      `from service import DocumentService, ServiceConfig` 在**收集期** `ImportError`。
+>      已改为按需从轻量子模块（`service.config` / `service.document_service`）取名字挂到占位包上，
+>      仍**不执行** `service/__init__.py` 的重型链。
+>    - `service.docmind_service` 实测导入耗时约 **48s**（拉起 docmind / llama-index），
+>      已在 conftest 注入轻量替身；替身**故意抛 `NotImplementedError`** 而非伪造成功，
+>      以防真实解析调用被静默吞掉。
+>    - 不能把 `APIRouter` 直接交给 `TestClient`（FastAPI 0.141 会报
+>      `AssertionError: fastapi_middleware_astack not found`），测试改为用**最小 `FastAPI` 应用**
+>      挂载被测 router。该写法不引入 DB / Redis 依赖。
 
 ### 风险
 
