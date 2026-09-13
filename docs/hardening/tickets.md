@@ -624,6 +624,12 @@ cd backend && pytest tests -q -k text2sql
 
 - 收紧后可能误拦前端已有能力（例如多表联合查询确实是产品需求）。若 `UNION` 是**有意支持**的查询形式，则本票目标应改为「用只读账号兜底（T10）」而非禁止 `UNION` —— 这属架构分叉，需停下来问用户。**先核实前端是否会生成含 `UNION` 的查询。**
 
+### 实施修正（2026-09-13，T09 实测后）
+
+1. **风险条已核实，不构成架构分叉**：`ALLOWED_KEYWORDS` 在全仓**无任何使用点**（死配置，`UNION` 在其中只是表面），text2sql 的 prompt 无任何鼓励 UNION / 联合查询的指引，前端 `frontend/src` 无 UNION 相关查询生成逻辑 → UNION 不是有意支持的能力，按主方案全禁。
+2. **实施范围**：`validate_sql` 主判据改为「以 `SELECT` 或 `WITH` 开头 + 禁止任何形式的 `UNION`」（黑名单降为辅助）；`FORBIDDEN_KEYWORDS` 移除 `'--'`（专门的注释检查已覆盖，报错语义更明确）与 `'UNION ALL SELECT'`（被 UNION 全禁覆盖）；`ALLOWED_KEYWORDS` 同步移除 `'UNION'`（该列表本身仍未参与校验，整体清理不在本票范围）。
+3. **验收 #1 的脚本需修正路径**：原脚本 `sys.path.insert(0,'.')` 假设 `from app.service...`，与项目约定（`backend/app` 在 `sys.path`，`from service.text2sql_service import ...`）不符；`validate_sql` 是 `Text2SQLService` 的实例方法而非模块级函数。实际执行改为 `sys.path.insert(0,'app')` + 实例化后调用，断言内容不变，输出 `OK: UNION 绕过已封堵`。
+
 ---
 
 ## T10 — text2sql 使用只读数据库账号兜底
