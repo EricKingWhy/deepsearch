@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T32 + T41 + 批次 10 审查修复） | `9420c8cb7ff78801bc5a0438498caf67e48b32ef` |
-| 当前批次 | 11（T33–T34 待实施；T20 为决策票按用户指示由 AI 裁决并记录理由；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T34 + T41 + 批次 10 审查修复；SHA 为 T34 merge，收批 merge 后回填） | `5ed8f68f1cd78959c4fafa2b553a5ccfa27ee317` |
+| 当前批次 | 11（T33–T34，已收批待审查；T20 为决策票按用户指示由 AI 裁决并记录理由；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `f1b7219`（第 9 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 31 |
+| 已完成 | 33 |
 | 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
 
 ## 批次审查记录
@@ -35,6 +35,7 @@
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
 | 9 | T27–T29 | `37a2ec6` | `3e7ea65` | 7 | `f1b7219` | FIXED |
 | 10 | T30–T32 | `f1b7219` | `a99d55c` | 7 | `9420c8c` | FIXED |
+| 11 | T33–T34 | `9420c8c` | `（收批SHA待回填）` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -249,8 +250,8 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；验收 1/2 PASS；验收 3/4 needs-infra Docker daemon 未运行记 BLOCKED） | 10 | PENDING |
 | T31 | start-services.sh 现代化 | #62 | DONE | `T31-start-services` | `7a943b0` | #122 | PASS（docker compose 6 处；wait_for_healthy 轮询替代 sleep 10（规避 compose wait 语义陷阱）；restart 二次确认；验收 1/2/3 PASS；验收 4 needs-infra 记 BLOCKED） | 10 | PENDING |
 | T32 | 清理 console.log 残留 | #63 | DONE | `T32-console-cleanup` | `09c3522` | #124 | PASS（删 80 处单行 + chat/index.tsx 3 处多行日志块；session-drawer 错误路径保留上报并降级 console.warn；grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0，剩余 89 errors 属 T33/T34 范围。初版曾引入 7 处 no-empty 空块残留，已在批次 10 审查修复清理） | 10 | FIXED@`9420c8c` |
-| T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | TODO | — | — | — | — | 11 | PENDING |
-| T34 | vite 构建分包 + 路由懒加载 | #65 | TODO | — | — | — | — | 11 | PENDING |
+| T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | DONE | `T33-eslint-any` | `11eb2ec` | #128 | PASS（recommended 已默认 error 生效，显式落名拒绝降级 warn；store/router 11 处 any 收敛，验收 grep = 0；连带修复被 any 掩盖的 device.ts 迁移潜在 TypeError（改为无参 no-op，机制缺陷记已知残留）；lint 89→78 errors 零新增；tsc 24→23） | 11 | PENDING |
+| T34 | vite 构建分包 + 路由懒加载 | #65 | DONE | `T34-vite-chunks` | `287af5f` | #129 | PASS（manualChunks 函数形式拆 echarts/antd/react 恰好 3 chunk（对象形式捕获不到子路径导入）；10 页面全 React.lazy + 单 Suspense 边界 + 中文 PageLoading；sourcemap: false；lint 78/9 持平零新增；test 2-3 例超时经基线复现判定环境抖动非回归） | 11 | PENDING |
 | T35 | ECharts 真正拆包 | #66 | TODO | — | — | — | — | 11 | PENDING |
 | T36 | 清理注释死代码 | #67 | TODO | — | — | — | — | 12 | PENDING |
 | T37 | 决策票：前端 JWT 存储方式 | #68 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
@@ -368,3 +369,5 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | T32 | 实施 + 合并：清理 83 处 console.log/debug —— 80 处单行（8 文件，python 逐行括号平衡校验后整行移除）+ `chat/index.tsx` 3 处多行日志块（checkpoint 详情/UI状态/debug useEffect）；`session-drawer/index.tsx` 错误路径按工单精神保留错误上报并降级 `console.warn`（注释标记 T32）。验证：grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0（剩余 104 errors 属 T33/T34 范围，全绿依赖 T33；初版遗留 7 处 no-empty 见审查修复条目） | commit `09c3522`，PR #124 已 merge（`a99d55c`），issue #63 自动关闭；批次 10 收批，fixed point 推进至 `a99d55c` |
 | 2026-09-13 | — | **第 10 批双轴审查**（`f1b7219` → `a99d55c`）：标准轴 3 条 + 规格轴 7 条，去重后有效 **7 条**（规格轴 #5/#6/#7 经核实为收批 PR 部分编辑丢失所致的真实台账不一致，规格轴 #2 与标准轴 F1 同源）。核心 finding：T32 删日志后残留 7 处空块/死代码（no-empty / no-unused-vars，本票自身引入的新 lint error，chat/index.tsx 6 处 + research-detail/index.tsx 1 处 + visualization.tsx 空 forEach）；其余为 start-services.sh 尾部指引与 T30 容器化 backend 冲突（F3）、tickets.md 缺 T30 路径澄清与 T32 实施修正补记、台账措辞不实（「104 errors 全属 T33/T34」不实，no-empty 属本票引入）。修复 = 下一记录条目 commit | 审查基线 a99d55c，双轴并行子代理各出报告；已核实 chat/index.tsx:427 stepId 未使用系 f1b7219 基线存量（T33 范围），不属本批引入 |
 | 2026-09-13 | — | **第 10 批 findings 修复**：T32 残留清理（chat/index.tsx 2 空 else + 空 forEach + 死变量 finalSummary 整块删除、3 空 catch 补语义注释保留吞错语义；research-detail/index.tsx 空 if；visualization.tsx 空 forEach）；start-services.sh 尾部指引改为「后端已随 compose 启动于 :8000」并提示端口冲突；tickets.md 补 T30 路径澄清与 T32 实施修正；TRACKER 补回收批丢失编辑并修正「104 errors 全属 T33/T34」措辞。验证：lint 89 errors 回到 T29 基线（T32 零新增）、test 33 全过、build 25.17s、bash -n 过。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 11 批 T33–T34）起算 | commit `304b04a`，PR #126 已 merge（`9420c8c`） |
+| 2026-09-13 | T33 | 实施 + 合并：store/router 11 处显式 any 收敛（session.ts 4 处去掉 as any 信封兼容——已核对 request 不解包、后端裸返回；valtio-persist 3 处；device.ts 迁移改无参 no-op；router 3 处）；eslint.config.js 显式落名 no-explicit-any=error（recommended 已默认生效，拒绝降 warn）。**连带发现被 any 掩盖的潜在 bug**：valtio-persist 调用迁移不传参且忽略返回值，原 oldState 恒 undefined（潜在 TypeError），迁移机制缺陷记已知残留待后续票。验收：store/router grep = 0；lint 89→78 零新增；tsc 24→23（修复 TS2322）；test 33 全过、build 24.66s | commit `11eb2ec`，PR #128 已 merge（`23c662e`），issue #64 自动关闭 |
+| 2026-09-13 | T34 | 实施 + 合并：vite manualChunks 函数形式（对象形式捕获不到 echarts/core 子路径导入）拆 echarts/antd/react 恰好 3 chunk（257.9KB/886KB/1054.4KB）；routes.tsx 10 页面全 React.lazy，单 Suspense 边界包根布局 Outlet（login 单独一层），fallback 新增 components/page-loading（复用 ComSpinner + 中文文案，独立文件满足 react-refresh）；sourcemap: false。test 2-3 例超时经无改动基线复现判定环境抖动非回归；lint 78/9 持平零新增；build 通过 | commit `287af5f`，PR #129 已 merge（`5ed8f68`），issue #65 自动关闭；批次 11 收批 |
