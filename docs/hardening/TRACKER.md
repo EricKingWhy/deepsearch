@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T16 + T41 合并） | `ac4ef4eca0f0be02f42169019130ab4affbfd8c2` |
-| 当前批次 | 6（T17–T19；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T19 + T41 合并） | `8c0aa12125aee7eb4abdec9c626d8d53027e8e37` |
+| 当前批次 | 6（T17–T19，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `d345685`（第 5 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 16 |
+| 已完成 | 19 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -30,6 +30,7 @@
 | 3 | T07–T09 | `57f69e0` | `fbe55f8` | 6 | `6b73d44` | FIXED |
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
+| 6 | T17–T19 | `d345685` | `8c0aa12` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -166,9 +167,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | FIXED@d345685 |
 | T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | FIXED@d345685 |
 | T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | FIXED@d345685 |
-| T17 | 新增架构总览文档 | #48 | TODO | — | — | — | — | 6 | PENDING |
-| T18 | requirements.txt 去重与依赖分区 | #49 | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
-| T19 | 决策票：alembic 去留 | #50 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
+| T17 | 新增架构总览文档 | #48 | DONE | `T17-architecture-doc` | `b309036` | #101 | PASS（5 个小节；「有意保留」2 处命中 NG-2/NG-3；目录导航与实际一致；仅 docs/ 变更） | 6 | PENDING |
+| T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | PENDING |
+| T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | PENDING |
 | T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
 | T21 | 新增 LICENSE | #52 | TODO | — | — | — | — | 7 | PENDING |
 | T22 | 新增 CONTRIBUTING.md | #53 | TODO | — | — | — | — | 7 | PENDING |
@@ -275,3 +276,6 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T16 | 实施 + 合并（仅文案）：READMED langfuse 安装版本对齐 requirements（`>=4.0.0,<5.0.0`）并写清两级开关（`OBSERVABILITY_TRACING_ENABLED` 默认 true / `LANGFUSE_ENABLED` 默认 false）；`knowledge_router` / `docmind_service` 的 ES 旧注释改 Milvus 实际存储（各留一句全拼历史说明，ES 字面计数 0）；首行「知识图谱」宣称收窄为前端渲染的关系视图 | commit `aad9dd4`，PR #98 已 merge（`ac4ef4e`），issue #47 自动关闭 |
 | 2026-09-13 | — | **第 5 批 `code-review`（双轴并行，fixed point `1f52bfc`，终点 `381c929`）**：标准轴 0 硬违规 + 3 judgement call，规格轴三票全部「无发现」，去重后 **4 条**（1 修 3 保留），历批最干净。规格轴独立复验：T15 移动非重写（逐字等价）、PR #96 缺陷修复干净、T16 与代码逐项相符 | 明细见「第 5 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 5 批 findings 修复**：CLAUDE.md 架构章节 NG-2/NG-3 逐条对应（V1 → NG-3、LangGraph → NG-2）。流程改进：SHA 回填改用「先提交、后回填、不 amend」两步法（吸取第 4 批 amend 改 SHA 的教训） | 修复 = 本记录 commit；fixed point 随本记录 commit 落定，下一批（第 6 批 T17–T19）起算 |
+| 2026-09-13 | T17 | 实施 + 合并：新增 `docs/architecture.md`（单文件五小节：两条研究路线 / V2 内部流程含 NG-2 标注 / RAG 数据流指向 RAG架构分析.md / 基础设施依赖矩阵如实标注 ES 未使用、MinIO 仅 Milvus 内部依赖 / 目录导航）；NG-2/NG-3 回链 prd.md | commit `b309036`，PR #101 已 merge（`348da0c`），issue #48 自动关闭 |
+| 2026-09-13 | T18 | 实施 + 合并：删除前段重复 `langfuse>=4.0.0`（保留后段 `>=4.0.0,<5.0.0`）；Observability/AI-LLM 分区补说明（langgraph 标注 NG-2）。**决策：用户裁决选 A**（不引入版本锁文件）。验收 #3 替代口径：venv 无 pip，改 `packaging` 逐行解析 47 条声明全部通过 | commit `68d00b2`，PR #102 已 merge（`3ab40b6`），issue #49 自动关闭 |
+| 2026-09-13 | T19 | 实施 + 合并：**决策：用户裁决选 C**——保留 alembic 依赖，行上注释「预留未使用——迁移实为 backend/migrations/ 手写 SQL（见 READMED 数据库建表）」；未删依赖、未引入 alembic 编排 | commit `f98a81d`，PR #103 已 merge（`8c0aa12`），issue #50 自动关闭 |
