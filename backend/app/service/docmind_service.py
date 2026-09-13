@@ -255,7 +255,7 @@ def process_document_with_docmind(
     Args:
         file_path: 文件路径
         file_name: 文件名
-        index_name: ES 索引名
+        index_name: Milvus 集合名（历史上曾计划用 Elasticsearch 存储，后切换为 Milvus）
         chunk_size: 切片大小
 
     Returns:
