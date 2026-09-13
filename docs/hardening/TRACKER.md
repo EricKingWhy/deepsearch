@@ -34,7 +34,7 @@
 | 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
 | 9 | T27–T29 | `37a2ec6` | `3e7ea65` | 7 | `f1b7219` | FIXED |
-| 10 | T30–T31 | `f1b7219` | `f716105` | `（待审查）` | — | — |
+| 10 | T30–T32 | `f1b7219` | `a99d55c` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -248,7 +248,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | DONE | `T29-ci-frontend` | `1626c18` | #118 | PASS（YAML 合法；.npmrc legacy-peer-deps；build 启用，lint/test 按票面风险条暂不启用并注明依赖 T32–T34；needs-infra 实跑 success 37s） | 9 | FIXED@f1b7219 |
 | T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；验收 1/2 PASS；验收 3/4 needs-infra Docker daemon 未运行记 BLOCKED） | 10 | PENDING |
 | T31 | start-services.sh 现代化 | #62 | DONE | `T31-start-services` | `7a943b0` | #122 | PASS（docker compose 6 处；wait_for_healthy 轮询替代 sleep 10（规避 compose wait 语义陷阱）；restart 二次确认；验收 1/2/3 PASS；验收 4 needs-infra 记 BLOCKED） | 10 | PENDING |
-| T32 | 清理 console.log 残留 | #63 | TODO | — | — | — | — | 10 | PENDING |
+| T32 | 清理 console.log 残留 | #63 | DONE | `T32-console-cleanup` | `09c3522` | #124 | PASS（删 80 处单行 + chat/index.tsx 3 处多行日志块；session-drawer 错误路径保留上报并降级 console.warn；grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0，剩余 104 errors 属 T33/T34 范围） | 10 | PENDING |
 | T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | TODO | — | — | — | — | 11 | PENDING |
 | T34 | vite 构建分包 + 路由懒加载 | #65 | TODO | — | — | — | — | 11 | PENDING |
 | T35 | ECharts 真正拆包 | #66 | TODO | — | — | — | — | 11 | PENDING |
@@ -365,3 +365,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **第 9 批 findings 修复**：integration 用例数 5→4（合计 17 吻合）、T29 merge SHA 回填、tip 占位回填。批次末全量默认口径 236 passed / 17 deselected（8.64s）。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 10 批 T30–T31 等）起算 |
 | 2026-09-13 | T30 | 实施 + 合并：`backend/Dockerfile` 多阶段构建（builder venv → runtime 仅拷贝，python:3.11-slim；migrations 随镜像）；`backend/.dockerignore`（.env/tests/\*.png 等不入镜像）；`docker-compose.yml` 新增 backend 服务（industry_network / 8000 / depends_on postgres·redis·milvus service_healthy / env_file 注入密钥）。验收 1/2 PASS；3/4 needs-infra（Docker daemon 未运行）按 R-05 记 BLOCKED。另发现遗留 `backend/app/Dockerfile`（旧式单阶段）未动 | commit `1e8f6f7`，PR #121 已 merge（`85aca91`），issue #61 自动关闭 |
 | 2026-09-13 | T31 | 实施 + 合并：`start-services.sh` 的 `docker-compose` → `docker compose`（6 处）；`sleep 10` 改 `wait_for_healthy` 按容器名轮询 `docker inspect` Health.Status（180s 超时；规避 `compose wait`「等退出」语义陷阱）；restart 二次确认、clean 补 `down -v` 后果说明。验收 1/2/3 PASS；4 needs-infra 记 BLOCKED | commit `7a943b0`，PR #122 已 merge（`f716105`），issue #62 自动关闭 |
+| 2026-09-13 | T32 | 实施 + 合并：清理 83 处 console.log/debug —— 80 处单行（8 文件，python 逐行括号平衡校验后整行移除）+ `chat/index.tsx` 3 处多行日志块（checkpoint 详情/UI状态/debug useEffect）；`session-drawer/index.tsx` 错误路径按工单精神保留错误上报并降级 `console.warn`（注释标记 T32）。验证：grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0（剩余 104 errors 全属 T33/T34 范围，全绿依赖 T33） | commit `09c3522`，PR #124 已 merge（`a99d55c`），issue #63 自动关闭；批次 10 收批，fixed point 推进至 `a99d55c` |
