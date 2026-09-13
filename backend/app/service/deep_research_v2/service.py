@@ -300,7 +300,8 @@ class DeepResearchV2Service:
                 resume=resume,
                 user_id=user_id,
                 search_web=search_web,
-                search_local=search_local
+                search_local=search_local,
+                kb_name=kb_name
             ):
                 # 转换为 SSE 格式
                 yield self._format_sse(event)

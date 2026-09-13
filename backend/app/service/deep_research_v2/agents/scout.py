@@ -36,14 +36,13 @@ except ImportError:
     BS4_AVAILABLE = False
 
 # 本地知识库搜索依赖
+# 检索统一走 retrieval_service：集合名 = kb_{知识库名}（与 knowledge_router 入库侧一致）
 try:
-    from service.milvus_service import MilvusService
-    from service.embedding_service import generate_embedding
+    from service.retrieval_service import retrieve_from_knowledge_base
     MILVUS_AVAILABLE = True
 except ImportError:
     try:
-        from app.service.milvus_service import MilvusService
-        from app.service.embedding_service import generate_embedding
+        from app.service.retrieval_service import retrieve_from_knowledge_base
         MILVUS_AVAILABLE = True
     except ImportError:
         MILVUS_AVAILABLE = False
@@ -185,14 +184,9 @@ URL: {url}
         self.search_cache: Dict[str, List] = {}
         self.fact_fingerprints: Dict[str, str] = {}  # 事实指纹用于去重
 
-        # 初始化本地知识库搜索服务
-        self.milvus_service = None
+        # 本地知识库检索依赖是否可用（retrieve_from_knowledge_base 内部按需连接 Milvus）
         if MILVUS_AVAILABLE:
-            try:
-                self.milvus_service = MilvusService()
-                self.logger.info("Milvus service initialized for local knowledge base search")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize Milvus service: {e}")
+            self.logger.info("Local knowledge base search available via retrieval_service")
 
     async def process(self, state: ResearchState) -> ResearchState:
         """处理入口"""
@@ -596,7 +590,9 @@ URL: {url}
 
             # 本地知识库搜索
             if search_local:
-                local_results = await self._execute_local_search(query)
+                local_results = await self._execute_local_search(
+                    query, kb_name=state.get("kb_name")
+                )
                 all_results.extend(local_results)
 
                 if local_results:
@@ -1004,52 +1000,55 @@ URL: {url}
         return self.parse_json_response(response)
 
     @observe_retrieval("milvus")
-    async def _execute_local_search(self, query: str, top_k: int = 10) -> List[Dict]:
+    async def _execute_local_search(self, query: str, top_k: int = 10, kb_name: Optional[str] = None) -> List[Dict]:
         """
-        执行本地知识库搜索 - 使用 Milvus 向量检索
+        执行本地知识库搜索 - 走 retrieval_service（集合名 = kb_{知识库名}）
 
         Args:
             query: 搜索查询
             top_k: 返回结果数量
+            kb_name: 知识库名称。为空时跳过检索（与 V1 `search_local and kb_name` 的门控语义一致），
+                     因为不指定知识库时无法确定要检索的 Milvus 集合。
 
         Returns:
             搜索结果列表
         """
-        if not self.milvus_service or not MILVUS_AVAILABLE:
+        if not kb_name:
+            self.logger.warning(
+                "Local search requested but no knowledge base specified (kb_name is empty); skipping local search"
+            )
+            return []
+
+        if not MILVUS_AVAILABLE:
             self.logger.warning("Milvus service not available for local search")
             return []
 
         try:
-            # 生成查询向量
-            query_vector = generate_embedding(query)
-            if not query_vector:
-                self.logger.error("Failed to generate embedding for query")
-                return []
-
             self.logger.info(f"Executing local knowledge base search: {query[:50]}...")
 
-            # 搜索所有知识库（collection_name = "knowledge_base"）
-            results = self.milvus_service.search(
-                collection_name="knowledge_base",
-                query_vector=query_vector,
+            # retrieval_service 内部把 kb_name 转换为集合名 kb_{kb_name}（与入库侧一致）
+            results = await asyncio.to_thread(
+                retrieve_from_knowledge_base,
+                kb_name=kb_name,
+                question=query,
                 top_k=top_k
             )
 
             # 格式化结果为与网络搜索一致的格式
             formatted_results = []
             for r in results:
+                content = r.get("content_with_weight", "") or ""
                 formatted_results.append({
-                    'url': f"local://kb/{r.get('kb_id', 'unknown')}/{r.get('doc_id', 'unknown')}",
-                    'title': r.get('filename', 'N/A'),
-                    'summary': r.get('content', '')[:500],
-                    'snippet': r.get('content', '')[:200],
+                    'url': f"local://kb/{kb_name}/{r.get('document_id', 'unknown')}",
+                    'title': r.get('document_name', 'N/A'),
+                    'summary': content[:500],
+                    'snippet': content[:200],
                     'site_name': f"本地知识库",
                     'date': '',
                     'score': r.get('score', 0),
                     'is_local': True,
-                    'kb_id': r.get('kb_id'),
-                    'doc_id': r.get('doc_id'),
-                    'chunk_index': r.get('chunk_index')
+                    'kb_name': kb_name,
+                    'doc_id': r.get('document_id')
                 })
 
             self.logger.info(f"Local search returned {len(formatted_results)} results for: {query[:30]}...")
