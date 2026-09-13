@@ -42,9 +42,10 @@ python app/app_main.py
 
 # 接口测试
 ### 上传文档,用于本地知识库的查询
+> 该接口自 T04 起要求认证（router 级 `get_current_user_required`），请先从 `/auth/login` 取 Token 并带上 `Authorization` 头。
 ```sh
 cd backend
-curl -X POST "http://localhost:8000/documents/upload"   -H "Content-Type: multipart/form-data"   -F "file=@./test/test_doc.pdf"
+curl -X POST "http://localhost:8000/documents/upload"   -H "Authorization: Bearer <你的Token>"   -H "Content-Type: multipart/form-data"   -F "file=@./test/test_doc.pdf"
 
 {"status":"success","message":"成功处理 25 个切片","document_count":25}
 ```
