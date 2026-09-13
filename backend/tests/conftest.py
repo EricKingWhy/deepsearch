@@ -16,6 +16,12 @@ os.environ.setdefault(
     "JWT_SECRET_KEY", "test-only-jwt-secret-key-do-not-use-in-production-0123456789"
 )
 
+# 自 T07 起 core.database 在**导入期**要求 POSTGRES_PASSWORD 存在（移除 weak 默认值）。
+# 大量模块（含与数据库无关的 router）都会 `from core.database import get_db`，
+# 于是无基础设施的单元测试也需要一个测试占位口令。注意这只影响导入期校验 ——
+# engine 是惰性建连的，不会真的去连库。
+os.environ.setdefault("POSTGRES_PASSWORD", "test-only-postgres-password")
+
 
 def _register_namespace_package(name: str, path: Path) -> types.ModuleType:
     package = types.ModuleType(name)
