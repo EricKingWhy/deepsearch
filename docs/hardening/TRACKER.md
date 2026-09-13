@@ -12,9 +12,9 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T23、T26 + T41 合并） | `4dde37a0419b1beb4b4a7bc6b05417a33c497056` |
-| 当前批次 | 7（T21–T23 + T26 提前，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `9fbdf3f`（第 6 批审查修复 commit） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T23、T26 + T41 合并） | `d1732cea2fbe2c4ada2530284981f248217c0a32` |
+| 当前批次 | 8（T24–T25；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| 当前 fixed point（上一批审查结束 commit） | `d1732ce`（第 7 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -31,7 +31,7 @@
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
 | 6 | T17–T19 | `d345685` | `3e18063` | 4 | `9fbdf3f` | FIXED |
-| 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | `（待审查）` | — | — |
+| 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -161,7 +161,22 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 T18 langfuse 仅剩一行更严约束、langgraph/alembic 未删、47 条解析口径如实记录；
 T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log 逐项吻合。
 
-## ticket 明细## ticket 明细## ticket 明细## ticket 明细
+### 第 7 批审查 findings 明细（`9fbdf3f` → `e3c28da`，修复 = 本记录 commit）
+
+双轴并行审查：**标准轴 0 硬违规 + 2 judgement call；规格轴四票全部「实质合规」**。去重后 **4 条**：1 修 3 保留。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 规格 | TRACKER 主 tip 记 `4dde37a`，但台账闭合经 PR #110 合并于 `e3c28da`（自指时序滞后） | **已修**（本记录：tip 更新为本记录 commit 后的实际 tip） |
+| 2 | 标准 | `ruff.toml` 的 `line-length=100` 在当前最小规则集下无规则消费（Speculative Generality，轻） | **保留判定**：配置注释已声明「逐步放开」意图；预先设定零成本 |
+| 3 | 标准 | `CONTRIBUTING.md` 自称「一屏」实际略超 | **保留判定**：已明示「回链不复制」原则，超出部分均为回链引导 |
+| 4 | 规格 | `.editorconfig` 覆盖 js/jsx/vue 超票面清单（scope creep，轻） | **保留判定**：只在新文件内、低风险顺带约定；与前端栈（vite+vue）相符 |
+
+**规格轴独立复验通过**：T21 MIT + commit 注明可更换；T22 五项规定齐、回链文件全部存在、命令口径实测正确；
+T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 注明」条件项不适用；提前入批理由已记录；
+台账 SHA/PR 逐项吻合。
+
+## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
@@ -187,12 +202,12 @@ T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log �
 | T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | FIXED@9fbdf3f |
 | T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | FIXED@9fbdf3f |
 | T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | PENDING |
-| T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | PENDING |
-| T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | PENDING |
+| T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | FIXED@d1732ce |
+| T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | FIXED@d1732ce |
+| T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | FIXED@d1732ce |
 | T24 | 新增 issue 与 PR 模板 | #55 | TODO | — | — | — | — | 8 | PENDING |
 | T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | TODO | — | — | — | — | 8 | PENDING |
-| T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | PENDING |
+| T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | FIXED@d1732ce |
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
 | T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | TODO | — | — | — | — | 9 | PENDING |
@@ -302,3 +317,5 @@ T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log �
 | 2026-09-13 | T26 | 实施 + 合并（**提前入第 7 批**：T22 声明依赖本票）：`backend/ruff.toml` 最小规则集 E9/F63/F7/F82、line-length=100、target py310；`ruff check app tests` 一次通过；不引入 black、不格式化全仓 | commit `b6f1ab2`，PR #108 已 merge（`d3cc518`），issue #57 自动关闭 |
 | 2026-09-13 | T22 | 实施 + 合并：`CONTRIBUTING.md` 一屏五节，细则全部回链不复制（READMED / LOOP-PROTOCOL §5-§6 / prd.md §7 / AGENTS.md）；含 NG-2/NG-3 不得删除提示与密钥红线 | commit `8bdd1e3`，PR #109 已 merge（`4dde37a`），issue #53 自动关闭 |
 | 2026-09-13 | — | **基础设施备注**：GitHub API GraphQL 通道本时段多次 502/异常，PR #109 改走 REST（`gh api pulls` + `pulls/{n}/merge`）完成创建与合并；后续遇 GraphQL 抖动可直接用 REST 通道 | 不影响台账与代码 |
+| 2026-09-13 | — | **第 7 批 `code-review`（双轴并行，fixed point `9fbdf3f`，终点 `e3c28da`）**：标准轴 0 硬违规 + 2 judgement call；规格轴四票全部「实质合规」。去重 **4 条**（1 修 3 保留） | 明细见「第 7 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 7 批 findings 修复**：TRACKER 主 tip 更新（消除自指时序滞后）。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 8 批 T24–T25）起算 |
