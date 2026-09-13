@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T26 + T41 合并） | `37a2ec60a17bca1953ec4b0f87e44cb97cef7f59` |
-| 当前批次 | 9（T27–T29；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T29 + T41 合并） | `（本记录 commit 后回填）` |
+| 当前批次 | 9（T27–T29，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `37a2ec6`（第 8 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 25 |
+| 已完成 | 28 |
 | 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
 
 ## 批次审查记录
@@ -33,6 +33,7 @@
 | 6 | T17–T19 | `d345685` | `3e18063` | 4 | `9fbdf3f` | FIXED |
 | 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
+| 9 | T27–T29 | `37a2ec6` | `（见执行日志）` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -225,9 +226,9 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T24 | 新增 issue 与 PR 模板 | #55 | DONE | `T24-github-templates` | `4352d14` | #112 | PASS（三模板在位；issue 字段与 ticket 结构对齐（模板含「事实依据」独立节，比票面结构细一档）；PR 模板强制验收输出 + NG-2/NG-3/密钥等四项自查；必填 3-5 项） | 8 | FIXED@37a2ec6 |
 | T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | DONE | `T25-changelog-version` | `d7deae9` | #113 | PASS（Keep a Changelog 0.1.0 汇总小节；双侧版本号均 0.1.0；不预留未完成小节） | 8 | FIXED@37a2ec6 |
 | T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | FIXED@d1732ce |
-| T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
-| T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
-| T29 | 新增 CI：前端 lint + vitest + build | #60 | TODO | — | — | — | — | 9 | PENDING |
+| T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | DONE | `T27-test-layering` | `e4fa99d` | #116 | PASS（pytest.ini 注册 unit/needs_infra + 默认跳过；只标不删：integration 5 + observability 1 + evals 真 LLM 12；`pytest tests -q` → 236 passed / 17 deselected，exit 0；无未知 marker 警告） | 9 | PENDING |
+| T28 | 新增 CI：后端 pytest | #59 | DONE | `T28-ci-backend` | `59bcfca` | #117 | PASS（YAML 合法；无明文密钥；needs-infra 实跑：pull_request 与 main push 两次均 success ~1m4s） | 9 | PENDING |
+| T29 | 新增 CI：前端 lint + vitest + build | #60 | DONE | `T29-ci-frontend` | `1626c18` | #118 | PASS（YAML 合法；.npmrc legacy-peer-deps；build 启用，lint/test 按票面风险条暂不启用并注明依赖 T32–T34；needs-infra 实跑 success 37s） | 9 | PENDING |
 | T30 | 新增 backend/Dockerfile 并接入 compose | #61 | TODO | — | — | — | — | 10 | PENDING |
 | T31 | start-services.sh 现代化 | #62 | TODO | — | — | — | — | 10 | PENDING |
 | T32 | 清理 console.log 残留 | #63 | TODO | — | — | — | — | 10 | PENDING |
@@ -340,3 +341,6 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | T25 | 实施 + 合并：`CHANGELOG.md`（Keep a Changelog，`[0.1.0] - 2026-09-13` 汇总小节，不预留未完成小节）；`frontend/package.json` 与 `backend/app/__init__.py.__version__` 统一 `0.1.0` | commit `d7deae9`，PR #113 已 merge（`ab5b673`），issue #56 自动关闭 |
 | 2026-09-13 | — | **第 8 批 `code-review`（双轴并行，fixed point `d1732ce`，终点 `f10cc67`）**：标准轴 0 硬违规；规格轴两票实质合规 + 2 小瑕疵。去重 **5 条**（3 修 2 保留）+ 驳回 1 条（「READMED 拼写错误」不成立——仓库文件名即为 READMED.md） | 明细见「第 8 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 8 批 findings 修复**：台账「五项自查」改「四项」、「同构」改「对齐（含差异注明）」、tip 滞后回填。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 9 批 T27–T29）起算 |
+| 2026-09-13 | T27 | 实施 + 合并：pytest.ini 注册 unit/needs_infra，addopts 默认 `-m "not needs_infra"`；只标不删——integration 5 用例、observability 1 用例、evals 真 LLM 评测 12 用例（pytestmark）。**重要发现：此前全量 248 passed 里一直混着 12 个真 LLM 在线评测用例**（本次 T27 验收因 DASHSCOPE 账户欠费 400 才暴露），分层后默认 236 passed / 17 deselected、exit 0、无未知 marker 警告 | commit `e4fa99d`，PR #116 已 merge（`d9d1bdb`），issue #58 自动关闭 |
+| 2026-09-13 | T28 | 实施 + 合并：`.github/workflows/ci-backend.yml` 单 job（Python 3.11 + pip 缓存 + ruff check + pytest tests -q）；env 从 Secrets 读取、未配置回退 test-only 占位。needs-infra 实跑：pull_request 与 main push 均 **success**（~1m4s） | commit `59bcfca`，PR #117 已 merge（`22ea77f`），issue #59 自动关闭 |
+| 2026-09-13 | T29 | 实施 + 合并：`frontend/.npmrc` legacy-peer-deps=true + `.github/workflows/ci-frontend.yml` 单 job（Node 22 + npm ci + build）。本地 preflight：build ✅ 27s；**lint 89 errors（T33/T34 范畴）、vitest 时序敏感 flaky——按票面风险条 lint/test 步骤暂不启用并在 workflow 注明依赖，不关规则凑绿**。needs-infra 实跑 success（37s） | commit `1626c18`，PR #118 已 merge（`（见 git log）`），issue #60 自动关闭 |
