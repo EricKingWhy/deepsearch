@@ -148,7 +148,9 @@ async def upload_attachment(
     unique_filename = safe_filename(extension=ext)
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
-    # 保存文件：分块读取，超限抛 413（不把整个文件先读进内存）
+    # 保存文件：按块累计读取，超过上限立即抛 413。
+    # 注意峰值内存仍等于整个文件（read_upload_with_limit 返回完整字节串），
+    # 但被 MAX_UPLOAD_BYTES 限住，因此超大文件不会打爆内存。
     try:
         content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
         with open(file_path, "wb") as buffer:

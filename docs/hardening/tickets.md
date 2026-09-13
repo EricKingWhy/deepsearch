@@ -239,7 +239,9 @@ cd backend && pytest tests/router/test_document_upload.py -q -k document_upload
 
 ```bash
 # 1) 未带 Token 请求被拒（真实请求 → 401）
-cd backend && pytest tests -q -k document_auth
+# 注：T04 时本命令为 `-k document_auth`（当时 10 passed）；第 2 批审查把该测试文件
+# 并入 tests/router/test_router_auth.py 后，改为下述命令（document 路由含在其中）。
+cd backend && pytest tests -q -k router_auth
 
 # 2) 全文件鉴权依赖计数 > 0
 cd backend && grep -c "get_current_user_required\|get_current_user" app/router/document_router.py
@@ -275,6 +277,12 @@ grep -rn "auth" frontend/src/api/request/plugins/auth.ts | head
 >    - 不能把 `APIRouter` 直接交给 `TestClient`（FastAPI 0.141 会报
 >      `AssertionError: fastapi_middleware_astack not found`），测试改为用**最小 `FastAPI` 应用**
 >      挂载被测 router。该写法不引入 DB / Redis 依赖。
+> 5. **第 2 批审查后的调整（2026-09-13）**：T04 的 `tests/router/test_document_auth.py`
+>    与 T05 新增的 `tests/router/test_router_auth.py` 是同一套断言的两次实现（审查发现
+>    「重复代码」）。已把 document 路由并入后者的 `ROUTER_MODULES` 参数表并删除原文件；
+>    同时把「源码字符串匹配」断言换成结构化断言
+>    `APIRouter.dependencies`（`Depends.dependency`），不再受代码格式化影响。
+>    历史事实保留：T04 当时的 `pytest -k document_auth` 确为 **10 passed**。
 
 ### 风险
 
@@ -324,9 +332,11 @@ cd backend && grep -n "Depends(get_current_user" app/router/chat_router.py app/r
 >    全部未带 Token 时返回 `401 {"detail":"无法验证凭据"}`，即依赖解析先于 body 校验，
 >    空 body 也会先被鉴权拦下。
 > 2. **匿名端点判定：一个都没有，三个路由全部挂 router 级。** 判定依据是**实测前端无匿名调用方**：
->    - `frontend/src/router/routes.tsx` 把 `/login`、`/404` 之外的所有页面都包在 `AuthGuard` 里，
->      未登录即 `Navigate to="/login"`（`components/auth-guard/index.tsx`）；`/news`、`/bidding`、
->      `/chat` 均在受保护子树内。
+>    - `frontend/src/router/routes.tsx` 里**只有 `/login` 是匿名的**：其余全部挂在 `/` 之下，
+>      而该父路由被 `AuthGuard` 包裹（未登录即 `Navigate to="/login"`，
+>      见 `components/auth-guard/index.tsx`）。注意 `/404` 虽然标了 `pure: true`，
+>      但它作为 `routes` 数组成员同样处于 `AuthGuard` 子树内 —— 也受守卫。
+>      `/chat`、`/news`、`/bidding` 自然也在受保护子树内。
 >    - `/search/web` 在 `frontend/src` 中**命中 0 处**（也没有 `api/search.ts`）。
 >    - 登录页只调用 `api.auth.login` / `api.auth.register`，不会在登录前触碰这三个路由。
 >    - 仓库内无脚本 / 定时任务调用这三个路由（唯一命中是 `backend/README.md` 的两条 curl 示例）。
@@ -1886,7 +1896,14 @@ T03 把「安全的上传落盘」抽到了 `core/upload_security.py`，但**只
 
 ### 改什么
 
-1. 把 `get_file_extension` / `ALLOWED_EXTENSIONS` 收拢进 `core/upload_security.py`，三个路由共用一份。
+> **已按用户裁决（方案 A）执行，下列第 1 条随之收窄** —— 原第 1 条写「把 `ALLOWED_EXTENSIONS`
+> 一起收拢，三个路由共用一份」，但方案 A 明确「只统一**实现**（净化 / 落盘名 / 限长读取），
+> **各路由的白名单成员集合保持不变**」。实际执行的是：把**工具函数**（`safe_filename` /
+> `ensure_supported_extension` / `read_upload_with_limit`）并轨到 `core/upload_security.py`，
+> `ALLOWED_EXTENSIONS` 仍各自保留在路由文件里。
+
+1. 把 `get_file_extension` 的**逻辑**收拢进 `core/upload_security.py`（即 `ensure_supported_extension`），
+   三个路由共用一份；**`ALLOWED_EXTENSIONS` 成员集合按方案 A 各自保留，不做并轨**。
 2. `attachment_router` / `knowledge_router` 改用 `safe_filename()`，删除「客户端文件名进路径」的写法。
 3. 两个入口补单文件大小上限（复用 `read_upload_with_limit`）。
 

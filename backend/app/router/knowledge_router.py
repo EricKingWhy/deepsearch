@@ -14,7 +14,6 @@ from core.upload_security import (
     ensure_supported_extension,
     read_upload_with_limit,
     safe_filename,
-    sanitize_extension,
 )
 from models.knowledge import KnowledgeBase, Document
 from models.user import User
