@@ -14,7 +14,7 @@
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T34 + T41 + 批次 10 审查修复；SHA 为 T34 merge，收批 merge 后回填） | `5ed8f68f1cd78959c4fafa2b553a5ccfa27ee317` |
 | 当前批次 | 11（T33–T34，已收批待审查；T20 为决策票按用户指示由 AI 裁决并记录理由；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `f1b7219`（第 9 批审查修复 commit） |
+| 当前 fixed point（上一批审查结束 commit） | `9420c8c`（第 10 批审查修复 commit；批次 11 审查补记回填） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -35,7 +35,7 @@
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
 | 9 | T27–T29 | `37a2ec6` | `3e7ea65` | 7 | `f1b7219` | FIXED |
 | 10 | T30–T32 | `f1b7219` | `a99d55c` | 7 | `9420c8c` | FIXED |
-| 11 | T33–T34 | `9420c8c` | `（收批SHA待回填）` | `（待审查）` | — | — |
+| 11 | T33–T34 | `9420c8c` | `a445014` | 4 | `（修复SHA待回填）` | `（修复中）` |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -371,3 +371,5 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **第 10 批 findings 修复**：T32 残留清理（chat/index.tsx 2 空 else + 空 forEach + 死变量 finalSummary 整块删除、3 空 catch 补语义注释保留吞错语义；research-detail/index.tsx 空 if；visualization.tsx 空 forEach）；start-services.sh 尾部指引改为「后端已随 compose 启动于 :8000」并提示端口冲突；tickets.md 补 T30 路径澄清与 T32 实施修正；TRACKER 补回收批丢失编辑并修正「104 errors 全属 T33/T34」措辞。验证：lint 89 errors 回到 T29 基线（T32 零新增）、test 33 全过、build 25.17s、bash -n 过。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 11 批 T33–T34）起算 | commit `304b04a`，PR #126 已 merge（`9420c8c`） |
 | 2026-09-13 | T33 | 实施 + 合并：store/router 11 处显式 any 收敛（session.ts 4 处去掉 as any 信封兼容——已核对 request 不解包、后端裸返回；valtio-persist 3 处；device.ts 迁移改无参 no-op；router 3 处）；eslint.config.js 显式落名 no-explicit-any=error（recommended 已默认生效，拒绝降 warn）。**连带发现被 any 掩盖的潜在 bug**：valtio-persist 调用迁移不传参且忽略返回值，原 oldState 恒 undefined（潜在 TypeError），迁移机制缺陷记已知残留待后续票。验收：store/router grep = 0；lint 89→78 零新增；tsc 24→23（修复 TS2322）；test 33 全过、build 24.66s | commit `11eb2ec`，PR #128 已 merge（`23c662e`），issue #64 自动关闭 |
 | 2026-09-13 | T34 | 实施 + 合并：vite manualChunks 函数形式（对象形式捕获不到 echarts/core 子路径导入）拆 echarts/antd/react 恰好 3 chunk（257.9KB/886KB/1054.4KB）；routes.tsx 10 页面全 React.lazy，单 Suspense 边界包根布局 Outlet（login 单独一层），fallback 新增 components/page-loading（复用 ComSpinner + 中文文案，独立文件满足 react-refresh）；sourcemap: false。test 2-3 例超时经无改动基线复现判定环境抖动非回归；lint 78/9 持平零新增；build 通过 | commit `287af5f`，PR #129 已 merge（`5ed8f68`），issue #65 自动关闭；批次 11 收批 |
+| 2026-09-13 | — | **第 11 批双轴审查**（`9420c8c` → `a445014`）：标准轴 3 条 + 规格轴 1 条，共 **4 findings**（修复 2、保留判定 2）。①修复：device.ts 迁移注释「调用点在旧数据载入之前」失实——实际载入（valtio-persist.ts:131-312）在迁移循环（:326+）**之前**，缺陷仅在调用签名（不传参+忽略返回值），注释/tickets.md 措辞已勘误；②修复：TRACKER「当前 fixed point」行停在 f1b7219 未随批次 10 推进，已回填 9420c8c；③保留：manualChunks 未捕获 zrender/rc-*（属 T35 已排期范围，事实已补记 T35 票面防误判基线）；④保留：`unwrap: true` 配置与 axios-extend.d.ts 声明无任何插件实现（存量问题，**记入已知残留**：若未来补全 unwrap 插件，session store 按 `response.data` 直取的类型将静默失真，届时需同步调整）。修复 = 下一记录条目 commit | 审查基线 a445014，双轴并行子代理各出报告 |
+| 2026-09-13 | — | **第 11 批 findings 修复**：device.ts 迁移注释勘误（仅注释，代码不变）+ tickets.md T33 实施修正同步勘误 + T35 票面补记 zrender/rc-* 基线事实 + TRACKER fixed point 行回填 9420c8c + 批次 11 行终点回填 a445014。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 12 批，T35 起）起算 | 修复 PR merge SHA 待回填（两步法） |
