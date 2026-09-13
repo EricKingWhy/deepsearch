@@ -110,9 +110,6 @@ export default function ResearchDetail({
 }: ResearchDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('results')
 
-  if (data) {
-  }
-
   // 空状态
   if (!data && steps.length === 0 && !diagnostics && !diagnosticsLoading) {
     return (

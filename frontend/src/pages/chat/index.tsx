@@ -481,7 +481,6 @@ export default function Index() {
                 if (stepType === 'searching' || stepType === 'researching' || content.status === 'running') {
                   setSelectedResearchDetail({ ...newDetail })
                 }
-              } else {
               }
             }
 
@@ -677,9 +676,6 @@ export default function Index() {
                   setSelectedResearchDetail({ ...detail })
                   setResearchDataVersion(v => v + 1)
                 }
-                // 打印所有 detail 的状态
-                researchDetailsRef.current.forEach((d, k) => {
-                })
               }
               // 设置引用
               if (json.references && json.references.length > 0) {
@@ -1103,7 +1099,8 @@ export default function Index() {
                   id: uniqueId('search-results'),
                   host: json.result?.url ? new URL(json.result.url).host : '',
                 })
-              } catch (e) {
+              } catch {
+                // 忽略：单条 search_results 解析失败不中断整体流
               }
             } else if (json.type === 'thinking') {
               target.think = `${target.think || ''}${json.content || ''}`
@@ -1136,6 +1133,7 @@ export default function Index() {
             }
           }
         } catch {
+          // 忽略：image_results 挂接失败不中断
         }
       }
     },
@@ -1362,7 +1360,8 @@ export default function Index() {
           hasLoadedMessages.current = true
           populateMessages(session.messages)
         }
-      } catch (e) {
+      } catch {
+        // 忽略：历史消息加载失败由 UI 兜底
       } finally {
         if (previousIdRef.current === loadId) {
           hasLoadedMessages.current = true
@@ -1614,20 +1613,6 @@ export default function Index() {
               setCurrentChatItem(restoredAssistant)
             }
 
-            // 最终状态汇总
-            const finalSummary: Record<string, any> = {
-              stepsCount: researchStepsRef.current.length,
-              detailsCount: researchDetailsRef.current.size,
-              chatListLength: chat.list.length,
-            }
-            researchDetailsRef.current.forEach((detail, stepId) => {
-              finalSummary[`detail_${stepId}`] = {
-                searchResults: detail.searchResults?.length || 0,
-                charts: detail.charts?.length || 0,
-                hasKnowledgeGraph: !!detail.knowledgeGraph,
-                hasReport: !!detail.streamingReport,
-              }
-            })
             if (checkpoint.status !== 'completed' && restoredAssistant) {
                 const resumeResponse = await api.session.resumeResearch(id!)
                 if (previousIdRef.current !== loadId) return
@@ -1658,9 +1643,9 @@ export default function Index() {
               }
             }
           }
-        } else {
         }
-      } catch (e) {
+      } catch {
+        // 忽略：检查点恢复失败时静默，界面按普通会话兜底
       }
     }
 

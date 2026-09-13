@@ -21,11 +21,6 @@ interface VisualizationProps {
 }
 
 export default function Visualization({ charts }: VisualizationProps) {
-  if (charts?.length) {
-    charts.forEach((c, i) => {
-    })
-  }
-
   if (!charts?.length) {
     return (
       <div className={styles.empty}>
