@@ -134,6 +134,29 @@ python app/app_main.py
 
 后端默认运行在 `http://localhost:8000`
 
+#### 数据库建表（schema 初始化）
+
+后端启动**默认不执行** `create_all` 自动建表 —— 建表以 `backend/migrations/` 的手写迁移 SQL 为准，
+避免 ORM 模型与迁移 SQL 两套 schema 来源漂移。请按顺序执行：
+
+```bash
+# 1) 先起数据库（含 postgres），迁移 SQL 作用于其中的 industry_assistant 库
+docker compose up -d postgres
+
+# 2) 依次执行迁移 SQL（已执行过的会因 IF NOT EXISTS / 幂等语句而无副作用）
+docker compose exec -T postgres psql -U postgres -d industry_assistant < backend/migrations/20260719_research_observability.sql
+docker compose exec -T postgres psql -U postgres -d industry_assistant < backend/migrations/20260719_unique_research_checkpoint_session_id.sql
+```
+
+如果只是**本地开发**想跳过迁移、由 ORM 直接建表，在 `backend/.env` 设置：
+
+```bash
+DB_AUTO_CREATE=1
+```
+
+> 注意：两种方式不要混用同一张表 —— `create_all` 只创建缺失的表，不会补迁移里
+> `ALTER TABLE` 增加的列；混用容易出现「表存在但缺列」的中间态。
+
 ### 5. 安装前端依赖 & 启动
 
 ```bash

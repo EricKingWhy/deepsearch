@@ -4,8 +4,9 @@
 """CORS 来源白名单的解析与中间件参数构造。
 
 **为什么独立成模块**：``app/app_main.py`` 一被导入就会连带拉起全部路由、模型与数据库引擎
-（并触发 ``Base.metadata.create_all``），因此其中的 CORS 构造逻辑无法在「无基础设施」的
-测试里验证。本模块只依赖标准库，可被单测直接导入（与 ``core/upload_security.py`` 同一做法）。
+（且在 ``DB_AUTO_CREATE=1`` 时触发 ``Base.metadata.create_all``），因此其中的 CORS 构造逻辑
+无法在「无基础设施」的测试里验证。本模块只依赖标准库，可被单测直接导入
+（与 ``core/upload_security.py`` 同一做法）。
 
 事实来源：T06 / 事实 F-05 —— 原实现同时设置 ``allow_origins=["*"]`` 与
 ``allow_credentials=True``。该组合被浏览器规范禁止：此时 ``Access-Control-Allow-Origin``

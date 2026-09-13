@@ -35,7 +35,22 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "industry_assistant")
 
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# 连接池参数取保守值（依据见 tickets.md T12）：
+# - pool_size=5 / max_overflow=10：单实例应用的常规并发足够；Postgres 默认 max_connections=100，
+#   多个进程（后端 + 数据初始化脚本）同时连接也不会逼近上限。
+# - pool_pre_ping=True：取连接前先探活，避免连接被数据库/中间件静默断开后报 "connection already closed"。
+# - pool_recycle=1800：小于常见的数据库/代理空闲超时（如 1h），让连接在被动断开前主动轮换。
+DB_POOL_SIZE = 5
+DB_MAX_OVERFLOW = 10
+DB_POOL_RECYCLE = 1800  # 秒
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
+    pool_recycle=DB_POOL_RECYCLE,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
