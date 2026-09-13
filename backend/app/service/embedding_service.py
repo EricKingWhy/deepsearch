@@ -52,7 +52,7 @@ def generate_embedding(
     base_url = base_url or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
     if not api_key:
-        logger.info("错误: 缺少 DASHSCOPE_API_KEY 环境变量")
+        logger.warning("错误: 缺少 DASHSCOPE_API_KEY 环境变量")
         return None
 
     try:
@@ -119,7 +119,7 @@ def rerank_similarity(
     api_key = os.getenv("DASHSCOPE_API_KEY")
 
     if not api_key:
-        logger.info("错误: 缺少 DASHSCOPE_API_KEY 环境变量")
+        logger.warning("错误: 缺少 DASHSCOPE_API_KEY 环境变量")
         return np.array([]), None
 
     top_n = top_n or len(texts)

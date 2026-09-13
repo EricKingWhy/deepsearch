@@ -14,12 +14,12 @@
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T38 + T41 + 批次 10/11 审查修复；SHA 为 infra 补跑 commit，收批 merge 后回填） | `4d81a16343459f1371c16ca0fc1479143501bb29` |
 | 当前批次 | 12（T35–T38 已收批待审查，含 Docker 验收补跑；T37/T20 决策票按用户指示由 AI 裁决；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `9420c8c`（第 10 批审查修复 commit；批次 11 审查补记回填） |
+| 当前 fixed point（上一批审查结束 commit） | `4691e72`（第 11 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
 | 已完成 | 36 |
-| 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
+| 决策票待裁决 | T20（T18/T19/T37 已裁决：A / C / A） |
 
 ## 批次审查记录
 
@@ -213,7 +213,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 
 **规格轴专项审视（通过）**：evals 12 用例标 needs_infra 合理——`if not api_key: skip` 只挡「未配置」，挡不住「已配置但失效」（欠费 400 暴露混入），mock 会让真 LLM 质量评测失去意义。CI 实跑核验：backend-ci / frontend-ci 最近各 5 次全部 success。批次末全量默认口径：**236 passed / 17 deselected（8.64s）**。
 
-## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细
+## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
@@ -248,15 +248,15 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | DONE | `T27-test-layering` | `e4fa99d` | #116 | PASS（pytest.ini 注册 unit/needs_infra + 默认跳过；只标不删：integration 5 + observability 1 + evals 真 LLM 12；`pytest tests -q` → 236 passed / 17 deselected，exit 0；无未知 marker 警告） | 9 | FIXED@f1b7219 |
 | T28 | 新增 CI：后端 pytest | #59 | DONE | `T28-ci-backend` | `59bcfca` | #117 | PASS（YAML 合法；无明文密钥；needs-infra 实跑：pull_request 与 main push 两次均 success ~1m4s） | 9 | FIXED@f1b7219 |
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | DONE | `T29-ci-frontend` | `1626c18` | #118 | PASS（YAML 合法；.npmrc legacy-peer-deps；build 启用，lint/test 按票面风险条暂不启用并注明依赖 T32–T34；needs-infra 实跑 success 37s） | 9 | FIXED@f1b7219 |
-| T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；验收 1/2 PASS；验收 3/4 needs-infra Docker daemon 未运行记 BLOCKED） | 10 | PENDING |
+| T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；**批次 12 Docker 补跑**：验收 1/2/4 PASS（build 4m32s、镜像内无 `.env`、`compose config` 合法）；验收 3 部分 PASS（`docker build` ✅ / `compose up -d backend` ❌ —— 暴露根 `.env` 缺失与 milvus healthcheck 缺 `start_period`（已修 `start_period: 120s`）；重跑因宿主机 C 盘耗尽中止，记 P-11）） | 10 | PENDING |
 | T31 | start-services.sh 现代化 | #62 | DONE | `T31-start-services` | `7a943b0` | #122 | PASS（docker compose 6 处；wait_for_healthy 轮询替代 sleep 10（规避 compose wait 语义陷阱）；restart 二次确认；验收 1/2/3 PASS；验收 4 needs-infra 记 BLOCKED） | 10 | PENDING |
 | T32 | 清理 console.log 残留 | #63 | DONE | `T32-console-cleanup` | `09c3522` | #124 | PASS（删 80 处单行 + chat/index.tsx 3 处多行日志块；session-drawer 错误路径保留上报并降级 console.warn；grep console.log\|debug 于 src/ 为 0；test 65.69s 全过；build 28.29s 通过；lint console 相关 0，剩余 89 errors 属 T33/T34 范围。初版曾引入 7 处 no-empty 空块残留，已在批次 10 审查修复清理） | 10 | FIXED@`9420c8c` |
 | T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | DONE | `T33-eslint-any` | `11eb2ec` | #128 | PASS（recommended 已默认 error 生效，显式落名拒绝降级 warn；store/router 11 处 any 收敛，验收 grep = 0；连带修复被 any 掩盖的 device.ts 迁移潜在 TypeError（改为无参 no-op，机制缺陷记已知残留）；lint 89→78 errors 零新增；tsc 24→23） | 11 | PENDING |
 | T34 | vite 构建分包 + 路由懒加载 | #65 | DONE | `T34-vite-chunks` | `287af5f` | #129 | PASS（manualChunks 函数形式拆 echarts/antd/react 恰好 3 chunk（对象形式捕获不到子路径导入）；10 页面全 React.lazy + 单 Suspense 边界 + 中文 PageLoading；sourcemap: false；lint 78/9 持平零新增；test 2-3 例超时经基线复现判定环境抖动非回归） | 11 | PENDING |
-| T35 | ECharts 真正拆包 | #66 | DONE | `T35-echarts-lazy` | `628b3ab` | #133 | PASS（knowledge-graph/process-report 改 lazy echarts-for-react + Suspense 复用 PageLoading；入口 62.49KB 仅含动态导入依赖列表，echarts 1054KB 单独 chunk 按需加载；test 33 passed、build 通过。浏览器实机渲染验证未执行——记 needs-infra） | 12 | PENDING |
-| T36 | 清理注释死代码 | #67 | DONE | `T36-comment-deadcode` | `0213165` | #134 | PASS（票面前提部分不成立：chat/index.tsx 129 行注释全为解释性说明、全仓 // 形式注释代码为 0；实删 valtio-persist 两处 hydration 守卫注释 + error-toast 13 项被注释的状态码映射（票面默认 YAGNI 选项）；lint 78/9 零新增、test 33 passed） | 12 | PENDING |
+| T35 | ECharts 真正拆包 | #66 | DONE | `T35-echarts-lazy` | `628b3ab` | #133 | PASS（knowledge-graph/process-report 改 lazy echarts-for-react + Suspense 复用 PageLoading；入口 chunk 62.34KB（63833 B）仅含动态导入依赖列表，echarts 单独 chunk 按需加载；test 33 passed、build 通过。**批次 12 审查补修**：`research-detail/visualization.tsx` 是**第三个**静态引入 echarts-for-react 的文件（票面只列了 knowledge-graph/process-report），初版漏改致本票一度为「净零变更」；已补改 `lazy` + `Suspense`，修复后全部 chunk 的静态边 `from"./echarts-*"` 归零。浏览器实机渲染验证未执行——记 needs-infra） | 12 | PENDING |
+| T36 | 清理注释死代码 | #67 | DONE | `T36-comment-deadcode` | `0213165` | #134 | PASS（票面前提部分不成立：chat/index.tsx 129 行注释全为解释性说明、全仓 // 形式注释代码为 0；实删 valtio-persist 两处 hydration 守卫注释 + error-toast 12 项被注释的状态码映射（票面默认 YAGNI 选项）；lint 78/9 零新增、test 33 passed。**批次 12 审查补修**：遗漏的 `chat/component/drawer.tsx` 9 行被注释 JSX 已删） | 12 | PENDING |
 | T37 | 决策票：前端 JWT 存储方式 | #68 | TODO | — | — | — | **AI 裁决（2026-09-13，用户已授权自主决策）：选 A** —— 暂不改存储方式，改为后端补 `Content-Security-Policy` 响应头 + 前端 `localStorage` 访问点收敛到单一模块。理由：B 涉鉴权契约变更（票面明确要求先与用户确认）且会强制全员重登；C 零成本但风险持续、无收敛收益；A 为零功能风险的票面推荐项。实施排入批次 13 | 13 | PENDING |
-| T38 | 清除 print 调试残留 | #69 | DONE | `T38-print-logger` | `7f74913` | #135 | PASS（14 文件/116 处 print → logger：warning 37（错误语义）/debug 24（≥3 行诊断 dump）/info 52（孤立）；llm_config 按风险条款特判全 info 且核验 LOG_LEVEL 默认 INFO；docstring 示例内 3 处跳过；scripts/ 109 处未动；pytest 236 passed/17 deselected、ruff All checks passed） | 12 | PENDING |
+| T38 | 清除 print 调试残留 | #69 | DONE | `T38-print-logger` | `7f74913` | #135 | PASS（13 个 .py 文件 / 116 处 print 基线 → 113 处转 logger：warning 37（错误语义）/debug 24（≥3 行诊断 dump）/info 52（孤立）；llm_config 按风险条款特判全 info 且核验 LOG_LEVEL 默认 INFO；scripts/ 109 处未动（3 处 docstring 示例跳过）；pytest 236 passed/17 deselected、ruff All checks passed） | 12 | PENDING |
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | TODO | — | — | — | — | 12 | PENDING |
 | T40 | 补 security 鉴权单元测试 | #71 | TODO | — | — | — | — | 13 | PENDING |
 | T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | FIXED@57f69e0 |
@@ -376,7 +376,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **第 11 批双轴审查**（`9420c8c` → `a445014`）：标准轴 3 条 + 规格轴 1 条，共 **4 findings**（修复 2、保留判定 2）。①修复：device.ts 迁移注释「调用点在旧数据载入之前」失实——实际载入（valtio-persist.ts:131-312）在迁移循环（:326+）**之前**，缺陷仅在调用签名（不传参+忽略返回值），注释/tickets.md 措辞已勘误；②修复：TRACKER「当前 fixed point」行停在 f1b7219 未随批次 10 推进，已回填 9420c8c；③保留：manualChunks 未捕获 zrender/rc-*（属 T35 已排期范围，事实已补记 T35 票面防误判基线）；④保留：`unwrap: true` 配置与 axios-extend.d.ts 声明无任何插件实现（存量问题，**记入已知残留**：若未来补全 unwrap 插件，session store 按 `response.data` 直取的类型将静默失真，届时需同步调整）。修复 = 下一记录条目 commit | 审查基线 a445014，双轴并行子代理各出报告 |
 | 2026-09-13 | — | **第 11 批 findings 修复**：device.ts 迁移注释勘误（仅注释，代码不变）+ tickets.md T33 实施修正同步勘误 + T35 票面补记 zrender/rc-* 基线事实 + TRACKER fixed point 行回填 9420c8c + 批次 11 行终点回填 a445014。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 12 批，T35 起）起算 | 修复 PR merge SHA 待回填（两步法） | commit `8b60fcc`，PR #131 已 merge（`4691e72`）；fixed point 落定 `4691e72` |
 | 2026-09-13 | — | **needs-infra 补跑（Docker 已开）**：T30 验收 1/2/4 全部 PASS（镜像多阶段构建 4m32s、镜像内无 `.env`、compose config 合法）；验收 3 与 T31 验收 4 中止，暴露三问题：① 根 `.env` 缺失 → MinIO 凭据为空 → Milvus `Access Denied` 关闭（本机已建 `.env`，gitignore 内）；② Milvus healthcheck 缺 `start_period` → 启动期 500/超时耗光重试被判 unhealthy → backend 的 `depends_on: service_healthy` 失败（**已修 compose：`start_period: 120s`**）；③ 重跑前 C 盘耗尽（3.7G/201G），Docker Desktop 无法启动 → 记 P-11，待用户腾出磁盘后重跑 | compose 修复随本记录 commit；T30 验收 3 / T31 验收 4 状态：BLOCKED（磁盘）→ 可重跑 |
-| 2026-09-13 | T35 | 实施 + 合并：knowledge-graph / process-report 静态 `import ReactECharts from 'echarts-for-react'` → `lazy(() => import('echarts-for-react'))`，渲染点外包 Suspense + 复用 T34 的 PageLoading。入口 chunk 62.49KB 中 `echarts` 字符串经核实是 rollup 动态导入依赖列表（非打包进主包），1054KB echarts chunk 按需加载。test 33 passed、build 通过；浏览器实机渲染验证记 needs-infra | commit `628b3ab`，PR #133 已 merge（`54dc39d`），issue #66 自动关闭 |
-| 2026-09-13 | T36 | 实施 + 合并：核查发现票面前提部分不成立——chat/index.tsx 的 129 行 `//` 注释全为解释性说明（全仓 `//` 形式注释代码 = 0，JSX/块注释亦仅剩版权头），按票面「解释性注释保留」零删除；实删两处真正的注释死代码（`store/valtio-persist.ts` 的 hydration 守卫，片段留档 tickets.md）；error-toast 按票面默认 YAGNI 选项删除 13 项被注释的状态码映射、保留 429、注释计数 14→4。lint 78/9 零新增、test 33 passed | commit `0213165`，PR #134 已 merge（`1003e7d`），issue #67 自动关闭 |
-| 2026-09-13 | T38 | 实施 + 合并：14 文件 / 116 处 print → 模块级 logger，分级规则 warning 37 / debug 24 / info 52；llm_config 按风险条款特判全 info（已核验默认 LOG_LEVEL=INFO）；两处陷阱——docstring 用法示例内的 3 处 print 跳过、`import logging` 插入需按括号平衡避开多行 import 续行区（首轮实跑 SyntaxError 已回滚重做）；scripts/ 109 处 CLI 输出未动。验证 pytest 236 passed/17 deselected、ruff All checks passed | commit `7f74913`，PR #135 已 merge（`0f88f15`），issue #69 自动关闭 |
+| 2026-09-13 | T35 | 实施 + 合并：knowledge-graph / process-report 静态 `import ReactECharts from 'echarts-for-react'` → `lazy(() => import('echarts-for-react'))`，渲染点外包 Suspense + 复用 T34 的 PageLoading。入口 chunk 62.49KB 中 `echarts` 字符串经核实是 rollup 动态导入依赖列表（非打包进主包），echarts chunk 按需加载。test 33 passed、build 通过；浏览器实机渲染验证记 needs-infra。**批次 12 审查补修**：漏改第三个静态引入点 `research-detail/visualization.tsx`（净零变更），已补改；修复后入口 chunk = `index-GutMoJY_.js`（63833 B ≈ 62.34 KB），`grep -l 'from"./echarts-' dist/assets/*.js` 为空 | commit `628b3ab`，PR #133 已 merge（`54dc39d`），issue #66 自动关闭 |
+| 2026-09-13 | T36 | 实施 + 合并：核查发现票面前提部分不成立——chat/index.tsx 的 129 行 `//` 注释全为解释性说明（全仓 `//` 形式注释代码 = 0；「JSX/块注释亦仅剩版权头」经批次 12 审查证明不准确——`drawer.tsx` 另有 9 行被注释 JSX，已补删），按票面「解释性注释保留」零删除；实删两处真正的注释死代码（`store/valtio-persist.ts` 的 hydration 守卫，片段留档 tickets.md）；error-toast 按票面默认 YAGNI 选项删除 **12 项**被注释的状态码映射（原记 13 项有误）、保留 429、注释计数 14→4。lint 78/9 零新增、test 33 passed | commit `0213165`，PR #134 已 merge（`1003e7d`），issue #67 自动关闭 |
+| 2026-09-13 | T38 | 实施 + 合并：13 个 .py 文件 / 116 处 print 基线 → 113 处转 logger（3 处 docstring 示例跳过），分级规则 warning 37 / debug 24 / info 52；llm_config 按风险条款特判全 info（已核验默认 LOG_LEVEL=INFO）；两处陷阱——docstring 用法示例内的 3 处 print 跳过、`import logging` 插入需按括号平衡避开多行 import 续行区（首轮实跑 SyntaxError 已回滚重做）；scripts/ 109 处 CLI 输出未动。验证 pytest 236 passed/17 deselected、ruff All checks passed | commit `7f74913`，PR #135 已 merge（`0f88f15`），issue #69 自动关闭 |
 | 2026-09-13 | — | **T37 决策票由 AI 裁决（用户已授权）**：选 A（后端补 CSP 响应头 + localStorage 收敛到单模块），否决 B（鉴权契约变更，票面要求先与用户确认）/ C（零收益）。实施排入批次 13 | 裁决理由记入 T37 状态行 |

@@ -279,13 +279,13 @@ def process_document_with_docmind(
 
         if not task_id:
             result["message"] = "文档提交失败"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         # 2. 等待任务完成
         if not service.wait_for_completion(task_id):
             result["message"] = "文档解析任务失败或超时"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         # 3. 收集解析结果
@@ -294,7 +294,7 @@ def process_document_with_docmind(
 
         if not text or not text.strip():
             result["message"] = "文档内容为空"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         logger.info(f"解析到文本长度: {len(text)}")
@@ -304,7 +304,7 @@ def process_document_with_docmind(
 
         if not chunks:
             result["message"] = "文档切分失败"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         logger.info(f"文档切分完成，共 {len(chunks)} 个切片")
@@ -315,12 +315,12 @@ def process_document_with_docmind(
 
         if not embeddings:
             result["message"] = "向量生成失败: 返回为空"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         if len(embeddings) != len(chunks):
             result["message"] = f"向量生成失败: 数量不匹配 ({len(embeddings)} vs {len(chunks)})"
-            logger.info(result["message"])
+            logger.warning(result["message"])
             return result
 
         logger.info(f"向量生成完成，维度: {len(embeddings[0])}")
@@ -356,7 +356,7 @@ def process_document_with_docmind(
 
     except Exception as e:
         result["message"] = f"处理失败: {str(e)}"
-        logger.info(f"文档处理异常: {e}")
+        logger.warning(f"文档处理异常: {e}")
         import traceback
         traceback.print_exc()
 

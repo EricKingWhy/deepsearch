@@ -3,9 +3,13 @@
  * 未经授权，禁止转售或仿制。
  */
 
+import { lazy, Suspense } from 'react'
 import { BarChartOutlined, PictureOutlined } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import PageLoading from '@/components/page-loading'
 import styles from './visualization.module.scss'
+
+// T35：懒加载 echarts-for-react（本文件是第三个静态引入点，批次 12 审查补修）
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface ChartConfig {
   id: string
@@ -50,11 +54,13 @@ export default function Visualization({ charts }: VisualizationProps) {
               </div>
             ) : chart.echarts_option ? (
               // 渲染 ECharts 图表
-              <ReactECharts
-                option={chart.echarts_option}
-                style={{ height: '100%', width: '100%' }}
-                opts={{ renderer: 'canvas' }}
-              />
+              <Suspense fallback={<PageLoading />}>
+                <ReactECharts
+                  option={chart.echarts_option}
+                  style={{ height: '100%', width: '100%' }}
+                  opts={{ renderer: 'canvas' }}
+                />
+              </Suspense>
             ) : (
               // 无数据占位
               <div className={styles.noData}>

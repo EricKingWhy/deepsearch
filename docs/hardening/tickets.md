@@ -1779,7 +1779,8 @@ cd frontend && npm run test
 ### 实施修正（2026-09-13，T35 实测后）
 
 - 实现：两个文件改为 `const ReactECharts = lazy(() => import('echarts-for-react'))`，在各自渲染点外包 `<Suspense fallback={<PageLoading />}>`（复用 T34 的中文加载态组件，不新建 fallback）。
-- 验收 2 复核：`npm run build` 后入口 chunk（`dist/index.html` 引用的 `index-C1BEEqIA.js`，62.49 KB）中出现的 `echarts` 字符串是 **rollup 动态导入的依赖列表**（`...,"assets/index-bzPxcR4K.js","assets/echarts-Bxh_v0Mb.js"`），非打包进主包 —— 62 KB 入口不可能容纳 1054 KB 的 echarts；该 chunk 仅在懒加载组件 chunk 载入时才请求。命令 1/3 亦通过（`npm run test` 33 passed）。
+- 验收 2 复核：`npm run build` 后入口 chunk（`dist/index.html` 引用的 `index-GutMoJY_.js`，63833 B ≈ 62.34 KB）中出现的 `echarts` 字符串是 **rollup 动态导入的依赖列表**（`...,"assets/echarts-Bxh_v0Mb.js"`），非打包进主包 —— 62 KB 入口不可能容纳 ~1030 KB 的 echarts；该 chunk 仅在懒加载组件 chunk 载入时才请求。命令 1/3 亦通过（`npm run test` 33 passed）。
+- **本票最初是一处「净零变更」（批次 12 审查发现）**：`echarts-for-react` 的**第三个静态引入点** `chat/component/research-detail/visualization.tsx` 未在票面点名（票面只列了 `knowledge-graph.tsx` / `process-report.tsx`），构建产物里 chat chunk 仍保留静态边 `from"./echarts-*.js"` —— 即动态拆包并未真正生效。已在本批审查修复（同法改 `lazy` + `Suspense`）。**验收 2 的口径不足以发现此问题**：只查入口 chunk 是否含 `echarts` 字面量会「假通过」（入口确实没有，静态边在 chat chunk 里）；正确判据是对**全部** chunk 检查静态边 —— `cd frontend && grep -l 'from"\./echarts-' dist/assets/*.js`（修复后为空）。
 - 与 T34 关系：T34 的函数式 manualChunks 已把 echarts 单独成 chunk；本票解决的是「静态引入使动态拆包失效」。
 - **风险条款（浏览器实机验证）未执行**：本机无浏览器自动化环境（agent-browser 不可用），仅以构建产物 + 单元测试佐证；已记入 needs-infra 待补（与 T30/T31 的 Docker 项同批）。
 
@@ -1833,8 +1834,9 @@ cd frontend && npm run test && npm run lint
   // }
   ```
   注：该守卫与已知残留「持久化/迁移时序」相关（见 TRACKER），恢复前需先补齐 `_persist.loaded` 的维护逻辑。
-- **error-toast.ts（按票面默认选项：删除映射、明确统一兜底）**：`NETWORK_ERROR_MAP` 中 13 项被注释的状态码文案全部删除，只留 429，并加两行说明其余状态统一走兜底链（`ResponseError.message` → 后端 `message`/`error` → 通用文案）。类型由推断改为 `Record<string, string>`。注释计数基线 14 → 4（余下 4 行中 2 行为新增说明、2 行为既有 CanceledError 解释，均属「解释为什么」）。
+- **error-toast.ts（按票面默认选项：删除映射、明确统一兜底）**：`NETWORK_ERROR_MAP` 中 **12 项**被注释的状态码文案全部删除，只留 429，并加两行说明其余状态统一走兜底链（`ResponseError.message` → 后端 `message`/`error` → 通用文案）。类型由推断改为 `Record<string, string>`。注释计数基线 14 → 4（余下 4 行中 2 行为新增说明、2 行为既有 CanceledError 解释，均属「解释为什么」）。
 - 验证：`npm run lint` 78 errors / 9 warnings（与 T33 后持平，零新增）；`npm run test` 33 passed；`npm run build` 通过。
+- **批次 12 审查补修**：`frontend/src/pages/chat/component/drawer.tsx` 存在一处本票漏掉的被注释 JSX（9 行 `<Button ...><CloseOutlined /></Button>` 关闭按钮块，位置已被上方 title 结构取代），已删除。教训：本票「全仓 `//` 形式注释代码为 0」的结论**只覆盖了 `//` 形式**，`{/* */}` 形式的 JSX 注释未纳入 grep 口径。
 
 ### 风险
 
@@ -1859,6 +1861,12 @@ cd frontend && npm run test && npm run lint
 ### 本票不自动执行
 
 选 B 需先与用户确认鉴权契约变更范围。
+
+### 实施修正（2026-09-13，批次 12 审查期裁决）
+
+- **裁决：选 A**（用户已授权 AI 自主裁决决策票；本票在批次 12 审查期内裁决，实施排入批次 13）。
+- 理由：B 涉鉴权契约变更（本节明确要求先与用户确认）且会强制全员重新登录；C 零成本但风险持续、无收敛收益；A 是票面推荐项且零功能风险（后端补 `Content-Security-Policy` 响应头 + 前端 `localStorage` 访问点收敛到单一模块）。
+- 验收口径按「选 A」执行：响应头含 `Content-Security-Policy`；`grep -rn "localStorage" frontend/src` 仅命中该模块。
 
 ### 验收（按所选选项不同）
 
@@ -1911,7 +1919,7 @@ cd backend && pytest tests -q
 
 ### 实施修正（2026-09-13，T38 实测后）
 
-- **实际范围比票面大**：票面点名的 5 个文件共 45 处，但验收 2（`grep -rn "^\s*print(" app/ | wc -l`）要求全仓归零 —— 实际改造 **14 个文件 / 116 处**（另含 `docmind_service` 26、`chat_service` 13、`milvus_service` 12、`policy_search_service` 8、`memory_service` 7、`retrieval_service` 2、`stock_service` 1、`bidding_service` 1）。`app/scripts/` 按风险条款未动（109 处 CLI 输出保留）。
+- **实际范围比票面大**：票面点名的 5 个文件共 45 处，但验收 2（`grep -rn "^\s*print(" app/ | wc -l`）要求全仓归零 —— 实际改造 **13 个 .py 文件 / 116 处 print 基线**（PR 提交共 14 个文件，第 14 个是 `docs/hardening/tickets.md` 本身；116 处中 **113 处**转为 logger，余 3 处为 docstring 示例跳过）。除票面 5 文件外的 8 个文件分别含 `docmind_service` 26、`chat_service` **14**（原记 13 有误）、`milvus_service` 12、`policy_search_service` 8、`memory_service` 7、`retrieval_service` 2、`stock_service` 1、`bidding_service` 1 —— 45 + 71 = 116，与实测吻合。`app/scripts/` 按风险条款未动（109 处 CLI 输出保留）。
 - **分级规则**（按原语义，记此以备复审）：① 内容含错误/告警语义（`Error`/`error`/`失败`/`警告`/`Warn`/`Exception`/`⚠`/`❌`）→ `logger.warning`（37 处）；② 连续 ≥3 行的 print 块（含 `"*"*60` 横幅的诊断 dump）→ `logger.debug`（24 处）；③ 其余孤立 print → `logger.info`（52 处）。
 - **llm_config.py 按风险条款特判**：该文件内一律 `logger.info`，避免启动期配置自检被默认级别过滤（核验 `observability/logging.py` 默认 `LOG_LEVEL=INFO`，故可见）。
 - **两处必须避开的陷阱**：① `llm_config.py` 的 16–17 行 print 位于**模块 docstring 的用法示例**中、`deep_research_v2/__init__.py:25` 的 print 位于 docstring 示例代码块内 —— 均属文档而非可执行代码，已跳过；② 插入 `import logging` 时若按「最后一条顶层 import 行」插入，会落进 `from pymilvus import (…)` 这类**多行括号 import 的续行区**（首轮实跑即触发 `SyntaxError`，回滚重来），正确做法是按括号平衡定位语句结束行。

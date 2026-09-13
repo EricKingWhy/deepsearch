@@ -288,6 +288,7 @@ class PolicySearchService:
 
 
 if __name__ == "__main__":
+    # 独立运行入口：未经 observability.configure_logging()，logger.info 会被丢弃 → 用 print（T38 审查发现）
     service = PolicySearchService()
-    logger.info(service.check_connection())
-    logger.info(service.get_index_info())
+    print(service.check_connection())
+    print(service.get_index_info())
