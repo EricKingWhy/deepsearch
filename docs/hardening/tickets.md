@@ -1099,6 +1099,12 @@ cd backend && python -m pip install --dry-run -r requirements.txt 2>&1 | tail -3
 
 - 选 B 时，`app_main.py` 的 `create_all`（T12 已改为默认关闭）与 alembic 的职责边界必须一次说清，否则会出现两套 schema 来源 —— 这正是本票要解决的问题。
 
+### 决策与实施记录（2026-09-13，T19）
+
+- **用户裁决选 C**：保持不变，仅在 `requirements.txt` 加注释说明「预留未使用」。
+- 注释内容同时写明：迁移实为 `backend/migrations/` 手写 SQL、执行方式见 READMED「数据库建表」（T12 已建立）、未来引入版本化迁移时再启用。
+- 验收（选 C 口径）：`grep -B1 "^alembic" backend/requirements.txt` → 注释命中；READMED 迁移章节在位；T18 验收 1/2 复跑仍 PASS。
+
 ---
 
 ## T20 — 决策票：chat/index.tsx 是否拆分
