@@ -54,11 +54,13 @@ class Text2SQLService:
     """
 
     # 安全配置
+    # 注意：UNION 不在允许列表中 —— UNION 可向结果集拼接任意子查询的行，
+    # 属于黑名单绕过面（见 validate_sql 的主判据），有意禁用。
     ALLOWED_KEYWORDS = [
         'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT',
         'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON',
         'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
-        'AS', 'DISTINCT', 'HAVING', 'UNION',
+        'AS', 'DISTINCT', 'HAVING',
         'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
         'YEAR', 'MONTH', 'DATE', 'CAST', 'COALESCE',
         'ASC', 'DESC', 'NULLS', 'FIRST', 'LAST',
@@ -70,7 +72,7 @@ class Text2SQLService:
         'DROP', 'DELETE', 'UPDATE', 'INSERT', 'TRUNCATE',
         'ALTER', 'CREATE', 'GRANT', 'REVOKE',
         'EXEC', 'EXECUTE', 'XP_', 'SP_',
-        '--', '/*', '*/', ';--', 'UNION ALL SELECT',
+        # '--' 与 '/*' 由 validate_sql 的注释检查单独处理（报错语义更明确），此处不再重复
         'INFORMATION_SCHEMA', 'SYS.', 'SYSOBJECTS',
         'WAITFOR', 'DELAY', 'BENCHMARK', 'SLEEP'
     ]
@@ -209,7 +211,11 @@ class Text2SQLService:
 
     def validate_sql(self, sql: str) -> Tuple[bool, str]:
         """
-        验证 SQL 安全性
+        验证 SQL 安全性（纯函数，只依赖类常量，便于单测）
+
+        校验策略以允许列表为主：语句必须以 SELECT 或 WITH 开头，且禁止 UNION
+        （UNION 可向结果集拼接任意子查询，形式多变，黑名单 'UNION ALL SELECT'
+        挡不住 'UNION SELECT'）；黑名单降为辅助兜底。
 
         Args:
             sql: SQL 语句
@@ -222,14 +228,18 @@ class Text2SQLService:
 
         sql_upper = sql.upper().strip()
 
-        # 检查禁止关键词
+        # 主判据 1：只允许只读查询（SELECT 或 WITH 开头的 CTE 查询）
+        if not (sql_upper.startswith('SELECT') or sql_upper.startswith('WITH')):
+            return False, "SQL 必须以 SELECT 或 WITH 开头"
+
+        # 主判据 2：禁止任何形式的 UNION（含 UNION / UNION ALL，防止拼接子查询绕过）
+        if 'UNION' in sql_upper:
+            return False, "SQL 不允许使用 UNION"
+
+        # 辅助：黑名单兜底（数据修改 / 系统对象 / 时间盲注等）
         for keyword in self.FORBIDDEN_KEYWORDS:
             if keyword in sql_upper:
                 return False, f"SQL 包含禁止的关键词: {keyword}"
-
-        # 检查是否以 SELECT 开头
-        if not sql_upper.startswith('SELECT'):
-            return False, "SQL 必须以 SELECT 开头"
 
         # 检查是否包含多条语句
         if ';' in sql[:-1]:  # 允许末尾的分号
