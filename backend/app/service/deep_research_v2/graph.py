@@ -2,12 +2,18 @@
 # 未经授权，禁止转售或仿制。
 
 """
-DeepResearch V2.0 - LangGraph 工作流
+DeepResearch V2.0 - 研究工作流（双执行路径）
 
-实现多智能体协作的状态机图：
-Plan -> Research -> Analyze -> Write -> Review -> (Revise) -> Complete
+本模块**同时维护两条执行路径**（有意保留的设计，见 PRD NG-2）：
 
-使用 LangGraph 实现循环和条件分支。
+1. **手写异步状态机**（当前生效）：`_run_simplified` —— 支持逐消息实时 SSE 流式输出，
+   是 `DeepResearchGraph.run()` 实际走的路径。
+2. **LangGraph 运行时**（预留实现）：`_build_langgraph` + 6 个 `_*_node` +
+   `_run_with_langgraph`。当前 `run()` 不调用它，**但它不是死代码、不得删除** ——
+   保留目的是后续可在「手写异步状态机」与「LangGraph 运行时」之间切换
+   （LangGraph 版本目前会批量处理消息、无法实时流式输出，这正是暂不启用的原因）。
+
+状态机阶段：Plan -> Research -> Analyze -> Write -> Review -> (Revise) -> Complete
 """
 
 import logging
@@ -32,7 +38,9 @@ except ImportError:
         def clear_cancel_flag(session_id: str):
             pass
 
-# LangGraph 导入 - 如果没有安装则使用简化版本
+# LangGraph 依赖为**可选安装**：缺失时 LANGGRAPH_AVAILABLE=False，LangGraph 执行路径
+# 不可用，但手写异步状态机不受影响。不要因为「当前主路径不使用 LangGraph」而把
+# langgraph 从 requirements.txt 移除或删除本导入 —— 该路径是有意保留的备选实现（PRD NG-2）。
 try:
     from langgraph.graph import StateGraph, END
     LANGGRAPH_AVAILABLE = True
@@ -146,6 +154,9 @@ class DeepResearchGraph:
         self.checkpoint_service = get_checkpoint_service()
 
         # 构建图
+        # 注意：这里构建的 LangGraph 图对象当前**不被 run() 使用**（run() 固定走
+        # _run_simplified 手写状态机）；保留构建是为了让 LangGraph 路径保持可运行状态，
+        # 属有意保留的并行实现，不得删除（PRD NG-2）。
         if LANGGRAPH_AVAILABLE:
             self.graph = self._build_langgraph()
         else:
@@ -212,7 +223,12 @@ class DeepResearchGraph:
         return self.checkpoint_service.get_checkpoint_info(session_id)
 
     def _build_langgraph(self):
-        """构建 LangGraph 状态图"""
+        """构建 LangGraph 状态图。
+
+        ⚠️ 有意保留（PRD NG-2）：当前 run() 不走此路径，但不得删除 —— 它与
+        下方 6 个 `_*_node`、`_run_with_langgraph` 一起构成完整的 LangGraph 执行路径，
+        供未来在「手写异步状态机」与「LangGraph 运行时」之间切换时使用。
+        """
         # 定义图
         workflow = StateGraph(ResearchState)
 
@@ -247,6 +263,10 @@ class DeepResearchGraph:
         workflow.add_edge("revise", "review")
 
         return workflow.compile()
+
+    # ↓↓↓ 以下 6 个 _*_node（plan / research / analyze / write / review / revise）
+    # 是 LangGraph 执行路径的节点函数，仅被 _build_langgraph 构建的图引用。
+    # 当前 run() 不走 LangGraph 路径 —— 这 6 个方法属有意保留（PRD NG-2），不得删除。
 
     async def _plan_node(self, state: ResearchState) -> Dict[str, Any]:
         """规划节点"""
@@ -364,8 +384,12 @@ class DeepResearchGraph:
         # 存储 user_id 用于检查点
         state["_user_id"] = user_id
 
-        # 始终使用手写版本执行（支持实时SSE流式输出）
-        # LangGraph 版本会批量处理消息，无法实现实时流式输出
+        # 执行路径选择（PRD NG-2，有意保留的两条路径）：
+        # 当前固定走 _run_simplified（手写异步状态机）—— 它逐消息产出事件，
+        # 支持实时 SSE 流式输出；LangGraph 版本（_run_with_langgraph）会把消息
+        # 批量攒到阶段结束才输出，无法实时流式，故暂不启用。
+        # 如需启用 LangGraph 路径：恢复下方注释掉的分支即可（无需其它改动，
+        # 图对象已在 __init__ 中由 _build_langgraph 构建完毕）：
         # if LANGGRAPH_AVAILABLE and self.graph:
         #     async for event in self._run_with_langgraph(state):
         #         yield event
@@ -374,7 +398,11 @@ class DeepResearchGraph:
             yield event
 
     async def _run_with_langgraph(self, state: ResearchState) -> AsyncGenerator[Dict[str, Any], None]:
-        """使用 LangGraph 执行"""
+        """使用 LangGraph 执行。
+
+        ⚠️ 有意保留（PRD NG-2）：预留的备选执行路径，当前无调用点但**不得删除**。
+        已知限制：消息按阶段批量输出，不支持实时 SSE 流式；启用方式见 run() 内注释。
+        """
         # 追踪已输出的消息数量，避免重复
         yielded_count = 0
 
