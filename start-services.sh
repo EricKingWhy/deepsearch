@@ -41,13 +41,40 @@ check_docker() {
     log_success "Docker 运行正常"
 }
 
+# 轮询等待全部中间件 healthy（T31：替代固定 sleep 10）。
+# 不用 `docker compose wait`：其在部分 compose 版本语义为「等待容器退出」
+# 而非「等待 healthy」（票面风险条），按容器名轮询 inspect 的 Health.Status。
+wait_for_healthy() {
+    local containers=(industry_postgres industry_redis industry_etcd industry_minio industry_milvus industry_elasticsearch)
+    local timeout=180 elapsed=0 all_healthy=1 c state
+    log_info "等待服务健康检查通过（最长 ${timeout}s）..."
+    while [ "$elapsed" -lt "$timeout" ]; do
+        all_healthy=1
+        for c in "${containers[@]}"; do
+            state=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo "missing")
+            if [ "$state" != "healthy" ]; then
+                all_healthy=0
+                break
+            fi
+        done
+        if [ "$all_healthy" -eq 1 ]; then
+            log_success "全部中间件已 healthy（${elapsed}s）"
+            return 0
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+    log_warning "等待超时（${timeout}s），部分服务未就绪，以下为当前状态："
+    check_service_health
+    return 1
+}
+
 # 启动中间件服务
 start_services() {
     log_info "正在启动中间件服务 (PostgreSQL, Redis, Milvus, Elasticsearch)..."
-    docker-compose up -d
+    docker compose up -d
 
-    log_info "等待服务启动完成..."
-    sleep 10
+    wait_for_healthy
 
     # 检查服务状态
     check_service_health
@@ -69,12 +96,18 @@ start_services() {
 # 停止服务
 stop_services() {
     log_info "正在停止所有中间件服务..."
-    docker-compose down
+    docker compose down
     log_success "所有服务已停止"
 }
 
 # 重启服务
 restart_services() {
+    log_warning "重启将短暂中断所有中间件服务。"
+    read -p "确定要继续吗? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        log_info "操作已取消"
+        return 0
+    fi
     stop_services
     sleep 2
     start_services
@@ -116,7 +149,7 @@ check_service_health() {
 # 查看服务状态
 show_status() {
     log_info "服务状态:"
-    docker-compose ps
+    docker compose ps
     echo ""
     check_service_health
 }
@@ -124,19 +157,20 @@ show_status() {
 # 查看日志
 show_logs() {
     if [ -z "$2" ]; then
-        docker-compose logs -f --tail=100
+        docker compose logs -f --tail=100
     else
-        docker-compose logs -f --tail=100 "$2"
+        docker compose logs -f --tail=100 "$2"
     fi
 }
 
 # 清理数据（危险操作）
 clean_data() {
     log_warning "警告: 此操作将删除所有数据，包括数据库、缓存和向量数据!"
+    log_warning "具体后果: 执行 docker compose down -v，所有数据卷（postgres/redis/milvus/es 等）将被删除且不可恢复。"
     read -p "确定要继续吗? (yes/no): " confirm
     if [ "$confirm" = "yes" ]; then
         stop_services
-        docker-compose down -v
+        docker compose down -v
         log_success "所有数据已清理"
     else
         log_info "操作已取消"
