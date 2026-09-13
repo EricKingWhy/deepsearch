@@ -512,7 +512,9 @@ class DeepResearchGraph:
                     msg = message_queue.get_nowait()
                     remaining += 1
                     yield msg
-                except:
+                except Exception:
+                    # 队列已取空（asyncio.QueueEmpty），属正常退出路径，仅 debug 记录
+                    logger.debug(f"[queue] agent messages drained: {remaining} remaining")
                     break
 
             logger.info(f"Agent {agent.name} completed. Messages: {msg_count} during, {remaining} remaining")

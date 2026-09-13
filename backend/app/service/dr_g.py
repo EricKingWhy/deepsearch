@@ -390,7 +390,8 @@ class ResearchService:
                             current_subqueries = [query]
                         else:
                             yield serialize_event({"type": "subqueries", "content": current_subqueries})
-                    except:
+                    except Exception as e:
+                        logging.warning(f"Failed to parse plan response as JSON ({e}); falling back to the original query")
                         current_subqueries = [query]
 
             elif not current_subqueries:
