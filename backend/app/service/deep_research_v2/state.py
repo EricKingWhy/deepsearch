@@ -123,6 +123,7 @@ class ResearchState(TypedDict):
     # 搜索模式配置
     search_web: bool                        # 是否启用网络搜索
     search_local: bool                      # 是否启用本地知识库搜索
+    kb_name: Optional[str]                  # 本地知识库名称（search_local=True 时必填，Milvus 集合名 = kb_{kb_name}）
 
     # 规划输出
     outline: List[Dict[str, Any]]           # 动态大纲 (Section序列化)
@@ -164,7 +165,8 @@ def create_initial_state(
     query: str,
     session_id: str,
     search_web: bool = True,
-    search_local: bool = False
+    search_local: bool = False,
+    kb_name: Optional[str] = None
 ) -> ResearchState:
     """创建初始状态
 
@@ -173,6 +175,7 @@ def create_initial_state(
         session_id: 会话ID
         search_web: 是否启用网络搜索（默认True）
         search_local: 是否启用本地知识库搜索（默认False）
+        kb_name: 本地知识库名称（search_local=True 时应提供）
     """
     return ResearchState(
         query=query,
@@ -182,6 +185,7 @@ def create_initial_state(
         max_iterations=3,
         search_web=search_web,
         search_local=search_local,
+        kb_name=kb_name,
         outline=[],
         outline_revision=None,
         mind_map={},

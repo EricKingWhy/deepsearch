@@ -311,7 +311,8 @@ class DeepResearchGraph:
         resume: bool = False,
         user_id: str = None,
         search_web: bool = True,
-        search_local: bool = False
+        search_local: bool = False,
+        kb_name: str = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         执行研究流程（流式输出）
@@ -323,6 +324,7 @@ class DeepResearchGraph:
             user_id: 用户ID（用于检查点）
             search_web: 是否启用网络搜索（默认True）
             search_local: 是否启用本地知识库搜索（默认False）
+            kb_name: 本地知识库名称（search_local=True 时应提供）
 
         Yields:
             SSE 事件字典
@@ -344,7 +346,8 @@ class DeepResearchGraph:
             state = create_initial_state(
                 query, session_id,
                 search_web=search_web,
-                search_local=search_local
+                search_local=search_local,
+                kb_name=kb_name
             )
             state["max_iterations"] = self.max_iterations
 
@@ -354,6 +357,7 @@ class DeepResearchGraph:
                 "session_id": session_id,
                 "search_web": search_web,
                 "search_local": search_local,
+                "kb_name": kb_name,
                 "timestamp": datetime.now().isoformat()
             }
 
