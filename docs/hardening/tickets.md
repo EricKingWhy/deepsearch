@@ -1499,6 +1499,12 @@ test -f frontend/.npmrc && cat frontend/.npmrc
 
 - `npm run lint` 当前可能已有违规（如 T33/T34 涉及的 `console.log` 与 `any`）。**必须先在本地跑一遍**：若已红，则在对应 ticket（T32/T33）完成后再启用该步骤，并在本票内把该步骤标注为「依赖 T33 完成」。**不得**通过关闭规则来让 CI 变绿。
 
+### 实施修正（§4 总门禁，2026-09-13）
+
+- **验收 2 的实际状态需要如实说明**：票面要求 `npm run lint && npm run test && npm run build` **三条全过**，实际只启用了 build —— lint / test 两个 step 一直处于注释状态。这符合本票**风险条款**（「若失败，在对应 ticket 完成后再启用该步骤」）的授权，但 TRACKER 此前记 PASS 时未点明「验收条并非全过」，属**验收口径失真**，已随 §4 总门禁勘误。
+- **至 §4 总门禁时条件已成就但两条仍不可启用**：T32/T33/T34 均已 DONE，然而 ① `npx eslint .` 存量 **78 errors / 9 warnings**，散落在 `components/`、`pages/` 的 legacy 代码，**不在本计划 41 张票范围内**，启用会让 CI 立刻变红；② `src/features/deep-research/OutlineApprovalPanel` 集成用例有时序抖动，纳入 CI 会制造假红。workflow 内注释已按实情重写（原注释的「依赖 T32–T34」与「89 errors」均为过期信息）。
+- **未闭合项**：记 TRACKER **P-12**，注明两类解除条件（lint → 单独立项清理或裁决接受显式 ignore 清单；vitest → 消除该用例的时序依赖）。
+
 ---
 
 ## T30 — 新增 backend/Dockerfile 并接入 compose
@@ -1547,6 +1553,7 @@ docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env && echo "OK: �
 - 补充发现：`backend/app/Dockerfile`（旧式单阶段、构建上下文为 app/）为遗留文件，本票未动——如确认废弃可在后续票清理。
 - **路径澄清（批次 10 审查补充）**：票面验收 1 写「仓库根目录存在 `.dockerignore`」，实际实现为 `backend/.dockerignore`——这是**正确做法**：构建上下文为 `backend/`，根目录的 .dockerignore 对 `docker build ... backend` 不生效。验收 1 按实际路径解释为 PASS。
 - **验收 3/4 补跑（2026-09-13，Docker 已开）**：验收 4 **PASS**（`docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env'` → OK，镜像仅含 app 代码/migrations）。验收 3 **部分 PASS**：`docker build` 成功（4m32s，多阶段 builder→runtime 正常）；`docker compose up -d backend` 失败，暴露两处真实缺陷——① 仓库根 `.env` 缺失时 `MINIO_ROOT_USER/PASSWORD` 展开为空，Milvus 读写 MinIO 报 `Access Denied` 后退出（已在 `.env.example` 有提示，本机补建 `.env` 后需重跑确认）；② **Milvus healthcheck 缺 `start_period`**：启动期 1–2 分钟内 `/healthz` 返回 500/超时，30s×3 次重试在 ~90s 内耗光即被判 `unhealthy`，而 `backend` 声明 `depends_on: postgres/redis/milvus: service_healthy` → compose 直接报 `dependency failed to start`。**已修 `docker-compose.yml`：milvus healthcheck 增加 `start_period: 120s`**。重跑前宿主机 C 盘耗尽（3.7G/201G，Docker Desktop 数据盘位于 C:），daemon 无法启动，验收 3 剩余步骤与 T31 验收 4 一并记 BLOCKED（磁盘），见 TRACKER P-11。
+- **验收 3 补跑成功（§4 总门禁，2026-09-13）**：C 盘腾出后 `docker desktop restart` 恢复引擎（server 29.4.1），`docker compose up -d backend` 完整跑通（postgres / redis / milvus / etcd / minio 全部 healthy），`curl http://localhost:8000/hello` → `{"status":"success","message":"Hello World! The API is working correctly."}`。**验收 1/2/3/4 全部 PASS**，原先受磁盘阻塞的剩余步骤与 TRACKER P-11 一并解除。
 
 ### 风险
 
@@ -1598,6 +1605,7 @@ bash start-services.sh start && bash start-services.sh status
 - 等待实现取「按容器名轮询 `docker inspect` Health.Status（180s 超时）」而非 `docker compose wait`——理由见票面风险条（wait 语义为等退出而非等 healthy）。
 - **验收 4 补跑（2026-09-13，Docker 已开）**：实跑 `bash start-services.sh start` —— 命令 1/2/3 仍 PASS；命令 4 **未完成**：脚本成功执行 `docker compose up -d`（6 中间件 + backend），postgres/redis/etcd/minio/elasticsearch 均 healthy，但 **milvus 因 healthcheck 缺 `start_period` 被判 unhealthy**，`backend` 的 `depends_on: service_healthy` 使 compose 以 `dependency failed to start` 结束（脚本随该非零退出的 compose 命令中止，未进入 `wait_for_healthy` 的后续流程）。根因与修复见 T30 实施修正（`docker-compose.yml` 已加 `start_period: 120s`）。重跑时宿主机 C 盘耗尽、Docker Desktop 无法启动，故验收 4 记 BLOCKED（磁盘），见 TRACKER P-11。
 - 附带确认：批次 10 审查修复后的脚本尾部指引（「后端已随 compose 启动于 :8000」）与本次实跑观察一致（`industry_backend` 容器被创建，仅因依赖未就绪未启动）。
+- **验收 4 补跑成功（§4 总门禁，2026-09-13）**：C 盘腾出、`docker desktop restart` 恢复引擎后，`bash start-services.sh start` 完整跑通 —— `wait_for_healthy` 按容器名轮询 `docker inspect` 生效（打印「全部中间件已 healthy（0s）」），随后 `bash start-services.sh status` 报 PostgreSQL / Redis / Milvus / Elasticsearch 全部「运行中」，exit 0。**验收 1/2/3/4 全部 PASS**，`needs-infra` 标记解除。
 
 ### 风险
 

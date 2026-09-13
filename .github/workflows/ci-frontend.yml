@@ -25,13 +25,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ⚠️ 依赖 T33/T34 完成（当前本地 lint 存在 89 errors：no-unused-vars / no-explicit-any /
-      #    console 等）。不得通过关闭规则让 CI 变绿——对应 ticket 完成后再取消注释启用。
+      # ⚠️ 仍**有意**未启用 —— 原因已不再是「依赖 T33/T34」（三者均已 DONE），而是存量违规
+      #    不在本硬化计划的 41 张票范围内：`npx eslint .` 现为 **78 errors / 9 warnings**
+      #    （T33/T34 已把 89 降到 78），散落在 components/ 与 pages/ 的 legacy 代码
+      #    （no-unused-vars / no-explicit-any 等）。启用本步骤会让 CI 立刻变红；
+      #    **不得**通过关闭规则来让它变绿。
+      #    解除条件：单独立项清理这 78 处，或经裁决接受一份显式 ignore 清单。
+      #    见 docs/hardening/TRACKER.md「待办 / 未闭合项」P-12。
       # - name: Lint (eslint)
       #   run: npm run lint
 
-      # ⚠️ 依赖 T32/T33 完成（OutlineApprovalPanel 存在时序敏感的 flaky 用例；
-      #    本地 preflight 两次运行分别为 2 failed 与 1 failed）。修稳后取消注释启用。
+      # ⚠️ 仍**有意**未启用 —— `src/features/deep-research/OutlineApprovalPanel` 的集成用例
+      #    存在时序敏感抖动（本地多次运行出现 1–2 例超时；T32–T34 期间与 §4 总门禁期间
+      #    各复现过）。`npm run test` 会在一回全绿与偶发失败之间摇摆，纳入 CI 会制造假红。
+      #    解除条件：定位并消除该用例的时序依赖。见 TRACKER P-12。
       # - name: Test (vitest)
       #   run: npm run test
 
