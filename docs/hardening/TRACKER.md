@@ -14,7 +14,7 @@
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T16 + T41 合并） | `ac4ef4eca0f0be02f42169019130ab4affbfd8c2` |
 | 当前批次 | 6（T17–T19；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | 本记录 commit（第 5 批审查修复，SHA 于下文回填） |
+| 当前 fixed point（上一批审查结束 commit） | `d345685`（第 5 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -29,7 +29,7 @@
 | 2 | T04–T06 + T41 | `19547b0` | `41009b9` | 11 | `57f69e0` | FIXED |
 | 3 | T07–T09 | `57f69e0` | `fbe55f8` | 6 | `6b73d44` | FIXED |
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
-| 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `（本记录 commit，SHA 于下文回填）` | FIXED |
+| 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -163,9 +163,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T11 | 清除裸 except 并补日志 | #42 | DONE | `T11-remove-bare-except` | `d4b1228` | #90 | PASS（`! grep -nE "except\s*:" <四文件>` → 无输出；全仓裸 except 计数 → 0；全量 `-m "not integration"` → 248 passed） | 4 | FIXED@1f52bfc |
 | T12 | 收敛数据库连接池与会话生命周期 | #43 | DONE | `T12-db-pool-schema` | `1f57882` | #91 | PASS（`grep -nE "pool_pre_ping\|pool_recycle\|pool_size" core/database.py` → 有命中；票面脚本（路径+env 占位修正）→ 打印 `OK: 连接池参数存在`；create_all 改 `DB_AUTO_CREATE=1` 显式开关） | 4 | FIXED@1f52bfc |
 | T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | DONE | `T13-langgraph-annotation` | `ad7baa6` | #92 | PASS（`grep -c "NG-2" graph.py` → 7；保留字样 8 处；本票 diff 无删除的函数；`pytest -k deep_research_v2` → 25 passed） | 4 | FIXED@1f52bfc |
-| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | FIXED@（本记录，SHA 待回填） |
-| T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | FIXED@（本记录，SHA 待回填） |
-| T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | FIXED@（本记录，SHA 待回填） |
+| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | FIXED@d345685 |
+| T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | FIXED@d345685 |
+| T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | FIXED@d345685 |
 | T17 | 新增架构总览文档 | #48 | TODO | — | — | — | — | 6 | PENDING |
 | T18 | requirements.txt 去重与依赖分区 | #49 | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
 | T19 | 决策票：alembic 去留 | #50 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
