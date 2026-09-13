@@ -1820,9 +1820,20 @@ cd frontend && npm run test && npm run lint
 
 预期：命令 1 的计数显著低于基线；命令 3 通过。
 
-### 风险
+### 实施修正（2026-09-13，T36 实测后）
 
-- 误删解释性注释会丢失关键上下文。**逐段确认**是否在解释非显而易见的设计决策。
+- **票面前提不成立（chat/index.tsx）**：该文件 129 行 `//` 注释**全部是解释性注释**（V2 事件分区标题、设计说明），全仓 `//` 形式的**注释代码为 0**；`{/* */}` 与 `/* */` 形式亦仅剩文件头版权声明。票面自己要求「解释「为什么」的注释一律保留」，故该文件**零删除**，基线计数 129 → 129（保留原因记于本条）。
+- **真正被注释掉的代码**（全仓 grep 仅此一处，4 行）：`store/valtio-persist.ts` 两处 `// if (!proxyObject._persist.loaded) { // return; // }` 已删除。该片段是「hydration 完成前跳过持久化」的未启用守卫，按票面要求不留在源码里，原文如下，供将来需要时恢复：
+  ```ts
+  // if (!proxyObject._persist.loaded) {
+  //   return;
+  // }
+  ```
+  注：该守卫与已知残留「持久化/迁移时序」相关（见 TRACKER），恢复前需先补齐 `_persist.loaded` 的维护逻辑。
+- **error-toast.ts（按票面默认选项：删除映射、明确统一兜底）**：`NETWORK_ERROR_MAP` 中 13 项被注释的状态码文案全部删除，只留 429，并加两行说明其余状态统一走兜底链（`ResponseError.message` → 后端 `message`/`error` → 通用文案）。类型由推断改为 `Record<string, string>`。注释计数基线 14 → 4（余下 4 行中 2 行为新增说明、2 行为既有 CanceledError 解释，均属「解释为什么」）。
+- 验证：`npm run lint` 78 errors / 9 warnings（与 T33 后持平，零新增）；`npm run test` 33 passed；`npm run build` 通过。
+
+### 风险
 
 ---
 
