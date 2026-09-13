@@ -5,6 +5,8 @@
 
 import { proxy, subscribe } from 'valtio'
 
+import { readItem, removeItem, writeItem } from '@/utils/local-storage'
+
 export interface UserInfo {
   id: string
   username: string
@@ -21,10 +23,10 @@ interface AuthState {
 
 const AUTH_STORAGE_KEY = 'auth'
 
-// 从 localStorage 加载初始状态
+// 从本地存储加载初始状态（读写统一走 @/utils/local-storage）
 function loadAuthState(): AuthState {
   try {
-    const saved = localStorage.getItem(AUTH_STORAGE_KEY)
+    const saved = readItem(AUTH_STORAGE_KEY)
     if (saved) {
       return JSON.parse(saved)
     }
@@ -38,10 +40,10 @@ function loadAuthState(): AuthState {
   }
 }
 
-// 保存状态到 localStorage
+// 保存状态到本地存储
 function saveAuthState(state: AuthState) {
   try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(state))
+    writeItem(AUTH_STORAGE_KEY, JSON.stringify(state))
   } catch (e) {
     console.error('Failed to save auth state:', e)
   }
@@ -69,7 +71,7 @@ export const authActions = {
     authState.token = null
     authState.user = null
     authState.isLoggedIn = false
-    localStorage.removeItem(AUTH_STORAGE_KEY)
+    removeItem(AUTH_STORAGE_KEY)
   },
 
   updateUser(user: Partial<UserInfo>) {

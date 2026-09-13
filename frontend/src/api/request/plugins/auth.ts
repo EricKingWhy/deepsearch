@@ -6,13 +6,14 @@
 /**
  * 认证插件：自动添加 Token 到请求头
  */
+import { readItem } from '@/utils/local-storage'
 import { IRequestPlugin } from './plugin'
 
 const AUTH_STORAGE_KEY = 'auth'
 
 function getToken(): string | null {
   try {
-    const authData = localStorage.getItem(AUTH_STORAGE_KEY)
+    const authData = readItem(AUTH_STORAGE_KEY)
     if (authData) {
       const parsed = JSON.parse(authData)
       return parsed?.token || null

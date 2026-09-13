@@ -3,7 +3,7 @@
 
 from contextlib import asynccontextmanager
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
@@ -32,6 +32,7 @@ from router.memory_router import router as memory_router
 from router.database_router import router as database_router
 from router.news_router import router as news_router
 from core.cors import build_cors_kwargs
+from core.security_headers import security_headers_for
 from core.database import engine, Base
 # 导入所有模型以确保它们被注册
 from models import (
@@ -95,6 +96,15 @@ app = FastAPI(
 # 生产环境留空则直接在启动阶段失败。解析与判定逻辑见 core/cors.py（独立成模块以便无基础设施单测）。
 app.add_middleware(CORSMiddleware, **build_cors_kwargs())
 app.add_middleware(ObservabilityMiddleware)
+
+# 安全响应头（T37 方案 A）：为响应附加 CSP。
+# 策略值与文档路径豁免规则见 core/security_headers.py（独立成模块以便无基础设施单测）。
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in security_headers_for(request.url.path).items():
+        response.headers[name] = value
+    return response
 
 # 注册路由
 app.include_router(auth_router)

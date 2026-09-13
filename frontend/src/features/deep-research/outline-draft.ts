@@ -4,6 +4,8 @@ import type {
   ResearchQuestion,
 } from './types'
 
+import { readItem, removeItem, writeItem } from '@/utils/local-storage'
+
 export interface StoredOutlineDraft extends EditableResearchPlan {
   outlineRevision: string
   savedAt: number
@@ -68,7 +70,7 @@ export function saveOutlineDraft(
     researchQuestions: plan.researchQuestions,
     savedAt: Date.now(),
   }
-  localStorage.setItem(
+  writeItem(
     getOutlineDraftKey(sessionId, outlineRevision),
     JSON.stringify(draft),
   )
@@ -79,7 +81,7 @@ export function loadOutlineDraft(
   outlineRevision: string,
 ): StoredOutlineDraft | null {
   const key = getOutlineDraftKey(sessionId, outlineRevision)
-  const raw = localStorage.getItem(key)
+  const raw = readItem(key)
   if (!raw) return null
 
   try {
@@ -89,7 +91,7 @@ export function loadOutlineDraft(
     // Invalid local data is discarded below.
   }
 
-  localStorage.removeItem(key)
+  removeItem(key)
   return null
 }
 
@@ -97,5 +99,5 @@ export function clearOutlineDraft(
   sessionId: string,
   outlineRevision: string,
 ): void {
-  localStorage.removeItem(getOutlineDraftKey(sessionId, outlineRevision))
+  removeItem(getOutlineDraftKey(sessionId, outlineRevision))
 }

@@ -3,13 +3,15 @@
  * 未经授权，禁止转售或仿制。
  */
 
+import { allKeys, readItem, removeItem, writeItem } from '@/utils/local-storage'
 import { ProxyPersistStorageEngine } from './valtio-persist'
 
+// 底层读写统一走 @/utils/local-storage（T37：全站唯一访问点）
 const storage: ProxyPersistStorageEngine = {
-  getItem: (name) => window.localStorage.getItem(name),
-  setItem: (name, value) => window.localStorage.setItem(name, value),
-  removeItem: (name) => window.localStorage.removeItem(name),
-  getAllKeys: () => Object.keys(window.localStorage),
+  getItem: readItem,
+  setItem: writeItem,
+  removeItem,
+  getAllKeys: allKeys,
 }
 
 export default storage
