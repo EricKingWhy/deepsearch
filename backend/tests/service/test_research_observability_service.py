@@ -52,6 +52,7 @@ def test_finish_run_rejects_non_terminal_status():
 
 
 @pytest.mark.integration
+@pytest.mark.needs_infra
 def test_run_event_lifecycle_sequence_pagination_and_user_scope():
     from models.observability import ResearchEvent, ResearchRun
 

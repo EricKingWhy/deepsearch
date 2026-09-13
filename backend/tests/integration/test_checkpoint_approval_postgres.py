@@ -18,7 +18,7 @@ from service.checkpoint_service import (
 )
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.needs_infra]
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "")
 MIGRATION_PATH = (
     Path(__file__).parents[2]
