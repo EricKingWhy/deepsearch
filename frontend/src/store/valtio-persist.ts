@@ -177,9 +177,6 @@ export default function proxyWithPersist<S extends object>(
 
           if (isPersistingMainObject) {
             subscribe(proxyObject, (ops) => {
-              // if (!proxyObject._persist.loaded) {
-              //   return;
-              // }
               if (ops.every((op) => op[1][0] === '_persist')) {
                 return
               }
@@ -292,9 +289,6 @@ export default function proxyWithPersist<S extends object>(
           }
           if (isPersistingMainObject) {
             subscribe(proxyObject, (ops) => {
-              // if (!proxyObject._persist.loaded) {
-              //   return;
-              // }
               if (ops.every((op) => op[1][0] === '_persist')) {
                 return
               }
