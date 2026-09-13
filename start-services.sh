@@ -79,7 +79,7 @@ start_services() {
     # 检查服务状态
     check_service_health
 
-    log_success "所有中间件服务已启动!"
+    log_success "所有服务已启动!"
     echo ""
     echo "服务访问地址:"
     echo "  - PostgreSQL: localhost:5432"
@@ -88,8 +88,8 @@ start_services() {
     echo "  - Elasticsearch: localhost:1200"
     echo "  - MinIO Console: localhost:9001 (账号/口令见你配置的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
     echo ""
-    log_info "现在可以启动前后端服务了"
-    echo "  - 后端: cd backend && python app/app_main.py"
+    # T30 起后端已随 docker compose 启动（容器占用 :8000，后台构建/启动可能略慢于中间件健康检查）
+    log_info "后端已随 compose 启动于 http://localhost:8000（本机调试后端代码时才需要: cd backend && python app/app_main.py，注意先停掉容器避免端口冲突）"
     echo "  - 前端: cd frontend && npm run dev"
 }
 

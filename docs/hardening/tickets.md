@@ -1527,6 +1527,7 @@ docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env && echo "OK: �
 
 - 验收 1/2 PASS（`docker compose config --quiet` 合法）；验收 3/4（真实构建+启动+容器内 .env 检查）因 **Docker daemon 未运行** 按 R-05 记 BLOCKED，Docker 可用后补跑。
 - 补充发现：`backend/app/Dockerfile`（旧式单阶段、构建上下文为 app/）为遗留文件，本票未动——如确认废弃可在后续票清理。
+- **路径澄清（批次 10 审查补充）**：票面验收 1 写「仓库根目录存在 `.dockerignore`」，实际实现为 `backend/.dockerignore`——这是**正确做法**：构建上下文为 `backend/`，根目录的 .dockerignore 对 `docker build ... backend` 不生效。验收 1 按实际路径解释为 PASS。
 
 ### 风险
 
@@ -1619,6 +1620,13 @@ cd frontend && npm run lint
 ```
 
 预期：命令 1 输出 `0`；命令 2/3 通过。
+
+### 实施修正（2026-09-13，T32 实测后 + 批次 10 审查补充）
+
+- **实际规模比票面大**：不是「约 30 处」，实测 83 处（80 单行 + `chat/index.tsx` 3 处多行日志块），分布于 8 个文件。票面路径 `frontend/src/layout/nav.tsx` 为笔误，实际是 `frontend/src/layout/base/nav.tsx`（31/45 行号亦随之偏移）。
+- **验收 1 口径修正**：`console.debug` 也在清理范围（票面 grep 只写了 `console.log`），实际执行 `grep -rn "console\.log\|console\.debug" src/` → 0。
+- **验收 3 部分达成**：`npm run lint` 未全绿（104 errors），但 console 相关错误为 0；剩余主体为 `no-explicit-any`（64）/`no-unused-vars`（25）等，属 T33/T34 范围（T29 已备案 lint 步骤依赖 T32–T34）。验收 3 按「本票不引入新 lint error」解释 —— 初版实现曾引入 7 处 `no-empty`（删日志后残留空块），已在批次 10 审查修复中清理（空块连结构删除或补语义注释，只写不读的 `finalSummary` 死变量整块移除）。
+- `session-drawer/index.tsx` 错误路径日志按票面精神保留（`console.warn('预加载会话失败，继续导航', e)`，注释标记 T32）。
 
 ### 风险
 
