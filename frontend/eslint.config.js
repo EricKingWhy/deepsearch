@@ -24,6 +24,8 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // T33：显式声明（recommended 已默认 error 生效，此处落名以便检索与后续调整）
+      '@typescript-eslint/no-explicit-any': 'error',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

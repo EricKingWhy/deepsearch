@@ -34,8 +34,8 @@ export const sessionActions = {
     sessionState.error = null
     try {
       const response = await getSessions({ limit: 50 })
-      // 兼容 axios 响应格式和直接返回数据
-      const sessions = (response as any).data || response
+      // request 实例不解包：response.data 即后端返回体
+      const sessions = response.data
       sessionState.sessions = Array.isArray(sessions) ? sessions : []
     } catch (err) {
       sessionState.error = (err as Error).message || '获取会话列表失败'
@@ -47,7 +47,7 @@ export const sessionActions = {
   async createNewSession(title?: string, sessionType: 'chat' | 'deepsearch' = 'chat') {
     try {
       const response = await createSession({ title, session_type: sessionType })
-      const newSession = ((response as any).data || response) as Session
+      const newSession = response.data
       sessionState.sessions.unshift(newSession)
       return newSession
     } catch (err) {
@@ -61,7 +61,7 @@ export const sessionActions = {
     sessionState.error = null
     try {
       const response = await getSession(sessionId)
-      const session = ((response as any).data || response) as SessionWithMessages
+      const session = response.data
       sessionState.currentSession = session
       return session
     } catch (err) {
@@ -75,7 +75,7 @@ export const sessionActions = {
   async renameSession(sessionId: string, title: string) {
     try {
       const response = await updateSession(sessionId, { title })
-      const updatedSession = ((response as any).data || response) as Session
+      const updatedSession = response.data
       const index = sessionState.sessions.findIndex((s) => s.id === sessionId)
       if (index !== -1) {
         sessionState.sessions[index] = updatedSession

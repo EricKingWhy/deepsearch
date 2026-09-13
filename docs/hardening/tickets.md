@@ -1668,6 +1668,13 @@ cd frontend && npm run lint && npm run test
 
 预期：命令 1 输出 `0`；命令 2 有命中；命令 3 通过。
 
+### 实施修正（2026-09-13，T33 实测后）
+
+- **规则早已生效且是 error 级**：`tseslint.configs.recommended` 默认启用 `no-explicit-any`（error），lint 里 60+ 处 any 报错正来自它 —— 票面「先设 warn」的前提不成立。降级为 warn 违反「不为绿灯降规则」原则，故维持 error 并在 `eslint.config.js` 显式落名（满足验收 2）。
+- **收敛范围**：store/ + router/ 共 11 处 any（`session.ts` 4 处去掉 `as any` 信封兼容 —— `request` 实例不解包，`response.data` 即后端返回体，已核对后端裸返回与 service 插件；`valtio-persist.ts` 3 处（含 `pendingWrites`）与 `device.ts`、`router/context.ts`、`router/index.tsx`、`router/routes.tsx`）。验收 1 grep = 0。
+- **连带发现并被 any 掩盖的潜在 bug**：`device.ts` v0→v1 迁移函数读取 `oldState.useDeepsearch`，但 `valtio-persist` 调用迁移时**不传参且忽略返回值**（`await migration()`），oldState 运行时恒为 undefined（v0 用户触发迁移会 TypeError）；且调用点在旧数据载入之前，机制本身无法改写旧数据。已收敛为无参 no-op（版本簿记正常），**迁移机制缺陷记入 TRACKER 已知残留，待后续票修复**。
+- **验收 3 部分达成**：lint 全绿依赖 T34 后启用 CI lint 步骤时点（剩余 78 errors 全部为其它文件的存量 no-explicit-any/no-unused-vars 等，超出本票收敛范围，记已知残留）。test 33 全过、build 24.66s 通过；另跑 `tsc -p tsconfig.app.json --noEmit`：24 → 23 errors（本票修复 device.ts 的 TS2322，无新增）。
+
 ### 风险
 
 - 若把规则设为 `error` 而全仓仍有 50+ 处 `any`，CI 会立刻变红。**本票必须用 `warn`**，并在 commit message 中写明「待收敛后再提升为 error」。
