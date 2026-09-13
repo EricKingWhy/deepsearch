@@ -60,11 +60,15 @@ docker compose ps
 ```
 
 **服务访问地址：**
-- PostgreSQL: `localhost:5432` (用户名: `postgres`, 密码: `postgres123`)
+- PostgreSQL: `localhost:5432` (用户名: `postgres`, 密码: 见你配置的 `POSTGRES_PASSWORD`)
 - Redis: `localhost:6379`
 - Milvus: `localhost:19530`
 - Elasticsearch: `localhost:1200`
-- MinIO Console: `localhost:9001` (admin/minioadmin)
+- MinIO Console: `localhost:9001` (账号/密码: 见你配置的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`)
+
+> ⚠️ 这些口令自 T07 起不再明文写在仓库里，改为从 `.env` 注入：
+> 根目录 `.env`（供 `docker compose` 用）与 `backend/.env`（供后端与 `docker-compose-base.yml` 用）。
+> 模板分别是根目录 `.env.example` 与 `backend/.env.example`。
 
 ### 3. 配置环境变量
 
@@ -85,12 +89,19 @@ DASHSCOPE_API_KEY=your-dashscope-api-key
 # 搜索服务 - 必填
 BOCHA_API_KEY=your-bocha-api-key
 
-# PostgreSQL 配置（已在 Docker 中配置，通常无需修改）
+# PostgreSQL 配置（连接地址按 Docker 默认，通常无需修改）
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres123
+# 必填：留空会导致后端【启动失败】（历史弱口令默认值已移除）
+# 生成方式: python -c "import secrets; print(secrets.token_urlsafe(24))"
+# 须与仓库根目录 .env 中的 POSTGRES_PASSWORD 一致
+POSTGRES_PASSWORD=
 POSTGRES_DB=industry_assistant
+
+# MinIO（供 docker-compose-base.yml 使用；须与根目录 .env 一致）
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
 
 # JWT 密钥（必填，长度 ≥ 32；留空、过短或沿用示例值都会导致后端【启动失败】）
 # 生成方式: python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -182,11 +193,11 @@ npm run dev
 
 2. **创建数据库和用户**
    ```bash
-   # 连接 PostgreSQL
+   # 连接 PostgreSQL（口令用你实际配置的强随机值，不要沿用任何示例口令）
    psql postgres
 
    # 创建用户
-   CREATE USER postgres WITH PASSWORD 'postgres123';
+   CREATE USER postgres WITH PASSWORD '<你的强随机口令>';
 
    # 创建数据库
    CREATE DATABASE industry_assistant OWNER postgres;
@@ -208,7 +219,8 @@ npm run dev
    POSTGRES_HOST=localhost
    POSTGRES_PORT=5432
    POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=postgres123
+   # 必填，用你实际配置的强随机值（与仓库根目录 .env 保持一致）
+   POSTGRES_PASSWORD=
    POSTGRES_DB=industry_assistant
    ```
 
@@ -314,9 +326,9 @@ docker compose up -d
 
 2. `.env` 文件配置错误
    ```bash
-   # 确保配置与 Docker 一致
+   # 确保配置与 Docker 一致（口令为必填项，不要沿用任何示例值）
    POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=postgres123
+   POSTGRES_PASSWORD=<你的强随机口令>
    POSTGRES_DB=industry_assistant
    ```
 

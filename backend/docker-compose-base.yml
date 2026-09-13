@@ -34,8 +34,9 @@ services:
     container_name: milvus-minio
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      # 由 backend/.env 注入（本文件在 backend/ 目录下执行，compose 读同目录 .env）。
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9001:9001"
       - "9000:9000"
@@ -57,6 +58,9 @@ services:
     environment:
       ETCD_ENDPOINTS: milvus-etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
+      # 必须与上面 milvus-minio 的 root 用户/口令一致，否则轮换口令后 Milvus 连不上 MinIO。
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
     volumes:
       - milvus-data:/var/lib/milvus
     healthcheck:

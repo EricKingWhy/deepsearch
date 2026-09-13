@@ -59,7 +59,7 @@ start_services() {
     echo "  - Redis: localhost:6379"
     echo "  - Milvus: localhost:19530"
     echo "  - Elasticsearch: localhost:1200"
-    echo "  - MinIO Console: localhost:9001 (admin/minioadmin)"
+    echo "  - MinIO Console: localhost:9001 (账号/口令见你配置的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
     echo ""
     log_info "现在可以启动前后端服务了"
     echo "  - 后端: cd backend && python app/app_main.py"

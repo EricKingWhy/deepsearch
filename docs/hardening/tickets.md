@@ -466,7 +466,9 @@ grep -n "CORS" backend/.env.example
 cd backend && ! grep -nE 'postgres123' app/core/database.py
 
 # 3) 单元测试在无基础设施环境下不被本票破坏
-cd backend && .venv/Scripts/python.exe -m pytest tests -q
+#    注：原文写的 `backend/.venv/Scripts/python.exe` 是**损坏环境**（见协议 §11 与待办 P-01），
+#    可用解释器为 C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
+cd backend && <可用venv>/Scripts/python.exe -m pytest tests -q -m "not integration"
 
 # 4) 顶层 .env 已被忽略
 git check-ignore -v .env && echo "OK: 顶层 .env 被忽略"
@@ -479,6 +481,41 @@ docker compose config --quiet
 ```
 
 预期：命令 1/2 无输出；命令 3 全绿；命令 4 打印 `OK`；命令 5 有命中；命令 6 在 Docker 可用时通过。
+
+> **⚠️ 实施修正（2026-09-13，已实测）**
+>
+> 1. **执行期范围扩张（同类缺陷一次修净）**：按「修根因不修症状」做全仓扫描后，同一明文口令
+>    另有 **4 处受版本控制的副本**，均并入本票 —— 拆票会留下仍在公开仓库里的弱口令
+>    （与 T01 的处理原则一致）：
+>
+>    | 位置 | 内容 |
+>    |------|------|
+>    | `backend/docker-compose-base.yml:37-38` | MinIO `minioadmin/minioadmin`（**不在原 ticket 清单里**） |
+>    | `backend/.env.example:59` | `POSTGRES_PASSWORD=postgres123` |
+>    | `READMED.md`（6 处） | 文档正文直接给出 `postgres123` / `minioadmin` |
+>    | `start-services.sh:62` | 启动完成提示打印 `admin/minioadmin` |
+>
+> 2. **必须同时改 Milvus 的 MinIO 凭据（原 ticket 未提）**：Milvus 需要凭据才能读写 MinIO，
+>    而两个 compose 的 `milvus` 服务此前**没有设置**凭据，靠「MinIO 默认口令恰好也是
+>    `minioadmin`」才连得上。只改 MinIO 不改 Milvus，会让轮换口令后的向量库**静默不可写**。
+>    故在两个 compose 的 milvus 服务补 `MINIO_ACCESS_KEY_ID` / `MINIO_SECRET_ACCESS_KEY`，
+>    与 minio 服务取同一组变量。
+> 3. **变量名用 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`**（ticket 指定）。原 compose 的
+>    `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` 是 MinIO 的已废弃别名，现行镜像用 ROOT_* 命名。
+> 4. **原验收 #3 的 venv 路径不可用**：`backend/.venv/Scripts/python.exe` 是损坏环境
+>    （见协议 §11 与待办 P-01）。已改为可用解释器路径；并加 `-m "not integration"`，
+>    因为全量跑必然含 1 条需真实 Postgres 的 `@pytest.mark.integration` 用例（见 P-10）。
+> 5. **原文风险条需修正**：「旧卷仍可用（环境变量只影响新初始化）」**不完整** —— 卷确实保留
+>    旧口令，但**应用/客户端**改用新口令后就连不上。正确做法是二选一：把 `.env` 填回旧口令，
+>    或在容器内 `ALTER USER`／`docker compose down -v` 重建（**会丢数据**）。
+>    该说明已写入根目录 `.env.example`、`backend/.env.example` 与 `READMED.md`。
+> 6. **未改本机 `backend/.env`**：其中 `POSTGRES_PASSWORD` 仍是旧弱口令，与**既有数据卷匹配**。
+>    轮换本机口令要动数据库卷，属破坏性操作，留给用户决定（见下方风险）。
+> 7. **验收 #6 已实测通过**：`docker compose config --quiet` → `exit=0`（会打印
+>    「POSTGRES_PASSWORD / MINIO_ROOT_* 未设置，默认为空串」的 warning，这正是有意的响亮失败）。
+> 8. **未加「拒绝已知弱口令」的校验**（与 T02 的 `KNOWN_WEAK_SECRET_KEYS` 不同）：本票只要求
+>    「移除默认值 + 缺失即失败」。若再加弱口令拒绝名单，会对用旧卷的存量环境造成额外破坏，
+>    超出本票范围。
 
 ### 风险
 
