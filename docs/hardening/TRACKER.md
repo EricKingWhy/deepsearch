@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T07 + T41 合并） | `e4d82a740ceca7b345d1d2e9261292e811b41f33` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T08 + T41 合并） | `10a973ff150e429de3249d3f6820bff9741f79a5` |
 | 当前批次 | 3（T07–T09） |
 | 当前 fixed point（上一批审查结束 commit） | `57f69e0`（第 2 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 8 |
+| 已完成 | 9 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -87,7 +87,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T05 | chat / search / news 路由补充鉴权 | #36 | DONE | `T05-harden-chat-search-news-auth` | `cee1c33` | #80 | PASS（`pytest -q -k "auth or unauthorized"` → 47 passed；三路由鉴权计数 = 2/2/2；`news_router` 实测 8 个端点非 9） | 2 | FIXED@57f69e0 |
 | T06 | 收紧 CORS 配置 | #37 | DONE | `T06-tighten-cors` | `18ed8f8` | #81 | PASS（`pytest tests/core/test_cors_config.py` → 14 passed；通配 + 凭据的硬编码组合已消失；`py_compile app_main` 通过） | 2 | FIXED@57f69e0 |
 | T07 | docker-compose 明文口令改为环境变量注入 | #38 | DONE | `T07-compose-secrets` | `1552d13` | #83 | PASS（`pytest tests/core/test_db_password_required.py` → 15 passed；`docker compose config --quiet` → exit=0；全仓 `grep postgres123\|minioadmin` 受控文件无残留） | 3 | PENDING |
-| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | TODO | — | — | — | — | 3 | PENDING |
+| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | DONE | `T08-scout-kb-collection` | `e16b313` | #85 | PASS（`! grep '"knowledge_base"' scout.py` → 无输出；`pytest tests/service/deep_research_v2 -q` → 25 passed；全量 `-m "not integration"` → 218 passed / 5 deselected；needs-infra 端到端验证因 Docker 未运行记 BLOCKED） | 3 | PENDING |
 | T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | TODO | — | — | — | — | 3 | PENDING |
 | T10 | text2sql 使用只读数据库账号兜底 | #41 | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
 | T11 | 清除裸 except 并补日志 | #42 | TODO | — | — | — | — | 4 | PENDING |
@@ -185,3 +185,5 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T07 | 实施 + 合并：`core/database.py` 新增 `_require_env(name)`，`POSTGRES_PASSWORD` 改为导入期校验（缺失/空 → 抛 `RuntimeError` 并点名变量）；`docker-compose.yml` / `backend/docker-compose-base.yml` 的 postgres、minio 口令改为 `${POSTGRES_PASSWORD}` / `${MINIO_ROOT_USER}` / `${MINIO_ROOT_PASSWORD}` 注入，并给 milvus-standalone 补 `MINIO_ACCESS_KEY_ID` / `MINIO_SECRET_ACCESS_KEY`（原为硬编码弱口令）；新增根级 `.env.example` 与 `backend/.env.example` 的占位项；`READMED.md` / `start-services.sh` / `backend/README.md` 明文口令清除；新增 `tests/core/test_db_password_required.py`（15 用例） | commit `1552d13`，PR #83 已 merge（`e4d82a7`），issue #38 自动关闭 |
 | 2026-09-13 | T07 | 验收：`pytest tests/core/test_db_password_required.py` → **15 passed**；`docker compose config --quiet` → exit=0；受控文件 `grep -rn "postgres123\|minioadmin"` 无残留。全量 `pytest tests -m "not integration"` → **213 passed / 5 deselected**（400.52s） | 批次 3 起算（fixed point `57f69e0`） |
 | 2026-09-13 | T07 | **本机 `.env` 未轮换的决策**：本地 `backend/.env` 的 `POSTGRES_PASSWORD` 仍是 11 字符弱口令（等于 `postgres` + 数字后缀），与现有 DB volume 数据绑定。轮换需 `ALTER USER` 或 `docker compose down -v`（**丢数据**），故**不**在票据内自动执行；改为在 `.env.example` 注明轮换步骤，把决策留给用户 | 记录于本行；非回归 |
+| 2026-09-13 | T08 | 实施 + 合并：`scout.py` 删除硬编码 `collection_name="knowledge_base"`（F-08），改走 `retrieval_service.retrieve_from_knowledge_base`（集合名转换只保留 retrieval_service 一处实现）；`kb_name` 为空时跳过本地检索并告警（与 V1 `dr_g.py` 的 `search_local and kb_name` 门控语义一致，**不引入全局检索语义**，无架构分叉）；顺带修复 `kb_name` 在 `_research_stream` 被丢弃的问题（补齐 `research → graph.run → create_initial_state → ResearchState` 透传链）；`DeepScout` 构造不再直连 Milvus（原 `MilvusService()` 构造即建连，唯一消费者已移除）；新增 `tests/service/deep_research_v2/test_scout_local_search.py`（5 用例，mock 检索服务） | commit `e16b313`，PR #85 已 merge（`10a973f`），issue #39 自动关闭 |
+| 2026-09-13 | T08 | 验收：命令 1 `! grep '"knowledge_base"' scout.py` → PASS；命令 2 `pytest tests/service/deep_research_v2 -q` → **25 passed**；全量 `pytest tests -m "not integration"` → **218 passed / 5 deselected**（385.37s）；命令 3（needs-infra 端到端，需 Milvus + Postgres）Docker 未运行 → **BLOCKED**，未伪造 PASS。注意：测试环境里 `service.deep_research_v2(.agents)` 被 conftest 注册为命名空间桩、真实 `__init__.py` 不执行，graph 类测试须沿用 `test_graph_outline_checkpoint.py` 的「桩补占位类 + `object.__new__` 绕构造」模式 | 批次 3 第 2 张，剩 T09 后收批审查 |
