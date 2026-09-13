@@ -4,11 +4,18 @@
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
+from router.auth_router import get_current_user_required
 from service import WebSearchService, ServiceConfig
 from schemas import WebSearchRequest, WebSearchResponse
 
 # Create router instance
-router = APIRouter(prefix="/search", tags=["search"])
+# 全文件无匿名端点：联网检索会消耗第三方搜索配额，属需登录后使用的功能，一律要求认证。
+# 在 router 级挂一次依赖，避免逐端点重复（新增端点也自动受保护）。
+router = APIRouter(
+    prefix="/search",
+    tags=["search"],
+    dependencies=[Depends(get_current_user_required)],
+)
 
 # Get WebSearchService instance
 def get_web_search_service():

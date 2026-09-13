@@ -11,13 +11,22 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 from core.database import get_db
+from router.auth_router import get_current_user_required
 from service.news_collection_service import get_news_collection_service
 from service.scheduler_service import get_scheduler_service
 from config.industry_config import get_all_industries, get_industry_config
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/news", tags=["行业资讯"])
+# 全文件无匿名端点：9 个接口中既有资讯读取（/list、/bidding/list、/stats、/industries），
+# 也有触发采集（/collect）与运维诊断（/scheduler/status、/check）。前端只在登录后的
+# /news、/bidding 页调用它们（未登录会被 AuthGuard 拦到 /login），故一律要求认证。
+# 在 router 级挂一次依赖，避免逐端点重复（新增端点也自动受保护）。
+router = APIRouter(
+    prefix="/news",
+    tags=["行业资讯"],
+    dependencies=[Depends(get_current_user_required)],
+)
 
 
 class NewsListResponse(BaseModel):

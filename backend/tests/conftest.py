@@ -1,3 +1,4 @@
+import importlib
 import os
 import sys
 import types
@@ -44,15 +45,24 @@ _register_namespace_package(
 # 取**顶层名字**，而占位包里没有这些名字，于是 router 测试在收集阶段直接 ImportError。
 #
 # 修法：把 router 实际用到的顶层名字，从对应的**轻量子模块**取出来挂到占位包上。
-# 代价接近 0（config 0s、document_service 约 1s），且不再要求测试拉起整条重型链。
+# 代价接近 0（config / web_search_service / session_service 约 0s，document_service 约 1s、
+# chat_service 约 1.7s），且不再要求测试拉起整条重型链。
 # 若后续 router 用到更多顶层名字，在此按同一方式追加即可。
 _service = sys.modules["service"]
 
-from service.config import ServiceConfig  # noqa: E402
-from service.document_service import DocumentService  # noqa: E402
+# 顶层名字 → 定义它的轻量子模块（对应 `service/__init__.py` 里的 `from .X import Y`）。
+_SERVICE_PUBLIC_NAMES = {
+    "config": ("ServiceConfig",),
+    "document_service": ("DocumentService",),
+    "web_search_service": ("WebSearchService",),
+    "chat_service": ("ChatService",),
+    "session_service": ("SessionService",),
+}
 
-_service.ServiceConfig = ServiceConfig
-_service.DocumentService = DocumentService
+for _submodule, _exported_names in _SERVICE_PUBLIC_NAMES.items():
+    _module = importlib.import_module(f"service.{_submodule}")
+    for _exported_name in _exported_names:
+        setattr(_service, _exported_name, getattr(_module, _exported_name))
 
 
 # --- 重型协作者替身 -------------------------------------------------------------

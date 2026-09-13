@@ -10,12 +10,19 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from models.chat import ChatAttachment
+from router.auth_router import get_current_user_required
 from service import DocumentService, WebSearchService, ChatService, SessionService, ServiceConfig
 from service.retrieval_service import retrieve_content
 from schemas import ChatRequest, LegacySessionResponse, ChatWithAttachmentsRequest
 
 # Create router instance
-router = APIRouter(prefix="/chat", tags=["chat"])
+# 全文件无匿名端点：会话创建（/session）与三个版本的补全接口（/completion/v1、/completion、/completion/v3）
+# 都属用户级对话操作，一律要求认证。在 router 级挂一次依赖，避免逐端点重复（新增端点也自动受保护）。
+router = APIRouter(
+    prefix="/chat",
+    tags=["chat"],
+    dependencies=[Depends(get_current_user_required)],
+)
 
 # Get service instances
 def get_services():
