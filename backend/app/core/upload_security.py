@@ -26,6 +26,10 @@ READ_CHUNK_BYTES = 1024 * 1024
 # 这里直接用数值。
 HTTP_413_CONTENT_TOO_LARGE = 413
 
+# 单文件大小上限：三个上传入口（document / attachment / knowledge）共用同一口径。
+# 取常量即可，不必做成可配置项。
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
 
 def sanitize_extension(filename: Optional[str]) -> str:
     """从客户端文件名中取出扩展名：小写、含点。

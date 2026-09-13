@@ -1788,6 +1788,10 @@ cd backend && pytest tests -q
 
 - **类型**：security　**阶段**：1　**依赖**：T03　**标记**：`needs-decision`
 
+> ✅ **裁决结果（2026-09-13）**：用户选定 **方案 A** —— 只统一**代码实现**，白名单各自保留。
+> 已实施并合并（commit / PR 见 `TRACKER.md`）。**零行为变更**：三份白名单的成员集合
+> 由 `tests/router/test_upload_paths.py` 用 AST 断言锁定，任何一处被改动都会失败。
+
 > 来源：第 1 批 `code-review` 的两条**独立** findings —— 标准轴的「Duplicated Code / 未并轨」，
 > 与规格轴的「T03 白名单未与 `attachment_router` 对齐」。两条指向同一处根因。
 

@@ -3,13 +3,19 @@
 
 """聊天附件路由"""
 import os
-import shutil
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.upload_security import (
+    MAX_UPLOAD_BYTES,
+    ensure_supported_extension,
+    read_upload_with_limit,
+    safe_filename,
+    sanitize_extension,
+)
 from models.chat import ChatAttachment, ChatSession
 from models.user import User
 from router.auth_router import get_current_user
@@ -32,9 +38,8 @@ ALLOWED_EXTENSIONS = {
 }
 
 
-def get_file_extension(filename: str) -> str:
-    """获取文件扩展名"""
-    return os.path.splitext(filename)[1].lower()
+# 扩展名工具已收拢到 core.upload_security（sanitize_extension），避免三处实现各自漂移；
+# 白名单 ALLOWED_EXTENSIONS 仍由本路由自行维护。
 
 
 def attachment_to_response(att: ChatAttachment) -> AttachmentResponse:
@@ -68,7 +73,7 @@ async def process_attachment(attachment_id: str, file_path: str, db_session_fact
 
         try:
             content_text = ""
-            ext = get_file_extension(att.filename)
+            ext = sanitize_extension(att.filename)
 
             # 简单的文本提取（可以扩展为使用 DocMind）
             if ext in {'.txt', '.md', '.py', '.js', '.ts', '.json', '.yaml', '.yml', '.xml', '.csv', '.html'}:
@@ -135,23 +140,22 @@ async def upload_attachment(
             detail="会话不存在"
         )
 
-    # 验证文件类型
-    ext = get_file_extension(file.filename)
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不支持的文件类型: {ext}，支持的类型: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
-        )
+    # 验证文件类型：先剥离客户端塞入的目录片段，再比对白名单
+    ext = ensure_supported_extension(file.filename, ALLOWED_EXTENSIONS)
 
-    # 生成唯一文件名
-    import uuid
-    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    # 落盘文件名由服务端生成（uuid + 规范化扩展名）——**不使用 file.filename**：
+    # 后者完全由客户端控制，"../../" 片段足以把文件写出 UPLOAD_DIR。
+    unique_filename = safe_filename(extension=ext)
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
-    # 保存文件
+    # 保存文件：分块读取，超限抛 413（不把整个文件先读进内存）
     try:
+        content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(content)
+    except HTTPException:
+        # 413 等业务异常直接透出，不要被下面的兜底转成 500
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
