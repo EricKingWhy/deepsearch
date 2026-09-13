@@ -3,9 +3,13 @@
  * 未经授权，禁止转售或仿制。
  */
 
+import { lazy, Suspense } from 'react'
 import { ShareAltOutlined } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import PageLoading from '@/components/page-loading'
 import styles from './knowledge-graph.module.scss'
+
+// T35：懒加载 echarts-for-react（其依赖完整 echarts），避免静态引入使动态拆包失效
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface GraphNode {
   id: string
@@ -155,11 +159,13 @@ export default function KnowledgeGraph({ data }: KnowledgeGraphProps) {
         知识图谱 · {data.stats?.entitiesCount || data.nodes.length} 个实体 · {data.stats?.relationsCount || data.edges.length} 条关系
       </div>
       <div className={styles.chartContainer}>
-        <ReactECharts
-          option={option}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-        />
+        <Suspense fallback={<PageLoading />}>
+          <ReactECharts
+            option={option}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+          />
+        </Suspense>
       </div>
     </div>
   )
