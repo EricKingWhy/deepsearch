@@ -27,7 +27,7 @@ export type IRouteObject = {
   name?: string
   auth?: boolean
   pure?: boolean
-  meta?: any
+  meta?: Record<string, unknown>
 } & Omit<RouteObject, 'children'>
 
 export const routes: IRouteObject[] = [

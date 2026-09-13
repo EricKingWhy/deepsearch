@@ -92,7 +92,7 @@ export default function proxyWithPersist<S extends object>(
     const storage = await inputs.getStorage()
 
     // key is path, value is un-stringified value. stringify happens at time of write
-    const pendingWrites: Record<string, any> = {}
+    const pendingWrites: Record<string, unknown> = {}
 
     const bulkWrite = () =>
       Promise.all(
@@ -165,12 +165,12 @@ export default function proxyWithPersist<S extends object>(
             }
           }
 
-          const persistPath = (value: any) => {
+          const persistPath = (value: unknown) => {
             const target =
               value && typeof value === 'object' ? snapshot(value) : value
             pendingWrites[filePath] = target
             if (isPersistingMainObject) {
-              pendingWrites[filePath] = omit(target, '_persist')
+              pendingWrites[filePath] = omit(target as object, '_persist')
             }
             onBeforeBulkWrite(bulkWrite)
           }
@@ -232,8 +232,10 @@ export default function proxyWithPersist<S extends object>(
             ? omit(snapshot(proxyObject) as object, '_persist')
             : snapshot(proxySubObject[pathKey])
 
-          const persistLeaf = (valueProxy: any) => {
-            let value = snapshot(valueProxy)
+          const persistLeaf = (valueProxy: object) => {
+            let value: Record<string, unknown> = snapshot(
+              valueProxy,
+            ) as Record<string, unknown>
             if (isPersistingMainObject) {
               value = omit(value, '_persist')
             }
