@@ -2022,6 +2022,13 @@ cd backend && pytest tests -q
 
 - 鉴权测试若依赖真实数据库查询用户，会变成 `needs_infra`。**必须**用 mock 隔离，否则违背 T27 建立的分层。
 
+### 实施修正（2026-09-13，T40 实测后）
+
+- 新增 `backend/tests/core/test_security.py`（**18 例**，验收要求 ≥6）。票面第 5 项（弱密钥 / 缺失密钥 → 配置阶段即失败）已由 T02 的 `tests/core/test_security_jwt.py` 覆盖，**刻意不重复**，两文件分工写在新文件 docstring 里。
+- 覆盖清单：签发→校验往返（含无 `username`）/ 篡改签名 / 篡改载荷 / 无 `sub` / 畸形串（参数化 4 例）/ 过期（负 `expires_delta`，未引入 `freezegun`）/ 未过期对照 / 另一密钥签发失败 / `get_current_user_required` 在「缺头 · 非 Bearer · 垃圾 Token」下 401、有效 Token + 启用用户 200、未知用户 401、已禁用用户 403。
+- **不连数据库**（符合 T27 分层）：`get_user_by_id` 用 `monkeypatch.setattr` 接管；`get_db` 产出的 Session 是惰性的，401/403 路径不触发任何查询。另实测确认 `oauth2_scheme` 为 `auto_error=False`，缺头与非 Bearer 都落到 `if not token` 的 401 分支（而非由 FastAPI 提前抛错），故可直接断言固定文案。
+- 验证：`pytest tests/core/test_security.py -v` → **18 passed**；密钥自查 `grep -nE "sk-[A-Za-z0-9]{16,}"` 无命中（假值统一 `test-only-` 前缀）；`pytest tests -q` → 265 passed / 17 deselected；`ruff check app tests` → All checks passed。
+
 ---
 
 ## T41 — 合并三处上传实现，消除 attachment / knowledge 路由的路径穿越（决策票）
