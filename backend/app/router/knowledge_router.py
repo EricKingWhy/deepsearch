@@ -26,6 +26,9 @@ from schemas.knowledge import (
     DocumentResponse,
     DocumentUploadResponse,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge-bases", tags=["知识库管理"])
 
@@ -464,14 +467,14 @@ async def get_document_chunks(
 
     # 从 Milvus 获取切片
     collection_name = f"kb_{kb.name}".lower().replace(" ", "_")
-    print(f"[get_document_chunks] 查询切片: collection={collection_name}, filename={doc.filename}")
+    logger.info(f"[get_document_chunks] 查询切片: collection={collection_name}, filename={doc.filename}")
 
     try:
         milvus = get_milvus_service()
         chunks = milvus.get_chunks_by_filename(collection_name, doc.filename)
-        print(f"[get_document_chunks] 找到 {len(chunks)} 个切片")
+        logger.info(f"[get_document_chunks] 找到 {len(chunks)} 个切片")
     except Exception as e:
-        print(f"[get_document_chunks] Milvus 查询失败: {e}")
+        logger.warning(f"[get_document_chunks] Milvus 查询失败: {e}")
         # 返回空结果而不是报错
         chunks = []
 

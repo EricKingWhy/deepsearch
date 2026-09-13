@@ -1906,6 +1906,14 @@ cd backend && pytest tests -q
 
 预期：命令 1/2 输出 `0`（或仅剩脚本目录下的合法输出）；命令 3 全绿。
 
+### 实施修正（2026-09-13，T38 实测后）
+
+- **实际范围比票面大**：票面点名的 5 个文件共 45 处，但验收 2（`grep -rn "^\s*print(" app/ | wc -l`）要求全仓归零 —— 实际改造 **14 个文件 / 116 处**（另含 `docmind_service` 26、`chat_service` 13、`milvus_service` 12、`policy_search_service` 8、`memory_service` 7、`retrieval_service` 2、`stock_service` 1、`bidding_service` 1）。`app/scripts/` 按风险条款未动（109 处 CLI 输出保留）。
+- **分级规则**（按原语义，记此以备复审）：① 内容含错误/告警语义（`Error`/`error`/`失败`/`警告`/`Warn`/`Exception`/`⚠`/`❌`）→ `logger.warning`（37 处）；② 连续 ≥3 行的 print 块（含 `"*"*60` 横幅的诊断 dump）→ `logger.debug`（24 处）；③ 其余孤立 print → `logger.info`（52 处）。
+- **llm_config.py 按风险条款特判**：该文件内一律 `logger.info`，避免启动期配置自检被默认级别过滤（核验 `observability/logging.py` 默认 `LOG_LEVEL=INFO`，故可见）。
+- **两处必须避开的陷阱**：① `llm_config.py` 的 16–17 行 print 位于**模块 docstring 的用法示例**中、`deep_research_v2/__init__.py:25` 的 print 位于 docstring 示例代码块内 —— 均属文档而非可执行代码，已跳过；② 插入 `import logging` 时若按「最后一条顶层 import 行」插入，会落进 `from pymilvus import (…)` 这类**多行括号 import 的续行区**（首轮实跑即触发 `SyntaxError`，回滚重来），正确做法是按括号平衡定位语句结束行。
+- 验收结果：命令 1 = 0；命令 2 = **3**（均为上述 docstring 示例，非可执行 print，不属调试残留）；命令 3 `pytest tests -q` → **236 passed / 17 deselected**（与基线一致）；`ruff check app/` → All checks passed。
+
 ### 风险
 
 - `app/scripts/` 下的脚本用 `print` 做 CLI 输出是**合理的**，不要清理（除非同时改成 `logging` 并配置 console handler）。

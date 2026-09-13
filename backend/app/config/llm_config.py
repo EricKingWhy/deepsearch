@@ -20,6 +20,9 @@ LLM 和 Agent 配置文件
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -200,11 +203,11 @@ def print_config():
     """打印当前配置（用于调试）"""
     import json
     config = get_config()
-    print("=" * 60)
-    print("LLM Configuration")
-    print("=" * 60)
-    print(json.dumps(config.to_dict(), indent=2, ensure_ascii=False))
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("LLM Configuration")
+    logger.info("=" * 60)
+    logger.info(json.dumps(config.to_dict(), indent=2, ensure_ascii=False))
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

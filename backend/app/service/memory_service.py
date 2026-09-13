@@ -25,6 +25,9 @@ load_dotenv()
 from models.chat import ChatSession, ChatMessage, LongTermMemory
 from service.embedding_service import generate_embedding
 from service.milvus_service import get_milvus_service, MilvusService
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 记忆触发阈值
 MEMORY_TOKEN_THRESHOLD = 10000  # 超过此 token 数触发记忆压缩
@@ -81,7 +84,7 @@ class MemoryService:
         collection.create_index(field_name="vector", index_params=index_params)
         collection.load()
 
-        print(f"记忆集合 {collection_name} 创建成功")
+        logger.info(f"记忆集合 {collection_name} 创建成功")
 
     def estimate_tokens(self, text: str) -> int:
         """估算文本的 token 数量（简单估算：中文约2字符/token，英文约4字符/token）"""
@@ -155,7 +158,7 @@ class MemoryService:
             return json.loads(result_text.strip())
 
         except Exception as e:
-            print(f"总结对话失败: {e}")
+            logger.warning(f"总结对话失败: {e}")
             # 返回默认结构
             return {
                 "summary": f"对话包含 {len(messages)} 条消息",
@@ -217,7 +220,7 @@ class MemoryService:
         memory.milvus_ids = milvus_ids
         db.commit()
 
-        print(f"创建长期记忆成功: {memory.id}")
+        logger.info(f"创建长期记忆成功: {memory.id}")
         return memory
 
     def _store_memory_vectors(
@@ -304,9 +307,9 @@ class MemoryService:
                 collection.insert(data)
                 collection.flush()
 
-                print(f"成功存储 {len(documents_to_insert)} 条记忆向量")
+                logger.info(f"成功存储 {len(documents_to_insert)} 条记忆向量")
             except Exception as e:
-                print(f"存储记忆向量失败: {e}")
+                logger.warning(f"存储记忆向量失败: {e}")
 
         return milvus_ids
 
@@ -373,7 +376,7 @@ class MemoryService:
             return formatted_results
 
         except Exception as e:
-            print(f"检索记忆失败: {e}")
+            logger.warning(f"检索记忆失败: {e}")
             return []
 
     def get_user_memories(
@@ -412,7 +415,7 @@ class MemoryService:
                     expr = f'id == "{milvus_id}"'
                     collection.delete(expr)
             except Exception as e:
-                print(f"删除 Milvus 记忆失败: {e}")
+                logger.warning(f"删除 Milvus 记忆失败: {e}")
 
         # 删除数据库记录
         db.delete(memory)
