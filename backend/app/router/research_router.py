@@ -47,7 +47,10 @@ class ResearchRequest(BaseModel):
     search_web: Optional[bool] = None  # 是否搜索网络 (兼容旧版)
     search_local: Optional[bool] = None  # 是否搜索本地知识库 (兼容旧版)
     search_modes: Optional[list] = None  # 搜索模式: ['web', 'local'] (新版)
-    version: Optional[Literal["v1", "v2"]] = "v2"  # 版本选择 (v2: 多智能体架构，推荐)
+    # 版本选择：v2 = 多智能体架构（deep_research_v2/，默认，推荐）；
+    # v1 = ReAct 备选路线（service/dr_g.py + react_controller.py + tool_executor.py，
+    # 有意保留，NG-3 —— 不得当死代码删除）。
+    version: Optional[Literal["v1", "v2"]] = "v2"
 
     class Config:
         json_schema_extra = {
