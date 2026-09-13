@@ -7,6 +7,7 @@ python-dotenv>=1.0.0
 # Database
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.9
+# alembic：预留未使用——迁移实为 backend/migrations/ 手写 SQL（执行方式见 READMED「数据库建表」；引入版本化迁移时再启用）
 alembic>=1.12.0
 
 # Redis
