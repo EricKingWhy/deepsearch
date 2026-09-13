@@ -1970,6 +1970,13 @@ cd backend && pytest tests -q
 
 - **不要**为了让测试通过而放宽 `validate_sql` 的校验范围 —— 测试应暴露缺陷，而不是迎合实现。若发现真实漏洞，记录下来并开新 ticket（或若与 T09 同源，回到 T09 一起修）。
 
+### 实施修正（2026-09-13，T39 实测后）
+
+- **票面前提部分不成立**：票面写「新增 `backend/tests/service/test_text2sql_validate.py`」，但该文件在 **T09 时已建立**（并已含第 3 批审查补充的词边界用例），故本票实为**扩展既有文件**，不是新建。
+- **补齐的矩阵缺口**（原文件未覆盖的票面点名项）：拒绝侧 `TRUNCATE` / `ALTER` / `CREATE` / `GRANT` / `REVOKE` / 时间盲注（`pg_sleep`）共 6 例；放行侧子查询 3 例（FROM 子查询 / IN 子查询 / 标量子查询）与大小写混写 1 例；边界侧超长 SQL（800 列、>4000 字符）1 例 —— 合计 **+11 例**，文件用例数 30 → **41**（验收要求 ≥15）。
+- **实测未发现真实缺陷**：`TRUNCATE` / `ALTER` 等 DDL 由「语句必须以 `SELECT` 或 `WITH` 开头」这一主判据拦截（不依赖黑名单）。先用探针逐项确认真实行为，再据此写入用例；**未放宽任何校验范围**。
+- 验证：`pytest tests/service/test_text2sql_validate.py -v` → **41 passed**；`pytest tests -q` → **265 passed / 17 deselected**；`ruff check app tests` → All checks passed。纯函数测试不连数据库，在 T27 的默认 `-m "not needs_infra"` 口径下可跑。
+
 ---
 
 ## T40 — 补 security 鉴权单元测试

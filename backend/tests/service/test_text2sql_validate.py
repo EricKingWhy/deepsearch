@@ -13,6 +13,10 @@ T09 回归测试：text2sql SQL 校验封堵 UNION 绕过。
 - 清理 '--'（有专门注释检查）与 'UNION ALL SELECT'（被 UNION 全禁覆盖）的重复项。
 
 `validate_sql` 是纯函数（只依赖类常量），不依赖数据库 / LLM。
+
+T39 补充（2026-09-13）：票面矩阵点名的 TRUNCATE / ALTER / 子查询 / 超长 SQL / 大小写混写
+几项原文件未覆盖，已在下方补齐。T39 票面写「新增 backend/tests/service/test_text2sql_validate.py」，
+但该文件在 T09 时已建立，故本票实为**扩展既有文件**而非新建。
 """
 
 import pytest
@@ -62,6 +66,14 @@ def test_union_variants_are_rejected(service, sql):
         "   ",
         None,
         "EXEC sp_help",
+        # T39 补齐：票面矩阵点名的 DDL / 高危 DML（实际由「必须以 SELECT 或 WITH 开头」拦截）
+        "TRUNCATE TABLE t",
+        "ALTER TABLE t ADD COLUMN c int",
+        "CREATE TABLE t (a int)",
+        "GRANT ALL ON t TO someone",
+        "REVOKE ALL ON t FROM someone",
+        # FORBIDDEN_KEYWORDS 兜底族代表：时间盲注
+        "SELECT pg_sleep(10)",
     ],
 )
 def test_dangerous_sql_is_rejected(service, sql):
@@ -83,6 +95,11 @@ def test_dangerous_sql_is_rejected(service, sql):
         # 词边界回归：含 union 字样的标识符不应被误拦（第 3 批审查 finding）
         "SELECT union_id FROM t WHERE reunion_tag = 'x'",
         "SELECT * FROM trade_union ORDER BY id",
+        # T39 补齐：票面矩阵点名的「子查询」与「大小写混写」
+        "SELECT * FROM (SELECT id, name FROM users WHERE id > 1) AS sub",
+        "SELECT a FROM t WHERE a IN (SELECT b FROM u)",
+        "SELECT a, (SELECT MAX(b) FROM u WHERE u.a = t.a) AS mx FROM t",
+        "SeLeCt A fRoM t WhErE a = 1",
     ],
 )
 def test_legitimate_readonly_sql_passes(service, sql):
@@ -96,3 +113,16 @@ def test_real_union_is_still_blocked(service):
         ok, msg = service.validate_sql(sql)
         assert not ok, f"未拦截: {sql!r}"
         assert msg
+
+
+def test_very_long_select_is_accepted(service):
+    """T39 边界：超长只读 SQL 不应被误伤。
+
+    本校验器不设长度上限（长度约束由上层提示词承担），因此 800 列的长语句必须放行；
+    若将来加入长度限制，本用例会失败并提醒同步更新票面口径。
+    """
+    sql = "SELECT " + ", ".join(f"c{i}" for i in range(800)) + " FROM t WHERE a = 1"
+
+    assert len(sql) > 4000
+    ok, msg = service.validate_sql(sql)
+    assert ok, f"误拦超长只读查询（原因: {msg}）"
