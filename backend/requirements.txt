@@ -17,15 +17,12 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 pydantic[email]>=2.5.0
 
-# AI/LLM
+# AI/LLM（langgraph 为 NG-2 保留路径依赖，不得删除）
 openai>=1.0.0
 tiktoken>=0.5.0
 llama-index>=0.9.0
 llama-index-postprocessor-dashscope-rerank>=0.1.0
 langgraph>=0.0.20
-
-# Observability (LLM 全链路追踪)
-langfuse>=4.0.0
 
 # Vector Database
 pymilvus>=2.3.0
@@ -64,7 +61,7 @@ wordcloud>=1.9.0
 pyyaml>=6.0.0
 python-dateutil>=2.8.0
 
-# Observability
+# Observability（指标 + LLM 全链路追踪：OTel 主链路 + LangFuse 上报，两级开关见 READMED）
 prometheus-client>=0.21.0,<1.0.0
 langfuse>=4.0.0,<5.0.0
 opentelemetry-api>=1.35.0,<2.0.0

@@ -1061,6 +1061,12 @@ cd backend && python -m pip install --dry-run -r requirements.txt 2>&1 | tail -3
 
 - 依赖去重后需确认 `langfuse` 实际被 `import` 的模块仍可用（`backend/app/observability/` 相关）。
 
+### 实施修正（2026-09-13，T18 实测后）
+
+1. **决策结果**：用户裁决选 **A**（只去重与分区，不引入版本锁文件）。
+2. **验收 #3 的替代口径**：venv 无 pip 模块，票面 `pip install --dry-run` 不可执行；改用 `packaging.requirements.Requirement` 逐行解析，**47 条依赖声明全部可解析**（等价于「语法可解析、不需要安装」的票面意图）。
+3. 分区注释仅在既有分区上补三处说明（Observability 合并说明、AI/LLM 标注 langgraph NG-2 属性），未重排任何依赖行。
+
 ---
 
 ## T19 — 决策票：alembic 去留
