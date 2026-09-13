@@ -13,8 +13,8 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T16 + T41 合并） | `ac4ef4eca0f0be02f42169019130ab4affbfd8c2` |
-| 当前批次 | 5（T14–T16，已收批待审查；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `1f52bfc`（第 4 批审查修复 commit） |
+| 当前批次 | 6（T17–T19；T10 为 needs-human 保持 BLOCKED） |
+| 当前 fixed point（上一批审查结束 commit） | 本记录 commit（第 5 批审查修复，SHA 于下文回填） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -29,6 +29,7 @@
 | 2 | T04–T06 + T41 | `19547b0` | `41009b9` | 11 | `57f69e0` | FIXED |
 | 3 | T07–T09 | `57f69e0` | `fbe55f8` | 6 | `6b73d44` | FIXED |
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
+| 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `（本记录 commit，SHA 于下文回填）` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -121,7 +122,29 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 - **T13 纯注释属实**：graph.py 本批次仅有的代码变更属 T11（裸 except），T13 自身零可执行代码变更；
   NG-2（LangGraph 路径）与 NG-3（V1 三件套）零删改。
 
-## ticket 明细## ticket 明细
+### 第 5 批审查 findings 明细（`1f52bfc` → `381c929`，修复 = 本记录 commit）
+
+双轴并行审查：**标准轴 0 硬违规 + 3 条 judgement call；规格轴三票全部「无发现」**。去重后 **4 条**：1 修 3 保留。本批为历批最干净。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 规格 | CLAUDE.md 架构章节将 V1 路线与 LangGraph 运行时并称 NG-2/NG-3，未逐条对应（严格 V1 仅对应 NG-3，NG-2 指 graph.py 路径） | **已修**（本记录：V1 标注 `PRD NG-3`、LangGraph 标注 `PRD NG-2`，逐条对应） |
+| 2 | 标准 | `dr_g.py` 导入区：T15 加的 `from core.serialization import ...` 落在 stdlib `import logging` 之前，分组顺序瑕疵 | **保留判定**：ruff isort（I001）已覆盖此范畴，协议规定工具强制的跳过；NG-3 文件坚持最小改动 |
+| 3 | 标准 | NG-3「有意保留」说明段在三个 V1 模块逐字重复三份（Duplicated Code） | **保留判定**：LOOP-PROTOCOL §8 允许按模块加注释；抽公共常量反成 Speculative Generality |
+| 4 | 标准 | `dr_g.serialize_event` 同名导入属刻意转发（Middle Man） | **保留判定**：票面设计——保留 `dr_g.serialize_event` 模块属性供 `test_research_outline_approval.py` monkeypatch |
+
+**规格轴的关键复核（独立复验通过）**：
+
+- **T15 移动非重写**：`core/serialization.py` 函数体与原 `dr_g.py` 实现**逐字等价**（仅尾部空行差异）；
+  `serialize_event` 全仓唯一命中；`service/__init__.py` 的 `ResearchService` 导出未破坏；
+  research_router 无 dr_g 依赖残留（仅 :18/:51 注释提及）。
+- **PR #96 缺陷确认修复干净**：三模块 docstring 语法正确（py_compile 实测过）、保留说明位于 docstring 内部。
+- **T16 与代码逐项相符**：langfuse 版本与 requirements 一致；两级开关默认值与
+  `langfuse_client.py:41`（false）/ `tracing.py:101`（true）一致；`ES 存储|ES 索引` 字面计数 0；
+  知识图谱宣称收窄且 `knowledge-graph.tsx` 存在；守 NG-1 收窄方向。
+- 另：dr_g.py 中 serialize_event 原定义被删**不构成 NG-3 违规**——系 T15 整体搬迁且同名重导入，V1 能力保留。
+
+## ticket 明细## ticket 明细## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
@@ -140,9 +163,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T11 | 清除裸 except 并补日志 | #42 | DONE | `T11-remove-bare-except` | `d4b1228` | #90 | PASS（`! grep -nE "except\s*:" <四文件>` → 无输出；全仓裸 except 计数 → 0；全量 `-m "not integration"` → 248 passed） | 4 | FIXED@1f52bfc |
 | T12 | 收敛数据库连接池与会话生命周期 | #43 | DONE | `T12-db-pool-schema` | `1f57882` | #91 | PASS（`grep -nE "pool_pre_ping\|pool_recycle\|pool_size" core/database.py` → 有命中；票面脚本（路径+env 占位修正）→ 打印 `OK: 连接池参数存在`；create_all 改 `DB_AUTO_CREATE=1` 显式开关） | 4 | FIXED@1f52bfc |
 | T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | DONE | `T13-langgraph-annotation` | `ad7baa6` | #92 | PASS（`grep -c "NG-2" graph.py` → 7；保留字样 8 处；本票 diff 无删除的函数；`pytest -k deep_research_v2` → 25 passed） | 4 | FIXED@1f52bfc |
-| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | PENDING |
-| T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | PENDING |
-| T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | PENDING |
+| T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | DONE | `T14-v1-annotation` | `1180182` | #96 | PASS（三模块保留说明各 2 处命中；路由 version 字段与 CLAUDE.md 已更新；无删除的实现）。⚠️ 本票曾引入 docstring 错位 SyntaxError，已在 T15 分支修复（见执行日志与 tickets.md T14「实施修正」） | 5 | FIXED@（本记录，SHA 待回填） |
+| T15 | 抽离 serialize_event | #46 | DONE | `T15-extract-serialize-event` | `9839042` | #97 | PASS（`def serialize_event` 全仓唯一命中 `core/serialization.py`；research_router 无 dr_g 导入；除 `service/__init__` 既有顶层导出外无遗留；全量 → 248 passed） | 5 | FIXED@（本记录，SHA 待回填） |
+| T16 | 修复文档与代码漂移 | #47 | DONE | `T16-doc-drift` | `aad9dd4` | #98 | PASS（langfuse 版本与 requirements 一致；ES 字面计数 0（各留一句全拼历史说明）；知识图谱表述已收窄；仅 docstring 变更 py_compile 通过） | 5 | FIXED@（本记录，SHA 待回填） |
 | T17 | 新增架构总览文档 | #48 | TODO | — | — | — | — | 6 | PENDING |
 | T18 | requirements.txt 去重与依赖分区 | #49 | BLOCKED | — | — | — | 等待用户裁决锁定策略 | 6 | PENDING |
 | T19 | 决策票：alembic 去留 | #50 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
@@ -250,3 +273,5 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T15 | 实施 + 合并：`serialize_event` 函数体逐字移动到新建 `core/serialization.py`（中立公共位置）；`research_router` 改从新位置导入，解除对 V1 备选模块 `dr_g` 的反向依赖（F-16）；`dr_g` 以同名导入保留模块属性（`test_research_outline_approval.py` 的 monkeypatch 依赖，实测仍生效） | commit `9839042`，PR #97 已 merge（`6218007`），issue #46 自动关闭 |
 | 2026-09-13 | T15 | 验收修正：票面验收 #3 预期「无输出」不成立 —— `service/__init__.py:10` 的 `from .dr_g import ResearchService` 是既有顶层导出（票面风险条自己提到），grep 必然命中；实际口径为「除该导出外无遗留」 | 记入 `tickets.md` T15「实施修正」 |
 | 2026-09-13 | T16 | 实施 + 合并（仅文案）：READMED langfuse 安装版本对齐 requirements（`>=4.0.0,<5.0.0`）并写清两级开关（`OBSERVABILITY_TRACING_ENABLED` 默认 true / `LANGFUSE_ENABLED` 默认 false）；`knowledge_router` / `docmind_service` 的 ES 旧注释改 Milvus 实际存储（各留一句全拼历史说明，ES 字面计数 0）；首行「知识图谱」宣称收窄为前端渲染的关系视图 | commit `aad9dd4`，PR #98 已 merge（`ac4ef4e`），issue #47 自动关闭 |
+| 2026-09-13 | — | **第 5 批 `code-review`（双轴并行，fixed point `1f52bfc`，终点 `381c929`）**：标准轴 0 硬违规 + 3 judgement call，规格轴三票全部「无发现」，去重后 **4 条**（1 修 3 保留），历批最干净。规格轴独立复验：T15 移动非重写（逐字等价）、PR #96 缺陷修复干净、T16 与代码逐项相符 | 明细见「第 5 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 5 批 findings 修复**：CLAUDE.md 架构章节 NG-2/NG-3 逐条对应（V1 → NG-3、LangGraph → NG-2）。流程改进：SHA 回填改用「先提交、后回填、不 amend」两步法（吸取第 4 批 amend 改 SHA 的教训） | 修复 = 本记录 commit；fixed point 随本记录 commit 落定，下一批（第 6 批 T17–T19）起算 |
