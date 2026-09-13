@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41 合并） | `bd1e635245c221566703089bcd6eb7729213b6ff` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41/T04 合并） | `93d931ce28f139e4ff60f27823de1fe789934e45` |
 | 当前批次 | 2（T04–T06 + T41，共 4 张） |
 | 当前 fixed point（上一批审查结束 commit） | `19547b0`（第 1 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 4 |
+| 已完成 | 5 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -49,10 +49,10 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 
 | ID | 标题 | Issue | 状态 | 分支 | Commit | PR | 验收 | 批次 | 批次审查 |
 |----|------|-------|------|------|--------|----|------|------|---------|
-| T01 | 移除 dr_g.py 硬编码 API Key | #32 | DONE | `ticket/T01-remove-hardcoded-credentials` | — | — | PASS（行为验收；pytest 待补跑，见待办） | 1 | PENDING |
-| T02 | JWT 密钥必填并在启动时校验 | #33 | TODO | — | — | — | — | 1 | PENDING |
+| T01 | 移除 dr_g.py 硬编码 API Key | #32 | DONE | `T01-remove-hardcoded-credentials` | `ec5999d` | #72 | PASS（`pytest tests/service/test_dr_g_config.py -v` → 9 passed，见 P-02） | 1 | PENDING |
+| T02 | JWT 密钥必填并在启动时校验 | #33 | DONE | `T02-require-jwt-secret` | `bd54b9b` | #73 | PASS（`pytest tests/core/test_security_jwt.py` → 6 passed） | 1 | PENDING |
 | T03 | document_router 上传安全加固 | #34 | DONE | `T03-harden-document-upload` | `fef8eca` | #74 | PASS（`pytest tests/router/test_document_upload.py` → 21 passed；路径穿越净化验收打印 OK） | 1 | PENDING |
-| T04 | document_router 增加鉴权 | #35 | TODO | — | — | — | — | 2 | PENDING |
+| T04 | document_router 增加鉴权 | #35 | DONE | `T04-document-router-auth` | `33724cc` | #78 | PASS（`pytest tests -q -k document_auth` → 10 passed；鉴权依赖计数 = 2） | 2 | PENDING |
 | T05 | chat / search / news 路由补充鉴权 | #36 | TODO | — | — | — | — | 2 | PENDING |
 | T06 | 收紧 CORS 配置 | #37 | TODO | — | — | — | — | 2 | PENDING |
 | T07 | docker-compose 明文口令改为环境变量注入 | #38 | TODO | — | — | — | — | 3 | PENDING |
@@ -106,6 +106,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | **P-07** | venv 缺少 `bcrypt` | ✅ 已完成 | `passlib[bcrypt]` 的 extra 未随 primary 依赖装入。已用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐（bcrypt 5.0.0），配方同 §11。 |
 | **P-08** | 文档文件也会被静默回退 | **每票必查** | 实测：某次 `TRACKER.md` 的编辑报「成功」但**未落盘**，被后来的提交带成旧内容；同一批里另一些编辑却保住了。**对策**：写完文档后 `sed -n` / `grep` 复核，再提交。 |
 | **P-09** | `attachment_router` / `knowledge_router` 同源路径穿越 | **已转 T41（#75）** | 第 1 批审查的两条 findings 合并为决策票 T41，等用户裁决白名单策略后执行。 |
+| **P-10** | 全量 pytest 恒有 1 条失败（`needs-infra`，非回归） | 已知，非阻塞 | `pytest tests -q` → 147 passed / 4 skipped / **1 failed**。唯一失败为 `tests/service/test_research_observability_service.py::test_run_event_lifecycle_sequence_pagination_and_user_scope`，带 `@pytest.mark.integration`，需真实 Postgres（Docker 未启动 → `localhost:5432` 连接被拒）。**判定：环境性失败，与任何 ticket 无关。** 跑验收时用 `-m "not integration"` 或指定测试文件，不要把这条计入回归。 |
 | **R-01** | 5 个历史泄露凭据的服务商侧吊销 | **未闭合** | 用户决定暂不处理 |
 
 ## 执行日志
@@ -139,3 +140,8 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T41 | **用户裁决方案 A**（只统一实现、白名单各自保留）。实施：`attachment_router` / `knowledge_router` 改用 `ensure_supported_extension` / `safe_filename` / `read_upload_with_limit`，删除各自 `get_file_extension` 与 `os.path.splitext`；补 50MB 上限；413 显式 re-raise 避免被兜底转 500；`document_router` 上限改用共享常量；清理无用 `shutil` 导入 | commit `1182ccb`，PR #76 已 merge（`bd1e635`），issue #75 自动关闭 |
 | 2026-09-13 | T41 | 验收：`pytest tests/router -k upload` → **40 passed**；三路由 `py_compile` 通过。测试分纯函数层 + `ast` 源码层（路由因缺 `tinytag` 无法导入），并**锁定三份白名单成员集合**作为「零行为变更」证据 | 批次 2 起算 |
 | 2026-09-13 | — | **新硬规则首次生效**：T41 全程用 `git fetch origin main:main` 同步 `main`（不 checkout），**未再触发工作树清空**；但再次出现**文档编辑静默丢失**（`决策票待裁决` 一行的 T41 未落盘），已再次确认「写完必逐行复核」 | §9.3 规则有效；P-08 仍成立 |
+| 2026-09-13 | T04 | 实施 + 合并：`document_router` 在 **router 级**挂 `Depends(get_current_user_required)`，覆盖 `/upload`、`/list`、`/delete`、`/retrieve` 四个端点（全部为文档数据操作，无匿名端点）；新增 `tests/router/test_document_auth.py`（10 用例） | commit `33724cc`，PR #78 已 merge（`93d931c`），issue #35 自动关闭 |
+| 2026-09-13 | T04 | **测试基建修正（后续所有 router 类测试共用，含 T05）**：① `conftest.py` 的 `service` 占位包缺顶层名字 → `from service import DocumentService, ServiceConfig` 收集期 ImportError，改为按需从轻量子模块挂名字（仍不执行重型 `service/__init__`，实测 >35s）；② `service.docmind_service` 导入实测 **~48s**，注入**抛 `NotImplementedError`** 的轻量替身（不伪造成功）；③ FastAPI 0.141 下 `TestClient(APIRouter)` 会报 `fastapi_middleware_astack not found`，改用最小 `FastAPI` 应用挂载被测 router | `pytest tests -q -k document_auth` → **10 passed** |
+| 2026-09-13 | T04 | **R-02 实测结论**：前端源码对 `/documents/*` 调用命中 **0 处**（前端知识库走 `/knowledge-bases/...`），统一注入点 `frontend/src/api/request/plugins/auth.ts` 是**无条件**请求拦截器 → 前端无需改动；`tickets.md` T04 原验收 #3 写的 `frontend/src/api/request/auth.ts` **不存在**，已修正路径。真正的既有匿名调用方是两处 curl 文档示例，已补 `Authorization` 头 | 修正记录写入 `tickets.md` T04 |
+| 2026-09-13 | — | **全量 pytest 首跑（含 integration）**：147 passed / 4 skipped / 1 failed。唯一失败为需真实 Postgres 的 `@pytest.mark.integration` 用例，**判定为环境性、非回归**，沉淀为待办 P-10 | 见 P-10；`-m "not integration"` 即可全绿 |
+| 2026-09-13 | — | **台账纠错**：T01 行原写分支名 `ticket/T01-...`（带斜杠，与 §9.1 禁令冲突且与 GitHub 实际分支不符）且 Commit/PR 为空；T02 行仍停在 `TODO`（实际已合并）。已按 `gh pr list` 核实值回填：T01=`ec5999d`/#72、T02=`bd54b9b`/#73 | TRACKER 与 GitHub 现状一致 |
