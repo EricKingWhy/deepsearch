@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41/T04 合并） | `93d931ce28f139e4ff60f27823de1fe789934e45` |
-| 当前批次 | 2（T04–T06 + T41，共 4 张） |
-| 当前 fixed point（上一批审查结束 commit） | `19547b0`（第 1 批审查修复 commit） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41/T04/T05/T06 合并） | `41009b9cf28587891d2900efbc5ecf40dd84eff6` |
+| 当前批次 | 3（T07–T09） |
+| 当前 fixed point（上一批审查结束 commit） | `57f69e0`（第 2 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 5 |
+| 已完成 | 7 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -26,7 +26,7 @@
 | 批次 | 覆盖 ticket | fixed point（起点） | 审查 commit（终点） | findings 数 | 修复 commit | 状态 |
 |------|------------|--------------------|--------------------|------------|------------|------|
 | 1 | T01–T03 | `9342913` | `5651c98` | 5 | `19547b0` | FIXED |
-| 2 | T04–T06 + T41 | `19547b0` | — | — | — | PENDING |
+| 2 | T04–T06 + T41 | `19547b0` | `41009b9` | 11 | `57f69e0` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -43,18 +43,49 @@
 **验收复核**：T01 / T02 的验收标准实质可满足；T03 可满足，但白名单一致性转入 T41。
 T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**（T03 #4 明允原始文件名仅作数据字段），无静默行为回归。
 
+### 第 2 批审查 findings 明细（`19547b0` → `41009b9`，修复 commit `57f69e0`）
+
+双轴并行审查：**标准轴 7 条 + 规格轴 7 条**，去重后 **11 条**。9 条已修，2 条保留判定。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 + 规格 | 台账未回填：`TRACKER.md` 中 T05 / T06 两行仍为 `TODO`、分支/Commit/PR/验收全空，与已合并事实矛盾；`main` tip 行也停在 `93d931c` | **已修**（本记录提交） |
+| 2 | 规格 | `tickets.md` T41「改什么 #1」仍写「把 `ALLOWED_EXTENSIONS` 收拢共用」，与同一节已批准的**方案 A（白名单各自保留）**直接冲突 | **已修**（本记录提交） |
+| 3 | 标准 | **重复代码**：`tests/router/test_document_auth.py`（T04）与 `test_router_auth.py`（T05）是同一套断言的两次实现 | **已修** `57f69e0`（合并为一处，document 路由并入参数表） |
+| 4 | 标准 | **脆弱断言**：两处 `assert "dependencies=[Depends(...)]" in source` 是源码字符串匹配，格式化（换行/尾逗号）即误报 | **已修** `57f69e0`（改读结构化对象 `APIRouter.dependencies`） |
+| 5 | 标准 | **误导注释**：`attachment_router.py` 称「不把整个文件先读进内存」，但 `read_upload_with_limit` 末尾 `return b"".join(chunks)`，峰值内存仍≈文件大小 | **已修** `57f69e0`（注释 + docstring 改为准确表述） |
+| 6 | 标准 + 规格 | `news_router.py` 新注释写「9 个接口」，实测为 **8** 个 | **已修** `57f69e0` |
+| 7 | 标准 | `knowledge_router.py` 导入 `sanitize_extension` 但从未使用（ruff F401 会拦） | **已修** `57f69e0` |
+| 8 | 规格 | `.env.example` CORS 段写「一律禁用凭据」，但显式白名单分支仍是 `allow_credentials=True`，措辞与实现不符 | **已修** `57f69e0` |
+| 9 | 规格 | T05 / T06 叙述「除 `/login` 与 `/404` 外都包在 `AuthGuard`」不准 —— 实际**只有 `/login` 匿名**，`/404` 虽标 `pure: true` 仍处于守卫子树内 | **已修措辞**（本记录提交） |
+| 10 | 标准 | T06 新建 `core/cors.py` 偏离 ticket「**不要**新建 CORS 配置模块」 | **保留判定**：属纯逻辑抽离（与 `core/upload_security.py` 同构，为满足「无基础设施可验收」），已在 ticket「实施修正」自证理由 |
+| 11 | 标准 | `conftest.py` 在 import 期**全局**注入 `service.docmind_service` 替身，需手动 `del sys.modules[...]` 才能还原 | **保留判定**：替身**抛 `NotImplementedError`** 而非伪造成功，不会把真实调用静默吞掉；还原方式已写入注释 |
+
+**规格轴的关键复核（都独立复验通过）**：
+
+- **R-03（T06）成立**：`withCredentials` 在 `frontend/src` 命中 **0 处** → 前端不依赖 CORS 凭据，
+  通配 + `allow_credentials=False` 不影响联调。实现者结论正确。
+- **T05「无匿名调用方」成立**：`routes.tsx` 中除 `/login` 外全部处于 `AuthGuard` 子树；
+  `/search/web` 在 `frontend/src` 命中 0 处；`login.tsx` 只调 `api.auth.login/register`。
+  风险条所述「公开落地页依赖匿名检索」的架构分叉**不成立**，无需用户裁决。
+- **T41 方案 A 被忠实执行**：逐字比对 `attachment_router` / `knowledge_router` 的
+  `ALLOWED_EXTENSIONS` 与 `document_router` 的 `SUPPORTED_FILE_TYPES`，
+  **成员集合前后完全一致**，未并轨。
+- 另：`docs/agents/issue-tracker.md` **不存在**，故规格来源取自本地 `prd.md` / `tickets.md`
+  （本仓权威定义），未走 issue-tracker 工作流。若要启用该工作流需先跑 `/setup-matt-pocock-skills`。
+
 ## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
 | ID | 标题 | Issue | 状态 | 分支 | Commit | PR | 验收 | 批次 | 批次审查 |
 |----|------|-------|------|------|--------|----|------|------|---------|
-| T01 | 移除 dr_g.py 硬编码 API Key | #32 | DONE | `T01-remove-hardcoded-credentials` | `ec5999d` | #72 | PASS（`pytest tests/service/test_dr_g_config.py -v` → 9 passed，见 P-02） | 1 | PENDING |
-| T02 | JWT 密钥必填并在启动时校验 | #33 | DONE | `T02-require-jwt-secret` | `bd54b9b` | #73 | PASS（`pytest tests/core/test_security_jwt.py` → 6 passed） | 1 | PENDING |
-| T03 | document_router 上传安全加固 | #34 | DONE | `T03-harden-document-upload` | `fef8eca` | #74 | PASS（`pytest tests/router/test_document_upload.py` → 21 passed；路径穿越净化验收打印 OK） | 1 | PENDING |
-| T04 | document_router 增加鉴权 | #35 | DONE | `T04-document-router-auth` | `33724cc` | #78 | PASS（`pytest tests -q -k document_auth` → 10 passed；鉴权依赖计数 = 2） | 2 | PENDING |
-| T05 | chat / search / news 路由补充鉴权 | #36 | TODO | — | — | — | — | 2 | PENDING |
-| T06 | 收紧 CORS 配置 | #37 | TODO | — | — | — | — | 2 | PENDING |
+| T01 | 移除 dr_g.py 硬编码 API Key | #32 | DONE | `T01-remove-hardcoded-credentials` | `ec5999d` | #72 | PASS（`pytest tests/service/test_dr_g_config.py -v` → 9 passed，见 P-02） | 1 | FIXED@19547b0 |
+| T02 | JWT 密钥必填并在启动时校验 | #33 | DONE | `T02-require-jwt-secret` | `bd54b9b` | #73 | PASS（`pytest tests/core/test_security_jwt.py` → 6 passed） | 1 | FIXED@19547b0 |
+| T03 | document_router 上传安全加固 | #34 | DONE | `T03-harden-document-upload` | `fef8eca` | #74 | PASS（`pytest tests/router/test_document_upload.py` → 21 passed；路径穿越净化验收打印 OK） | 1 | FIXED@19547b0 |
+| T04 | document_router 增加鉴权 | #35 | DONE | `T04-document-router-auth` | `33724cc` | #78 | PASS（T04 当时 `pytest -q -k document_auth` → 10 passed；第 2 批审查并入 `test_router_auth.py` 后，现用 `-k router_auth` → 47 passed；鉴权依赖计数 = 2） | 2 | FIXED@57f69e0 |
+| T05 | chat / search / news 路由补充鉴权 | #36 | DONE | `T05-harden-chat-search-news-auth` | `cee1c33` | #80 | PASS（`pytest -q -k "auth or unauthorized"` → 47 passed；三路由鉴权计数 = 2/2/2；`news_router` 实测 8 个端点非 9） | 2 | FIXED@57f69e0 |
+| T06 | 收紧 CORS 配置 | #37 | DONE | `T06-tighten-cors` | `18ed8f8` | #81 | PASS（`pytest tests/core/test_cors_config.py` → 14 passed；通配 + 凭据的硬编码组合已消失；`py_compile app_main` 通过） | 2 | FIXED@57f69e0 |
 | T07 | docker-compose 明文口令改为环境变量注入 | #38 | TODO | — | — | — | — | 3 | PENDING |
 | T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | TODO | — | — | — | — | 3 | PENDING |
 | T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | TODO | — | — | — | — | 3 | PENDING |
@@ -89,7 +120,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T38 | 清除 print 调试残留 | #69 | TODO | — | — | — | — | 12 | PENDING |
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | TODO | — | — | — | — | 12 | PENDING |
 | T40 | 补 security 鉴权单元测试 | #71 | TODO | — | — | — | — | 13 | PENDING |
-| T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | PENDING |
+| T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | FIXED@57f69e0 |
 
 ## 待办 / 未闭合项
 
@@ -106,7 +137,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | **P-07** | venv 缺少 `bcrypt` | ✅ 已完成 | `passlib[bcrypt]` 的 extra 未随 primary 依赖装入。已用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐（bcrypt 5.0.0），配方同 §11。 |
 | **P-08** | 文档文件也会被静默回退 | **每票必查** | 实测：某次 `TRACKER.md` 的编辑报「成功」但**未落盘**，被后来的提交带成旧内容；同一批里另一些编辑却保住了。**对策**：写完文档后 `sed -n` / `grep` 复核，再提交。 |
 | **P-09** | `attachment_router` / `knowledge_router` 同源路径穿越 | **已转 T41（#75）** | 第 1 批审查的两条 findings 合并为决策票 T41，等用户裁决白名单策略后执行。 |
-| **P-10** | 全量 pytest 恒有 1 条失败（`needs-infra`，非回归） | 已知，非阻塞 | `pytest tests -q` → 147 passed / 4 skipped / **1 failed**。唯一失败为 `tests/service/test_research_observability_service.py::test_run_event_lifecycle_sequence_pagination_and_user_scope`，带 `@pytest.mark.integration`，需真实 Postgres（Docker 未启动 → `localhost:5432` 连接被拒）。**判定：环境性失败，与任何 ticket 无关。** 跑验收时用 `-m "not integration"` 或指定测试文件，不要把这条计入回归。 |
+| **P-10** | 全量 pytest 恒有 1 条 `needs-infra` 失败（非回归） | 已知，非阻塞 | 该用例为 `tests/service/test_research_observability_service.py::test_run_event_lifecycle_sequence_pagination_and_user_scope`，带 `@pytest.mark.integration`，需真实 Postgres（Docker 未启动 → `localhost:5432` 连接被拒）。**判定：环境性失败，与任何 ticket 无关。** 跑验收请统一加 `-m "not integration"`（当前该口径为 **198 passed / 5 deselected**），不要把这条计入回归。 |
 | **R-01** | 5 个历史泄露凭据的服务商侧吊销 | **未闭合** | 用户决定暂不处理 |
 
 ## 执行日志
@@ -145,3 +176,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T04 | **R-02 实测结论**：前端源码对 `/documents/*` 调用命中 **0 处**（前端知识库走 `/knowledge-bases/...`），统一注入点 `frontend/src/api/request/plugins/auth.ts` 是**无条件**请求拦截器 → 前端无需改动；`tickets.md` T04 原验收 #3 写的 `frontend/src/api/request/auth.ts` **不存在**，已修正路径。真正的既有匿名调用方是两处 curl 文档示例，已补 `Authorization` 头 | 修正记录写入 `tickets.md` T04 |
 | 2026-09-13 | — | **全量 pytest 首跑（含 integration）**：147 passed / 4 skipped / 1 failed。唯一失败为需真实 Postgres 的 `@pytest.mark.integration` 用例，**判定为环境性、非回归**，沉淀为待办 P-10 | 见 P-10；`-m "not integration"` 即可全绿 |
 | 2026-09-13 | — | **台账纠错**：T01 行原写分支名 `ticket/T01-...`（带斜杠，与 §9.1 禁令冲突且与 GitHub 实际分支不符）且 Commit/PR 为空；T02 行仍停在 `TODO`（实际已合并）。已按 `gh pr list` 核实值回填：T01=`ec5999d`/#72、T02=`bd54b9b`/#73 | TRACKER 与 GitHub 现状一致 |
+| 2026-09-13 | T05 | 实施 + 合并：`chat` / `search` / `news` 三个路由按 T04 同一模式在 router 级挂 `get_current_user_required`，覆盖 13 个端点；新增 `tests/router/test_router_auth.py`；`backend/README.md` 两条 chat curl 示例补 `Authorization` 头 | commit `cee1c33`，PR #80 已 merge（`7f14a6f`），issue #36 自动关闭 |
+| 2026-09-13 | T05 | **匿名端点判定实测闭合**：`routes.tsx` 中除 `/login` 外全部处于 `AuthGuard` 子树；`/search/web` 在 `frontend/src` 命中 0 处；登录页只调 `api.auth.login/register`；仓库内无脚本/定时任务调用 → 风险条所述架构分叉**不成立**。另实测 `news_router` 是 **8** 个端点而非 9 | 验收 `pytest -k "auth or unauthorized"` → 47 passed |
+| 2026-09-13 | T06 | 实施 + 合并：新增 `core/cors.py`（`parse_cors_origins` / `is_production_env` / `build_cors_kwargs`），`app_main.py` 改为 `add_middleware(CORSMiddleware, **build_cors_kwargs())`；通配来源强制 `allow_credentials=False` 并告警；生产环境来源为空则 `RuntimeError` 终止启动；`.env.example` 增 `CORS_ALLOW_ORIGINS` | commit `18ed8f8`，PR #81 已 merge（`41009b9`），issue #37 自动关闭 |
+| 2026-09-13 | T06 | **R-03 实测闭合**：`withCredentials` 在 `frontend/src` 命中 0 处 → 前端不依赖 CORS 凭据，通配 + `credentials=False` 不影响本地联调，**不构成架构分叉**。另修正原验收 #2 不可执行的问题（`from app.app_main import ...` 会拉起全部路由与 DB 引擎；换成 `core.cors` 又会触发 `core/__init__` 的导入期 JWT 校验），改用 §11.3 的 `importlib` 按文件路径加载 | `pytest tests/core/test_cors_config.py` → 14 passed |
+| 2026-09-13 | — | **第 2 批 `code-review`（双轴并行，fixed point `19547b0`）**：标准轴 7 条 + 规格轴 7 条，去重后 **11 条**（9 修 2 保留）。规格轴独立复验了三项关键声明：R-03 成立、T05 无匿名调用方成立、T41 方案 A 白名单未并轨成立。另发现 `docs/agents/issue-tracker.md` 不存在，规格来源取自本地 `prd.md`/`tickets.md` | 明细见「第 2 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 2 批 findings 修复**：合并两个重复的鉴权测试文件（`test_document_auth.py` 并入 `test_router_auth.py`，改为 4 路由 / 17 端点统一参数表）；把源码字符串匹配断言换成结构化 `APIRouter.dependencies`；修正「不占内存」误导注释、`news_router` 注释 9→8、`knowledge_router` 未使用导入、`.env.example` CORS 措辞 | commit `57f69e0`；`pytest tests -m "not integration"` → **198 passed / 5 deselected** |
