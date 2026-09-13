@@ -30,6 +30,7 @@ from router.attachment_router import router as attachment_router
 from router.memory_router import router as memory_router
 from router.database_router import router as database_router
 from router.news_router import router as news_router
+from core.cors import build_cors_kwargs
 from core.database import engine, Base
 # 导入所有模型以确保它们被注册
 from models import (
@@ -86,13 +87,9 @@ app = FastAPI(
 )
 
 # 添加 CORS 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 允许所有源，生产环境中应该设置具体的源
-    allow_credentials=True,
-    allow_methods=["*"],  # 允许所有方法
-    allow_headers=["*"],  # 允许所有头
-)
+# 来源白名单从 CORS_ALLOW_ORIGINS 读取（逗号分隔）；含通配时强制 allow_credentials=False，
+# 生产环境留空则直接在启动阶段失败。解析与判定逻辑见 core/cors.py（独立成模块以便无基础设施单测）。
+app.add_middleware(CORSMiddleware, **build_cors_kwargs())
 app.add_middleware(ObservabilityMiddleware)
 
 # 注册路由

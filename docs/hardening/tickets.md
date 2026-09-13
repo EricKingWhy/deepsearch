@@ -373,20 +373,49 @@ cd backend && grep -n "Depends(get_current_user" app/router/chat_router.py app/r
 # 1) 通配 + credentials 的组合不再同时出现
 cd backend && ! grep -Pzo 'allow_origins=\["\*"\][\s\S]{0,200}?allow_credentials=True' app/app_main.py
 
-# 2) 断言逻辑：通配时 credentials 必为 False
+# 2) 断言逻辑：通配时 credentials 必为 False（纯逻辑，不依赖基础设施）
 cd backend && python - <<'PY'
-import sys; sys.path.insert(0,'.')
-from app.app_main import build_cors_kwargs  # 若未抽出，本票需先抽出该纯函数
-assert build_cors_kwargs("*")["allow_credentials"] is False
-assert build_cors_kwargs("https://a.com,https://b.com")["allow_origins"] == ["https://a.com", "https://b.com"]
+import importlib.util, pathlib
+spec = importlib.util.spec_from_file_location("cors", pathlib.Path("app/core/cors.py"))
+cors = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cors)
+assert cors.build_cors_kwargs("*")["allow_credentials"] is False
+assert cors.build_cors_kwargs("https://a.com,https://b.com")["allow_origins"] == ["https://a.com", "https://b.com"]
 print("OK: CORS 参数构造正确")
 PY
+
+# 2b) 回归测试（更完整：含「生产环境留空即启动失败」等用例）
+cd backend && pytest tests/core/test_cors_config.py
 
 # 3) .env.example 已列出变量
 grep -n "CORS" backend/.env.example
 ```
 
-预期：命令 1 无输出；命令 2 打印 `OK`；命令 3 有命中。
+预期：命令 1 无输出；命令 2 打印 `OK`（并输出一条通配警告）；命令 2b `14 passed`；命令 3 有命中。
+
+> **⚠️ 实施修正（2026-09-13，已实测）**
+>
+> 1. **原验收 #2 实际不可执行**，已替换为上面的形式。两个原因：
+>    ① `from app.app_main import build_cors_kwargs` 会连带导入**全部路由与数据库引擎**
+>    （实测直接报 `ModuleNotFoundError: No module named 'observability'`，因为 `app_main`
+>    假定 `backend/app` 在 `sys.path` 上）；
+>    ② 即便换成 `from core.cors import ...`，也会触发 `core/__init__.py` → `core.security`
+>    的导入期 JWT 校验，在没有 `.env` 的机器上直接 `RuntimeError`。
+>    故改用 §11.3 记录的 `importlib` 按**文件路径**加载，绕过整条包导入链。
+> 2. **偏离「不要新建 CORS 配置模块」的说明**：本票把纯函数放进 `app/core/cors.py`。
+>    这不是新建「配置体系」，而是与本仓 `core/upload_security.py` 同一做法的**纯逻辑抽离**
+>    （该文件同样为满足「无基础设施即可验证」而独立成模块，见 T03）。
+>    `app_main.py` 侧的改动仍满足「10 行以内」——实际只有 2 行
+>    （一行 import + 一行 `app.add_middleware(CORSMiddleware, **build_cors_kwargs())`）。
+> 3. **R-03 已实测闭合：前端不依赖凭据，通配 + `credentials=False` 不影响本地联调。**
+>    依据：`frontend/src` 全量搜索 `withCredentials` **命中 0 处**（axios 未开启凭据），
+>    登录态走 `Authorization: Bearer` 头。因此开发环境退回 `*` 并禁用凭据后，
+>    浏览器会正常返回 `Access-Control-Allow-Origin: *`，请求仍然放行。
+>    **故不构成架构分叉，无需停下问用户。**
+>    （另：`frontend/.env` 的 `VITE_API_BASE=http://localhost:8000/` 确为绝对地址，
+>    跨域确实生效，所以这项核对是必要的而不是形式化。）
+> 4. `.env.example` 中新增 `CORS_ALLOW_ORIGINS` 段并**留空**：非生产环境留空退回 `*`，
+>    生产环境（`ENV=production`）留空则启动失败 —— 迫使生产部署显式给出白名单。
 
 ### 风险
 
