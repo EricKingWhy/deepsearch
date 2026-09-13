@@ -13,8 +13,8 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T26 + T41 合并） | `ab5b673aec6c181a44c0eb948db0e17b8d678ff2` |
-| 当前批次 | 8（T24–T25，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | `d1732ce`（第 7 批审查修复 commit） |
+| 当前批次 | 9（T27–T29；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| 当前 fixed point（上一批审查结束 commit） | 本记录 commit（第 8 批审查修复，SHA 于下文回填） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -32,7 +32,7 @@
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
 | 6 | T17–T19 | `d345685` | `3e18063` | 4 | `9fbdf3f` | FIXED |
 | 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
-| 8 | T24–T25 | `d1732ce` | `ab5b673` | `（待审查）` | — | — |
+| 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `（本记录 commit，SHA 于下文回填）` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -177,7 +177,23 @@ T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log �
 T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 注明」条件项不适用；提前入批理由已记录；
 台账 SHA/PR 逐项吻合。
 
-## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细
+### 第 8 批审查 findings 明细（`d1732ce` → `f10cc67`，修复 = 本记录 commit）
+
+双轴并行审查：**标准轴 0 硬违规；规格轴两票实质合规（2 条小瑕疵）**。去重后 **5 条**：3 修 2 保留；另有 1 条复核后**驳回**。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 | 台账称 PR 模板「五项自查」，实际 4 个复选项 | **已修**（台账措辞改「四项自查」） |
+| 2 | 标准 | 台账称模板与 ticket 结构「同构」偏强——模板含「事实依据」独立节，票面无此节 | **已修**（措辞改「对齐」并注明差异） |
+| 3 | 规格 | 主 tip 记 `ab5b673`，实际 tip 为台账闭合 merge `f10cc67`（自指时序滞后，第 7 批同款） | **已修**（本记录后回填实际 tip） |
+| 4 | 标准 | 两张 issue 模板验收节命名不一致（「验收」vs「验收（修复标准）」） | **保留判定**：语义各有侧重，统一收益低 |
+| 5 | 规格 | CHANGELOG 未附 Keep a Changelog 版本链接（`[0.1.0]: ...`） | **保留判定**：票面未要求；单版本阶段链接无指向意义 |
+
+**驳回的 finding**：规格轴称 CHANGELOG「READMED」系 README 拼写错误——经核实仓库主文档**确实命名为 `READMED.md`**（初始导入即如此，`AGENTS.md` 亦引用此名），CHANGELOG 引用真实文件名，不构成缺陷。
+
+**规格轴独立复验通过**：CHANGELOG 抽查条目与 git log 相符（8 处裸 except → `d4b1228`、UNION 词边界 → `text2sql_service.py:237`）；双侧版本号 0.1.0 实测一致；无未完成小节；票面风险条「汇总标注」逐字落实；scope creep 无。
+
+## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
 
@@ -206,8 +222,8 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | FIXED@d1732ce |
 | T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | FIXED@d1732ce |
 | T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | FIXED@d1732ce |
-| T24 | 新增 issue 与 PR 模板 | #55 | DONE | `T24-github-templates` | `4352d14` | #112 | PASS（三模板在位；issue 字段与 ticket 结构同构；PR 模板强制验收输出 + NG-2/NG-3/密钥五项自查；必填 3-5 项） | 8 | PENDING |
-| T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | DONE | `T25-changelog-version` | `d7deae9` | #113 | PASS（Keep a Changelog 0.1.0 汇总小节；双侧版本号均 0.1.0；不预留未完成小节） | 8 | PENDING |
+| T24 | 新增 issue 与 PR 模板 | #55 | DONE | `T24-github-templates` | `4352d14` | #112 | PASS（三模板在位；issue 字段与 ticket 结构对齐（模板含「事实依据」独立节，比票面结构细一档）；PR 模板强制验收输出 + NG-2/NG-3/密钥等四项自查；必填 3-5 项） | 8 | FIXED@（本记录，SHA 待回填） |
+| T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | DONE | `T25-changelog-version` | `d7deae9` | #113 | PASS（Keep a Changelog 0.1.0 汇总小节；双侧版本号均 0.1.0；不预留未完成小节） | 8 | FIXED@（本记录，SHA 待回填） |
 | T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | FIXED@d1732ce |
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
 | T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
@@ -322,3 +338,5 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **第 7 批 findings 修复**：TRACKER 主 tip 更新（消除自指时序滞后）。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 8 批 T24–T25）起算 |
 | 2026-09-13 | T24 | 实施 + 合并：`.github/ISSUE_TEMPLATE/task.md` + `bug_report.md`（字段与 tickets.md ticket 结构同构）+ `PULL_REQUEST_TEMPLATE.md`（强制「验收命令与实际输出」必填 + NG-2/NG-3/密钥/commit 规范/py_compile 五项自查；必填 3-5 项） | commit `4352d14`，PR #112 已 merge（`4e6ce83`），issue #55 自动关闭 |
 | 2026-09-13 | T25 | 实施 + 合并：`CHANGELOG.md`（Keep a Changelog，`[0.1.0] - 2026-09-13` 汇总小节，不预留未完成小节）；`frontend/package.json` 与 `backend/app/__init__.py.__version__` 统一 `0.1.0` | commit `d7deae9`，PR #113 已 merge（`ab5b673`），issue #56 自动关闭 |
+| 2026-09-13 | — | **第 8 批 `code-review`（双轴并行，fixed point `d1732ce`，终点 `f10cc67`）**：标准轴 0 硬违规；规格轴两票实质合规 + 2 小瑕疵。去重 **5 条**（3 修 2 保留）+ 驳回 1 条（「READMED 拼写错误」不成立——仓库文件名即为 READMED.md） | 明细见「第 8 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 8 批 findings 修复**：台账「五项自查」改「四项」、「同构」改「对齐（含差异注明）」、tip 滞后回填。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 9 批 T27–T29）起算 |
