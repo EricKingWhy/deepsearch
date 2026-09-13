@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T19 + T41 合并） | `8c0aa12125aee7eb4abdec9c626d8d53027e8e37` |
-| 当前批次 | 7（T21–T23；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T23、T26 + T41 合并） | `4dde37a0419b1beb4b4a7bc6b05417a33c497056` |
+| 当前批次 | 7（T21–T23 + T26 提前，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `9fbdf3f`（第 6 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 19 |
+| 已完成 | 23 |
 | 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
 
 ## 批次审查记录
@@ -31,6 +31,7 @@
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
 | 6 | T17–T19 | `d345685` | `3e18063` | 4 | `9fbdf3f` | FIXED |
+| 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -186,12 +187,12 @@ T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log �
 | T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | FIXED@9fbdf3f |
 | T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | FIXED@9fbdf3f |
 | T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T21 | 新增 LICENSE | #52 | TODO | — | — | — | — | 7 | PENDING |
-| T22 | 新增 CONTRIBUTING.md | #53 | TODO | — | — | — | — | 7 | PENDING |
-| T23 | 新增 .editorconfig | #54 | TODO | — | — | — | — | 7 | PENDING |
+| T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | PENDING |
+| T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | PENDING |
+| T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | PENDING |
 | T24 | 新增 issue 与 PR 模板 | #55 | TODO | — | — | — | — | 8 | PENDING |
 | T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | TODO | — | — | — | — | 8 | PENDING |
-| T26 | 新增后端 ruff 配置 | #57 | TODO | — | — | — | — | 8 | PENDING |
+| T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | PENDING |
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
 | T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | TODO | — | — | — | — | 9 | PENDING |
@@ -296,3 +297,8 @@ T19 裁决 C 落实且注释含迁移来源指引；台账 PR/SHA 与 git log �
 | 2026-09-13 | T19 | 实施 + 合并：**决策：用户裁决选 C**——保留 alembic 依赖，行上注释「预留未使用——迁移实为 backend/migrations/ 手写 SQL（见 READMED 数据库建表）」；未删依赖、未引入 alembic 编排 | commit `f98a81d`，PR #103 已 merge（`8c0aa12`），issue #50 自动关闭 |
 | 2026-09-13 | — | **第 6 批 `code-review`（双轴并行，fixed point `d345685`，终点 `3e18063`）**：标准轴 1 硬伤（architecture.md 集合名「唯一实现」说法不实）+ 2 judgement call；规格轴三票全部「无发现」。去重 **4 条**（3 修 1 保留）。批次末全量 `pytest tests -m "not integration"` → **248 passed / 5 deselected**（393.18s） | 明细见「第 6 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 6 批 findings 修复**：architecture.md 两处（集合名转换如实描述、SSE 产出归属改 `_run_simplified`）；TRACKER 决策票行改 T20/T37。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 7 批 T21–T23）起算 |
+| 2026-09-13 | T21 | 实施 + 合并：MIT LICENSE（票面默认授权，版权人 `EricKingWhy`，2026；commit 注明可随时更换、不构成法律建议） | commit `a091d04`，PR #106 已 merge（`88c64fb`），issue #52 自动关闭 |
+| 2026-09-13 | T23 | 实施 + 合并：`.editorconfig`（root=true；全局 utf-8/lf/末尾换行；py 4 空格、ts/tsx/js/json/vue/yaml 2 空格；md 关闭行尾清理）；不统一存量换行符 | commit `a458d7d`，PR #107 已 merge（`e7a367c`），issue #54 自动关闭 |
+| 2026-09-13 | T26 | 实施 + 合并（**提前入第 7 批**：T22 声明依赖本票）：`backend/ruff.toml` 最小规则集 E9/F63/F7/F82、line-length=100、target py310；`ruff check app tests` 一次通过；不引入 black、不格式化全仓 | commit `b6f1ab2`，PR #108 已 merge（`d3cc518`），issue #57 自动关闭 |
+| 2026-09-13 | T22 | 实施 + 合并：`CONTRIBUTING.md` 一屏五节，细则全部回链不复制（READMED / LOOP-PROTOCOL §5-§6 / prd.md §7 / AGENTS.md）；含 NG-2/NG-3 不得删除提示与密钥红线 | commit `8bdd1e3`，PR #109 已 merge（`4dde37a`），issue #53 自动关闭 |
+| 2026-09-13 | — | **基础设施备注**：GitHub API GraphQL 通道本时段多次 502/异常，PR #109 改走 REST（`gh api pulls` + `pulls/{n}/merge`）完成创建与合并；后续遇 GraphQL 抖动可直接用 REST 通道 | 不影响台账与代码 |
