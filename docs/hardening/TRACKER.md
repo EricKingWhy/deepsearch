@@ -13,12 +13,12 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T29 + T41 合并） | `f1b7219c53758d5c08b17d2b608e9b379e83edc8` |
-| 当前批次 | 10（T30–T31；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
+| 当前批次 | 10（T30–T31，已收批待审查；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `f1b7219`（第 9 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 28 |
+| 已完成 | 30 |
 | 决策票待裁决 | T20、T37（T18/T19 已裁决：A / C） |
 
 ## 批次审查记录
@@ -34,6 +34,7 @@
 | 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 | 8 | T24–T25 | `d1732ce` | `f10cc67` | 5 | `37a2ec6` | FIXED |
 | 9 | T27–T29 | `37a2ec6` | `3e7ea65` | 7 | `f1b7219` | FIXED |
+| 10 | T30–T31 | `f1b7219` | `f716105` | `（待审查）` | — | — |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -245,8 +246,8 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | DONE | `T27-test-layering` | `e4fa99d` | #116 | PASS（pytest.ini 注册 unit/needs_infra + 默认跳过；只标不删：integration 5 + observability 1 + evals 真 LLM 12；`pytest tests -q` → 236 passed / 17 deselected，exit 0；无未知 marker 警告） | 9 | FIXED@f1b7219 |
 | T28 | 新增 CI：后端 pytest | #59 | DONE | `T28-ci-backend` | `59bcfca` | #117 | PASS（YAML 合法；无明文密钥；needs-infra 实跑：pull_request 与 main push 两次均 success ~1m4s） | 9 | FIXED@f1b7219 |
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | DONE | `T29-ci-frontend` | `1626c18` | #118 | PASS（YAML 合法；.npmrc legacy-peer-deps；build 启用，lint/test 按票面风险条暂不启用并注明依赖 T32–T34；needs-infra 实跑 success 37s） | 9 | FIXED@f1b7219 |
-| T30 | 新增 backend/Dockerfile 并接入 compose | #61 | TODO | — | — | — | — | 10 | PENDING |
-| T31 | start-services.sh 现代化 | #62 | TODO | — | — | — | — | 10 | PENDING |
+| T30 | 新增 backend/Dockerfile 并接入 compose | #61 | DONE | `T30-backend-docker` | `1e8f6f7` | #121 | PASS（多阶段构建；.dockerignore 密钥不入镜像；compose backend 服务 env_file 注入；验收 1/2 PASS；验收 3/4 needs-infra Docker daemon 未运行记 BLOCKED） | 10 | PENDING |
+| T31 | start-services.sh 现代化 | #62 | DONE | `T31-start-services` | `7a943b0` | #122 | PASS（docker compose 6 处；wait_for_healthy 轮询替代 sleep 10（规避 compose wait 语义陷阱）；restart 二次确认；验收 1/2/3 PASS；验收 4 needs-infra 记 BLOCKED） | 10 | PENDING |
 | T32 | 清理 console.log 残留 | #63 | TODO | — | — | — | — | 10 | PENDING |
 | T33 | eslint 启用 no-explicit-any 并收敛 store 层 any | #64 | TODO | — | — | — | — | 11 | PENDING |
 | T34 | vite 构建分包 + 路由懒加载 | #65 | TODO | — | — | — | — | 11 | PENDING |
@@ -362,3 +363,5 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | T29 | 实施 + 合并：`frontend/.npmrc` legacy-peer-deps=true + `.github/workflows/ci-frontend.yml` 单 job（Node 22 + npm ci + build）。本地 preflight：build ✅ 27s；**lint 89 errors（T33/T34 范畴）、vitest 时序敏感 flaky——按票面风险条 lint/test 步骤暂不启用并在 workflow 注明依赖，不关规则凑绿**。needs-infra 实跑 success（37s） | commit `1626c18`，PR #118 已 merge（`6a7e489`），issue #60 自动关闭 |
 | 2026-09-13 | — | **第 9 批 `code-review`（双轴并行，fixed point `37a2ec6`，终点 `3e7ea65`）**：标准轴 0 硬违规；规格轴 T29 无发现、T27/T28 数字与口径瑕疵。去重 **7 条**（3 修 4 保留） | 明细见「第 9 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 9 批 findings 修复**：integration 用例数 5→4（合计 17 吻合）、T29 merge SHA 回填、tip 占位回填。批次末全量默认口径 236 passed / 17 deselected（8.64s）。修复 = 本记录 commit；fixed point 随本记录落定，下一批（第 10 批 T30–T31 等）起算 |
+| 2026-09-13 | T30 | 实施 + 合并：`backend/Dockerfile` 多阶段构建（builder venv → runtime 仅拷贝，python:3.11-slim；migrations 随镜像）；`backend/.dockerignore`（.env/tests/\*.png 等不入镜像）；`docker-compose.yml` 新增 backend 服务（industry_network / 8000 / depends_on postgres·redis·milvus service_healthy / env_file 注入密钥）。验收 1/2 PASS；3/4 needs-infra（Docker daemon 未运行）按 R-05 记 BLOCKED。另发现遗留 `backend/app/Dockerfile`（旧式单阶段）未动 | commit `1e8f6f7`，PR #121 已 merge（`85aca91`），issue #61 自动关闭 |
+| 2026-09-13 | T31 | 实施 + 合并：`start-services.sh` 的 `docker-compose` → `docker compose`（6 处）；`sleep 10` 改 `wait_for_healthy` 按容器名轮询 `docker inspect` Health.Status（180s 超时；规避 `compose wait`「等退出」语义陷阱）；restart 二次确认、clean 补 `down -v` 后果说明。验收 1/2/3 PASS；4 needs-infra 记 BLOCKED | commit `7a943b0`，PR #122 已 merge（`f716105`），issue #62 自动关闭 |
