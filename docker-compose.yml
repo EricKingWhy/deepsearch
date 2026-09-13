@@ -136,6 +136,28 @@ services:
     networks:
       - industry_network
 
+  # ==================== 后端应用（T30）====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: industry_backend
+    restart: unless-stopped
+    # 密钥经 env_file 注入，不得写进本文件（票面约束）；backend/.env 已 gitignore
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    networks:
+      - industry_network
+
 volumes:
   postgres_data:
   redis_data:
