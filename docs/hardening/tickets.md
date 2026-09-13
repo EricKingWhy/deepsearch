@@ -1874,6 +1874,18 @@ cd frontend && npm run test && npm run lint
 - 选 B：登录后 Token 不出现在任何 JS 可读位置；带 Cookie 的请求通过 CSRF 校验。
 - 选 C：文档中有风险登记条目。
 
+### 实施修正（2026-09-13，T37 实施后 —— 按裁决的方案 A）
+
+- **后端**：新增 `app/core/security_headers.py`（纯标准库；独立成模块的理由与 `core/cors.py` 相同 —— `app_main.py` 一被导入就拉起全部路由 / 模型 / DB 引擎，其中的策略无法在「无基础设施」的测试里验证）；`app_main.py` 新增 `@app.middleware("http")` 的 `add_security_headers`，按请求路径为响应附加安全头。
+  - 策略：`default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'` —— 面向「只返回 JSON 的 API」的最严集合。
+  - **豁免**：`/docs`、`/redoc`（含其子路径）与 `/openapi.json`。Swagger UI / ReDoc 要从 jsdelivr CDN 取脚本与样式、且自带内联脚本，严格 CSP 会直接把它们打坏。判据用**路径段边界**而非裸 `startswith`，因此 `/docsx` 之类**不**豁免（已加回归用例防回归）。
+  - 新增 `tests/core/test_security_headers.py`（18 例）锁定「策略含五条指令」与「豁免边界」两组事实。
+- **前端**：新增 `src/utils/local-storage.ts` 作为全站唯一访问点，5 个调用方改为经它读写 —— `store/storage.ts`（valtio-persist 存储引擎适配）、`store/auth.ts`、`store/industry.ts`、`api/request/plugins/auth.ts`、`features/deep-research/outline-draft.ts`。只暴露**字符串原语**、**不做 JSON 封装**：各调用方对坏数据的策略并不相同（静默丢弃 / 删键后重试 / 保留默认值），统一包装会把语义抹平。该模块本身不单测（四行纯转发），行为由既有的 auth / industry / outline-draft 持久化用例覆盖。
+- **验收口径需收窄（票面字面口径不成立）**：票面写 `grep -rn "localStorage" frontend/src` **仅命中该模块**。实测该命令还会命中 3 个**测试**文件（`outline-draft.test.ts`、`OutlineApprovalPanel.test.tsx`、`deep-research-integration.test.tsx`）—— 它们在 `beforeEach` / 断言里直接读写底层存储以**控制全局状态**，若改走本模块就等于「用被测代码验证自己」，是更差的测试设计，故保留。实际口径取**非测试源码**：`grep -rn "localStorage" frontend/src --include="*.ts" --include="*.tsx" | grep -v "\.test\."` → 仅命中 `src/utils/local-storage.ts`。
+- **边界（勿误读为已根治 XSS）**：CSP **按来源生效**，而本项目 SPA 由前端自己的服务器提供、不经后端 —— 所以本票补的是 **API 响应**的 CSP，SPA 页面自身的 CSP 必须由托管它的一方（nginx / 静态托管）设置。本票的实际收益：封掉「把 API 端点当文档嵌入 / 套壳」这一利用面（frame-ancestors / base-uri / object-src / form-action），以及为将来整体替换存储方式留出**单一改动点**。
+- 验证：`pytest tests/core/test_security_headers.py -v` → **18 passed**；`ruff check app tests` → All checks passed；真实响应实测（`TestClient(app_main.app)`）：`GET /hello` → 200 **且带** CSP，`GET /openapi.json` → 200 **且无** CSP（豁免生效）；`pytest tests -q` → 全绿；前端 `tsc` 23（持平）、`eslint` 78 errors / 9 warnings（持平，零新增）、`npm run build` 通过、`vitest run` 全过。
+- **口径提醒**：构建产物的文件名与体积是**每次源码改动的快照**（本票改了 store，入口 chunk 即由 `index-GutMoJY_.js` / 63833 B 变为 `index-Bv_TFcLS.js` / 63960 B）。台账引用它们时只应作为「当时实测」的证据，**不要当作长期不变量**；可长期断言的属性是「全部 chunk 无静态边 `from"./echarts-*"`」。
+
 ### 风险
 
 - 选 B 会破坏所有已登录用户的会话，需要一次强制重新登录。必须提前告知用户。

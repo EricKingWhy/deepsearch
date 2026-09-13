@@ -8,6 +8,8 @@
  */
 import { proxy, subscribe } from 'valtio'
 
+import { readItem, writeItem } from '@/utils/local-storage'
+
 // 行业配置类型
 export interface IndustryConfig {
   id: string
@@ -127,10 +129,10 @@ export interface IndustryState {
   industries: IndustryConfig[]
 }
 
-// 从 localStorage 读取
+// 从本地存储读取（读写统一走 @/utils/local-storage）
 const getStoredIndustryId = (): string => {
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('selected_industry_id')
+    const stored = readItem('selected_industry_id')
     return stored || 'smart_transportation'
   }
   return 'smart_transportation'
@@ -142,10 +144,10 @@ export const industryState = proxy<IndustryState>({
   industries: INDUSTRY_CONFIGS,
 })
 
-// 订阅变化，保存到 localStorage
+// 订阅变化，保存到本地存储
 subscribe(industryState, () => {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('selected_industry_id', industryState.currentIndustryId)
+    writeItem('selected_industry_id', industryState.currentIndustryId)
   }
 })
 
