@@ -20,6 +20,10 @@
 全部用例不连数据库：``get_user_by_id`` 由 monkeypatch 接管；``get_db`` 产出的 Session
 是惰性的，401 / 403 路径不会触发任何查询。因此本文件在 T27 的默认口径
 （``-m "not needs_infra"``）下可直接运行。
+
+另有 2 例（缺 ``Authorization`` 头 / 垃圾 Token → 401 + 固定文案）与
+``tests/router/test_router_auth.py`` 的「17 个端点各发一次无 Token 请求」覆盖同一事实，
+但粒度不同 —— 本文件验的是**依赖单元**，那份验的是**路由挂载**，故两处并存而非二选一。
 """
 
 import types
@@ -61,7 +65,12 @@ def _protected_client(monkeypatch, user):
     async def protected(current=Depends(get_current_user_required)):
         return {"user_id": str(current.id)}
 
-    monkeypatch.setattr(auth_router, "get_user_by_id", lambda db, user_id: user)
+    # 替身按 user_id 匹配才返回用户 —— 于是「查询键确实取自 token 的 sub」也被断言覆盖。
+    # 若不分青红皂白返回 user，即使被测代码传错字段（例如 username）测试仍会绿。
+    def _lookup(db, user_id):
+        return user if user is not None and user_id == str(user.id) else None
+
+    monkeypatch.setattr(auth_router, "get_user_by_id", _lookup)
     return TestClient(app)
 
 
