@@ -13,13 +13,13 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T40 + T41 + 批次 10/11/12/13 审查修复） | `7773c8451ef2872a60ceca9ba63f92bb6d52a05e`（批次 13 审查修复 PR #144 的 merge commit） |
-| 当前批次 | **§4 总门禁**（39/41 已 DONE；先收尾 T20 决策票，再对整条分支跑最终全量审查，fixed point = 计划起始基线 `9342913`）；T10 为 needs-human 保持 BLOCKED（需人工只读 DB 账号） |
+| 当前批次 | **§4 总门禁**（40/41 已 DONE；T20 决策票已收尾（AI 裁决 A：记录基线、不拆分），对整条分支跑最终全量审查，fixed point = 计划起始基线 `9342913`）；T10 为 needs-human 保持 BLOCKED（需人工只读 DB 账号） |
 | 当前 fixed point（上一批审查结束 commit） | `7773c84`（第 13 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 39 |
-| 决策票待裁决 | T20（T18/T19/T37 已裁决：A / C / A） |
+| 已完成 | 40 |
+| 决策票待裁决 | 无（T18 / T19 / T20 / T37 均已裁决：A / C / A / A） |
 
 ## 批次审查记录
 
@@ -239,7 +239,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T17 | 新增架构总览文档 | #48 | DONE | `T17-architecture-doc` | `b309036` | #101 | PASS（5 个小节；「有意保留」2 处命中 NG-2/NG-3；目录导航与实际一致；仅 docs/ 变更） | 6 | FIXED@9fbdf3f |
 | T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | FIXED@9fbdf3f |
 | T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | FIXED@9fbdf3f |
-| T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
+| T20 | 决策票：chat/index.tsx 是否拆分 | #51 | DONE | `T20-chat-index-decision` | `（回填）` | `（回填）` | PASS（**AI 裁决（用户已授权）：选 A** —— 暂不拆分、记录基线。选项 A 的前置观察已自然完成：T32/T36 清理后该文件仍 **1854 行**，为次大非测试源文件的 3.5 倍（次大 `pages/knowledge/index.tsx` 535 行），且仍承载深研 SSE 流式消费主链路；B/C 需先建 `frontend/e2e/` 保护网，可读性收益与深研主链路回归风险不成比例，留待独立立项。**实测基线**：1854 行（票面 F-22 记 1953）、11 `useEffect`、3 `useMemo`、13 `useState`、9 `useCallback` —— **票面 F-22 的 hook 计数与实测不符**（疑把 `useState` 13 个误记为 `useMemo`）。验收：`wc -l` → 1854 已记录、`npm run test` → 33 passed / 6 files 全绿。**本票不改任何生产代码**） | §4 | PENDING |
 | T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | FIXED@d1732ce |
 | T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | FIXED@d1732ce |
 | T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | FIXED@d1732ce |
@@ -390,3 +390,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **第 12 批双轴审查**（`4691e72` → `beef8e6`）：标准轴 7 条 + 规格轴 12 条，去重后 **19 条**。核心 finding：**T35 是「净零变更」** —— `echarts-for-react` 的第三个静态引入点 `research-detail/visualization.tsx` 既未被票面点名也未被改，构建产物里 chat chunk 仍保留静态边 `from"./echarts-*.js"`，动态拆包从未真正生效；**验收 2 的口径对此无判别力**（入口 chunk 确实不含 echarts，静态边藏在 chat chunk 里）。其次：`drawer.tsx` 有 T36 漏掉的 9 行被注释 JSX；T38 把 4 类失败语义记成了 info；两个 CLI/自检入口改 logger 后独立运行静默无输出；台账数值勘误 16 项（T36 被注释映射为 12 项而非 13 项、T38 实为 13 个 .py 而非 14 个文件且 `chat_service` 为 14 处、T35 入口 chunk 名称与大小、fixed point 行未随批次 11 推进、决策票行仍列 T37） | 审查基线 `beef8e6`，双轴并行子代理各出报告；所有数值已在修复阶段逐条实测复核 |
 | 2026-09-13 | — | **第 12 批 findings 修复**：①前端 `visualization.tsx` 补改 `lazy` + `Suspense`（修复后 `grep -l 'from"./echarts-' dist/assets/*.js` 为空，全部 chunk 静态边归零）；②`drawer.tsx` 删 9 行被注释 JSX；③后端失败语义 `logger.info` → `warning`（检索错误 / 缺少 API Key / 文档处理异常 / docmind 6 处 `result["message"]`），`llm_config.print_config()` 与 `policy_search_service.__main__` 恢复 `print`（独立运行未经 `configure_logging`，INFO 被丢弃）；④台账与票面勘误 16 项（含修复自批次 4 起存量的 `## ticket 明细` 标题重复 7 次损坏）。验证：pytest 236 passed / 17 deselected、ruff All checks passed、tsc 23 持平、lint 78/9 持平、build 通过、`python app/config/llm_config.py` 实跑恢复输出 | commit `c98f30a`，PR #138 已 merge（`114fcf9`）|
 | 2026-09-13 | — | **批次 12 回填**：批次记录表第 12 行补全（终点 `beef8e6` / 19 findings / 修复 `114fcf9` / FIXED）；T30/T31 → FIXED@`9420c8c`、T33/T34 → FIXED@`4691e72`、T35/T36/T38 → FIXED@`114fcf9`（此前遗留 PENDING 未随批次推进）；fixed point 推进 `114fcf9`，批次指针 → 13；main tip 回填 | 本记录 commit；下一批（第 13 批 = T39 text2sql 单测 + T40 security 鉴权单测 + T37 实施）起算 |
+| 2026-09-13 | T20 | **收尾决策票（AI 裁决 A：记录基线、不拆分）**：选项 A 的前置观察已自然完成 —— T32（清理 83 处 console 残留）与 T36（清理注释死代码）均已 DONE，清理后 `chat/index.tsx` 仍 **1854 行**，为次大非测试源文件的 3.5 倍（次大 `pages/knowledge/index.tsx` 535 行），且仍承载深研 SSE 流式消费主链路。B/C 需先建 `frontend/e2e/` 端到端保护网，属对高竞态风险的超大组件动手，可读性收益与深研主链路回归风险不成比例，留待独立立项（本行基线即对照起点）。**实测基线**：1854 行 / 11 `useEffect` / 3 `useMemo` / 13 `useState` / 9 `useCallback` —— **票面 F-22 的「12 useEffect、13 useMemo」与实测不符**（疑把 `useState` 13 个误记为 `useMemo`），如实记录。验收 A：`wc -l` → 1854 已记录、`npm run test` → **33 passed / 6 files** 全绿。**本票不改任何生产代码** | 本记录 commit（tickets.md 补「决策与实施记录」块；TRACKER T20 行 BLOCKED → DONE） |
