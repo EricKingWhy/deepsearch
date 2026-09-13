@@ -1,6 +1,12 @@
 # Copyright © 2026 深圳市深维智见教育科技有限公司 版权所有
 # 未经授权，禁止转售或仿制。
 
+⚠️ 有意保留（PRD NG-3）：本模块属于 **V1 ReAct 研究路线**（与 deep_research_v2/ 的 V2 多智能体
+路线并行保留的备选实现），由 `POST /research/stream` 显式传 `version=v1` 时触发。
+当前默认走 V2，因此本模块在日常主路径下不可达 —— **但它不是死代码、不得删除**。
+允许的动作：加注释 / 修复缺陷（如 T11 的裸 except）；禁止：删除实现、从 requirements.txt
+移除依赖、标注 @deprecated 后清理。
+
 """
 DeepResearch Service - 深度研究服务 (ReAct 版本)
 

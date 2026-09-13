@@ -174,6 +174,13 @@ npm run preview
 
 ## Architecture Highlights
 
+> **Two research routes coexist by design (PRD NG-2 / NG-3 — do NOT delete either):**
+> the default is **V2** (`backend/app/service/deep_research_v2/`, multi-agent workflow, selected by `version=v2`);
+> the **V1 ReAct route** (`service/dr_g.py` + `react_controller.py` + `tool_executor.py`, selected by `version=v1`)
+> is an intentionally retained alternative. V1 is unreachable on the daily default path — that does not make it
+> dead code. The LangGraph runtime inside `deep_research_v2/graph.py` is likewise a retained parallel
+> implementation (the hand-written async state machine `_run_simplified` is what actually runs today).
+
 ### Multi-Agent Deep Research System (`backend/app/service/deep_research_v2/`)
 The core feature — a LangGraph-based multi-agent workflow:
 
