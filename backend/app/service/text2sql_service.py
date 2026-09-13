@@ -232,8 +232,9 @@ class Text2SQLService:
         if not (sql_upper.startswith('SELECT') or sql_upper.startswith('WITH')):
             return False, "SQL 必须以 SELECT 或 WITH 开头"
 
-        # 主判据 2：禁止任何形式的 UNION（含 UNION / UNION ALL，防止拼接子查询绕过）
-        if 'UNION' in sql_upper:
+        # 主判据 2：禁止任何形式的 UNION 关键字（含 UNION / UNION ALL，防止拼接子查询绕过）。
+        # 用词边界匹配而非子串匹配，避免误拦 union_id / reunion_tag 等含 union 字样的列名
+        if re.search(r"\bUNION\b", sql_upper):
             return False, "SQL 不允许使用 UNION"
 
         # 辅助：黑名单兜底（数据修改 / 系统对象 / 时间盲注等）

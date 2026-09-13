@@ -13,8 +13,8 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T09 + T41 合并） | `0f3ceba839551f316fad29a651d42da7823984c1` |
-| 当前批次 | 3（T07–T09） |
-| 当前 fixed point（上一批审查结束 commit） | `57f69e0`（第 2 批审查修复 commit） |
+| 当前批次 | 4（T11–T13；T10 为 needs-human 保持 BLOCKED） |
+| 当前 fixed point（上一批审查结束 commit） | `6b73d44`（第 3 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -27,6 +27,7 @@
 |------|------------|--------------------|--------------------|------------|------------|------|
 | 1 | T01–T03 | `9342913` | `5651c98` | 5 | `19547b0` | FIXED |
 | 2 | T04–T06 + T41 | `19547b0` | `41009b9` | 11 | `57f69e0` | FIXED |
+| 3 | T07–T09 | `57f69e0` | `fbe55f8` | 6 | `6b73d44` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -74,6 +75,30 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 - 另：`docs/agents/issue-tracker.md` **不存在**，故规格来源取自本地 `prd.md` / `tickets.md`
   （本仓权威定义），未走 issue-tracker 工作流。若要启用该工作流需先跑 `/setup-matt-pocock-skills`。
 
+### 第 3 批审查 findings 明细（`57f69e0` → `fbe55f8`，修复 commit `6b73d44`）
+
+双轴并行审查：**标准轴 4 条 + 规格轴 3 条**，去重后 **6 条**。2 条已修，4 条保留判定。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 + 规格 | `validate_sql` 的 `'UNION' in sql_upper` 是子串匹配，会误拦 `union_id` / `reunion_tag` 等含 union 字样的标识符 | **已修** `6b73d44`（改 `re.search(r"\bUNION\b", ...)` 词边界；补 3 用例锁行为） |
+| 2 | 标准 | `test_db_password_required.py` 的 `assert "POSTGRES_PASSWORD = _require_env(" in source` 是源码字符串匹配，与第 2 批「改结构化断言」处置方向不一致 | **已修** `6b73d44`（补注释说明保留理由：T07 验收口径本就是 grep 类源码检查，非运行时行为断言，不同型） |
+| 3 | 标准 | **重复文案**：compose 两份 MinIO/Milvus 凭据块逐字重复；口令轮换告警在根/后端 `.env.example` 与 `READMED.md` 三处各写一遍 | **保留判定**：两个 compose 文件本就是票面要求分别修改的独立部署文件；告警文案多处可见对使用者更安全 |
+| 4 | 标准 | `conftest.py` 又新增一个 import 期全局环境桩（`POSTGRES_PASSWORD`），桩数量持续增长 | **保留判定**：延续既有机制且有注释说明；若后续继续膨胀再收敛为显式 fixture |
+| 5 | 规格 | T08 门控语义变化属**实施者自决**：旧代码 `search_local=True` 无 kb_name 时仍检索 `"knowledge_base"` 集合，新实现直接跳过返回 `[]`；票面「保留全局检索语义」未逐字执行 | **保留判定**：`"knowledge_base"` 不是任何真实集合名（入库只走 `kb_{name}`），**全局检索语义从未工作过**，不存在可保留的既有行为；且 V1 `dr_g.py:717` 的 `search_local and kb_name` 是仓库内现成先例 → 前提不成立即无取舍，不构成需用户裁决的分叉。旧集合本就搜不到任何用户文档（F-08），无行为回退 |
+| 6 | 规格 | T08 验收命令 3（needs-infra 端到端）BLOCKED | 无需动作：Docker 未运行，`TRACKER` 如实记录未伪造 PASS，符合票面 R-05 |
+
+**规格轴的关键复核（独立复验通过）**：
+
+- **NG-2 / NG-3 未被触碰**：`dr_g.py` / `react_controller.py` / `tool_executor.py` 未出现在批次 diff；
+  `graph.py` 仅给 `run()` 增加 `kb_name` 参数，LangGraph 路径（`_build_langgraph` / `_run_with_langgraph` /
+  `_*_node`）零删改。
+- **T07 密钥清除完整**：`git grep postgres123|minioadmin fbe55f8` 票面受控范围内 0 命中；
+  `.gitignore` 覆盖 `.env`；`database.py` 的 `_require_env` 无默认值兜底。
+- **T09 风险条核实成立**：`ALLOWED_KEYWORDS` 全仓无使用点、prompt 无 UNION 指引、前端无 UNION 生成
+  → UNION 非有意支持的能力，全禁不构成架构分叉。
+- 密钥红线自查（LOOP-PROTOCOL §6）：`git grep -nE "(sk-…|Bearer …)"` 在终点 commit 无命中。
+
 ## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
@@ -86,9 +111,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T04 | document_router 增加鉴权 | #35 | DONE | `T04-document-router-auth` | `33724cc` | #78 | PASS（T04 当时 `pytest -q -k document_auth` → 10 passed；第 2 批审查并入 `test_router_auth.py` 后，现用 `-k router_auth` → 47 passed；鉴权依赖计数 = 2） | 2 | FIXED@57f69e0 |
 | T05 | chat / search / news 路由补充鉴权 | #36 | DONE | `T05-harden-chat-search-news-auth` | `cee1c33` | #80 | PASS（`pytest -q -k "auth or unauthorized"` → 47 passed；三路由鉴权计数 = 2/2/2；`news_router` 实测 8 个端点非 9） | 2 | FIXED@57f69e0 |
 | T06 | 收紧 CORS 配置 | #37 | DONE | `T06-tighten-cors` | `18ed8f8` | #81 | PASS（`pytest tests/core/test_cors_config.py` → 14 passed；通配 + 凭据的硬编码组合已消失；`py_compile app_main` 通过） | 2 | FIXED@57f69e0 |
-| T07 | docker-compose 明文口令改为环境变量注入 | #38 | DONE | `T07-compose-secrets` | `1552d13` | #83 | PASS（`pytest tests/core/test_db_password_required.py` → 15 passed；`docker compose config --quiet` → exit=0；全仓 `grep postgres123\|minioadmin` 受控文件无残留） | 3 | PENDING |
-| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | DONE | `T08-scout-kb-collection` | `e16b313` | #85 | PASS（`! grep '"knowledge_base"' scout.py` → 无输出；`pytest tests/service/deep_research_v2 -q` → 25 passed；全量 `-m "not integration"` → 218 passed / 5 deselected；needs-infra 端到端验证因 Docker 未运行记 BLOCKED） | 3 | PENDING |
-| T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | DONE | `T09-text2sql-union` | `5649543` | #87 | PASS（票面验收脚本（路径修正为 `sys.path.insert(0,'app')`）→ 打印 `OK: UNION 绕过已封堵`；`pytest -k text2sql` → 27 passed；全量 `-m "not integration"` → 245 passed / 5 deselected） | 3 | PENDING |
+| T07 | docker-compose 明文口令改为环境变量注入 | #38 | DONE | `T07-compose-secrets` | `1552d13` | #83 | PASS（`pytest tests/core/test_db_password_required.py` → 15 passed；`docker compose config --quiet` → exit=0；全仓 `grep postgres123\|minioadmin` 受控文件无残留） | 3 | FIXED@6b73d44 |
+| T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | DONE | `T08-scout-kb-collection` | `e16b313` | #85 | PASS（`! grep '"knowledge_base"' scout.py` → 无输出；`pytest tests/service/deep_research_v2 -q` → 25 passed；全量 `-m "not integration"` → 218 passed / 5 deselected；needs-infra 端到端验证因 Docker 未运行记 BLOCKED） | 3 | FIXED@6b73d44 |
+| T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | DONE | `T09-text2sql-union` | `5649543` | #87 | PASS（票面验收脚本（路径修正为 `sys.path.insert(0,'app')`）→ 打印 `OK: UNION 绕过已封堵`；`pytest -k text2sql` → 27 passed；全量 `-m "not integration"` → 245 passed / 5 deselected） | 3 | FIXED@6b73d44 |
 | T10 | text2sql 使用只读数据库账号兜底 | #41 | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
 | T11 | 清除裸 except 并补日志 | #42 | TODO | — | — | — | — | 4 | PENDING |
 | T12 | 收敛数据库连接池与会话生命周期 | #43 | TODO | — | — | — | — | 4 | PENDING |
@@ -189,3 +214,5 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T08 | 验收：命令 1 `! grep '"knowledge_base"' scout.py` → PASS；命令 2 `pytest tests/service/deep_research_v2 -q` → **25 passed**；全量 `pytest tests -m "not integration"` → **218 passed / 5 deselected**（385.37s）；命令 3（needs-infra 端到端，需 Milvus + Postgres）Docker 未运行 → **BLOCKED**，未伪造 PASS。注意：测试环境里 `service.deep_research_v2(.agents)` 被 conftest 注册为命名空间桩、真实 `__init__.py` 不执行，graph 类测试须沿用 `test_graph_outline_checkpoint.py` 的「桩补占位类 + `object.__new__` 绕构造」模式 | 批次 3 第 2 张，剩 T09 后收批审查 |
 | 2026-09-13 | T09 | 实施 + 合并：`validate_sql` 主判据改为「以 `SELECT` 或 `WITH` 开头 + 禁止任何形式的 `UNION`」，`FORBIDDEN` 黑名单降为辅助兜底；清理 `'--'` / `'UNION ALL SELECT'` / `'*/'` 重复项；`ALLOWED_KEYWORDS` 移除 `'UNION'`。**风险条核实（无架构分叉）**：`ALLOWED_KEYWORDS` 全仓无使用点（死配置）、prompt 无 UNION 指引、前端无 UNION 生成 → UNION 非有意支持的能力。验收 #1 票面脚本路径与项目约定不符，已修正并记录于 `tickets.md` T09「实施修正」；新增 `tests/service/test_text2sql_validate.py`（27 用例） | commit `5649543`，PR #87 已 merge（`0f3ceba`），issue #40 自动关闭 |
 | 2026-09-13 | T09 | 验收：票面脚本 → 打印 `OK: UNION 绕过已封堵`；`pytest tests -q -k text2sql` → **27 passed**；全量 `pytest tests -m "not integration"` → **245 passed / 5 deselected**（388.38s）。ruff 无新增告警，密钥红线自查通过 | 批次 3（T07–T09）收批，进入第 3 批 `code-review`（fixed point `57f69e0`） |
+| 2026-09-13 | — | **第 3 批 `code-review`（双轴并行，fixed point `57f69e0`，终点 `fbe55f8`）**：标准轴 4 条 + 规格轴 3 条，去重后 **6 条**（2 修 4 保留）。规格轴独立复验：NG-2/NG-3 零触碰、T07 密钥清除完整、T09 风险条核实成立、T08 门控语义变化判定为「前提不成立即无取舍」（全局检索从未工作过，V1 有现成先例），不构成需用户裁决的分叉 | 明细见「第 3 批审查 findings 明细」 |
+| 2026-09-13 | — | **第 3 批 findings 修复**：`validate_sql` 的 UNION 校验改词边界匹配（`\bUNION\b`），避免误拦 `union_id` 等标识符，补 3 用例锁行为；`test_db_password_required.py` 源码断言补注释说明保留理由。修复后全量 `pytest tests -m "not integration"` → **248 passed / 5 deselected**（398.03s） | 修复 commit `6b73d44`；fixed point 推进至 `6b73d44`，进入第 4 批（T11–T13） |

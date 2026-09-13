@@ -56,6 +56,9 @@ def test_database_module_no_longer_defaults_the_password():
 
     for weak in WEAK_SECRETS:
         assert weak not in source, f"database.py 仍含明文口令 {weak!r}"
+    # 有意保留源码字符串断言：本测试的验收口径本身就是「源码里不得出现弱口令 /
+    # 必须存在导入期校验调用」（ticket T07 验收 = grep 类命令的 pytest 化），
+    # 不是对运行时行为的断言，与第 2 批 findings 中鉴权测试改结构化断言的处置不同型。
     assert "POSTGRES_PASSWORD = _require_env(" in source
 
 
