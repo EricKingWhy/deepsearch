@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03 合并） | `5651c985a0b682b1cf460fd550b780cd16d52e14` |
-| 当前批次 | 1 |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41 合并） | `bd1e635245c221566703089bcd6eb7729213b6ff` |
+| 当前批次 | 2（T04–T06 + T41，共 4 张） |
 | 当前 fixed point（上一批审查结束 commit） | `19547b0`（第 1 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 3 |
+| 已完成 | 4 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -26,6 +26,7 @@
 | 批次 | 覆盖 ticket | fixed point（起点） | 审查 commit（终点） | findings 数 | 修复 commit | 状态 |
 |------|------------|--------------------|--------------------|------------|------------|------|
 | 1 | T01–T03 | `9342913` | `5651c98` | 5 | `19547b0` | FIXED |
+| 2 | T04–T06 + T41 | `19547b0` | — | — | — | PENDING |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -88,7 +89,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T38 | 清除 print 调试残留 | #69 | TODO | — | — | — | — | 12 | PENDING |
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | TODO | — | — | — | — | 12 | PENDING |
 | T40 | 补 security 鉴权单元测试 | #71 | TODO | — | — | — | — | 13 | PENDING |
-| T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | BLOCKED | — | — | — | 等待用户裁决（白名单是否并轨） | — | — |
+| T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | PENDING |
 
 ## 待办 / 未闭合项
 
@@ -135,3 +136,6 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | — | **第一阶段审查批次边界到达**：T01–T03 已完成，进入第 1 批 `code-review`（fixed point `9342913`，终点 `5651c98`） | 见批次审查记录 |
 | 2026-09-13 | — | **第 1 批 `code-review`（双轴并行）**：标准轴 4 条 + 规格轴 3 条，去重后 5 条。修复 commit `19547b0`（conftest 补测试占位密钥；READMED 文档与强校验对齐）；2 条记为保留判定；1 条衍生决策票 | 三个回归测试文件 **36 passed**，JWT 相关收集错误归零 |
 | 2026-09-13 | — | **新建 T41（#75）**：合并三处上传实现，消除 `attachment_router` / `knowledge_router` 的路径穿越。标 `needs-decision`（白名单是否并轨会改变上传类型），等用户裁决 | ticket 总数 40 → **41**；P-09 转 T41 |
+| 2026-09-13 | T41 | **用户裁决方案 A**（只统一实现、白名单各自保留）。实施：`attachment_router` / `knowledge_router` 改用 `ensure_supported_extension` / `safe_filename` / `read_upload_with_limit`，删除各自 `get_file_extension` 与 `os.path.splitext`；补 50MB 上限；413 显式 re-raise 避免被兜底转 500；`document_router` 上限改用共享常量；清理无用 `shutil` 导入 | commit `1182ccb`，PR #76 已 merge（`bd1e635`），issue #75 自动关闭 |
+| 2026-09-13 | T41 | 验收：`pytest tests/router -k upload` → **40 passed**；三路由 `py_compile` 通过。测试分纯函数层 + `ast` 源码层（路由因缺 `tinytag` 无法导入），并**锁定三份白名单成员集合**作为「零行为变更」证据 | 批次 2 起算 |
+| 2026-09-13 | — | **新硬规则首次生效**：T41 全程用 `git fetch origin main:main` 同步 `main`（不 checkout），**未再触发工作树清空**；但再次出现**文档编辑静默丢失**（`决策票待裁决` 一行的 T41 未落盘），已再次确认「写完必逐行复核」 | §9.3 规则有效；P-08 仍成立 |
