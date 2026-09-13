@@ -2,6 +2,7 @@
 # 未经授权，禁止转售或仿制。
 
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -40,8 +41,11 @@ from models import (
     ResearchEvent, ResearchRun,
 )
 
-# 创建所有数据表（如果不存在）
-Base.metadata.create_all(bind=engine)
+# 建表以 backend/migrations/ 的手写迁移 SQL 为准；create_all 默认**不执行**，
+# 避免 ORM 模型与迁移 SQL 两套 schema 来源漂移（tickets.md T12 / PRD NG-7）。
+# 仅在显式设置 DB_AUTO_CREATE=1（本地开发自用）时才自动建表。
+if os.getenv("DB_AUTO_CREATE") == "1":
+    Base.metadata.create_all(bind=engine)
 
 
 @asynccontextmanager

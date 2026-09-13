@@ -772,6 +772,13 @@ cd backend && pytest tests -q
 - `pool_size` 取值过大可能耗尽 Postgres 连接数。取保守值并在 commit message 中说明依据。
 - 关闭 `create_all` 后，若某人依赖它自动建表会失败。需在 `READMED.md` 的启动章节补充「迁移 SQL 如何执行」的说明（属本票范围）。
 
+### 实施修正（2026-09-13，T12 实测后）
+
+1. **`pool_pre_ping=True` 原本就有**（此前某次改动已加），本票补齐 `pool_size=5` / `max_overflow=10` / `pool_recycle=1800` 并把取值依据写成代码注释。
+2. **`create_all` 共 3 处**：`app_main.py:44`（启动路径，本票对象）与 `scripts/init_industry_data.py`、`scripts/seed_industry_data.py`（数据初始化脚本的合理用途）。仅启动路径改为 `DB_AUTO_CREATE=1` 显式开关，脚本内两处**保持原样**（跑脚本本身就是显式初始化动作）。
+3. **验收 #2 的脚本需修正**：`sys.path.insert(0,'.')` + `from app.core import database` 不符合项目约定（应为 `sys.path.insert(0,'app')` + `from core import database`）；且直接导入 `core.database` 会触发 `core/__init__.py` 的 JWT 导入期校验与 `database.py` 的口令校验，脚本需先 `setdefault` 这两个测试占位环境变量。
+4. **READMED 迁移说明**：补充了两个迁移 SQL 的执行命令。已核实两个文件全部 `CREATE TABLE/INDEX` 均带 `IF NOT EXISTS`、约束变更走 `DO $$` 块 —— 重复执行无副作用，文档表述与事实一致。
+
 ---
 
 # 阶段 3 · 可接手性（P1）
