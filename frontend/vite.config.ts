@@ -31,6 +31,23 @@ export default defineConfig(({ mode }) => {
       ],
     },
 
+    build: {
+      // 生产不产出 sourcemap（避免产物显著增大）
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          // T34：仅手工拆出最重的 3 个 vendor chunk，不做更细的分包调优
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('echarts')) return 'echarts'
+            if (id.includes('antd') || id.includes('@ant-design')) return 'antd'
+            if (id.includes('react')) return 'react'
+            return undefined
+          },
+        },
+      },
+    },
+
     plugins: [
       react(),
       viteMockServe({
