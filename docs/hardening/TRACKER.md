@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T09 + T41 合并） | `0f3ceba839551f316fad29a651d42da7823984c1` |
-| 当前批次 | 4（T11–T13；T10 为 needs-human 保持 BLOCKED） |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T13 + T41 合并） | `1eb4077d69098e6d8c5889f7396fa4e50b771c16` |
+| 当前批次 | 4（T11–T13，已收批待审查；T10 为 needs-human 保持 BLOCKED） |
 | 当前 fixed point（上一批审查结束 commit） | `6b73d44`（第 3 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 10 |
+| 已完成 | 13 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -115,9 +115,9 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | DONE | `T08-scout-kb-collection` | `e16b313` | #85 | PASS（`! grep '"knowledge_base"' scout.py` → 无输出；`pytest tests/service/deep_research_v2 -q` → 25 passed；全量 `-m "not integration"` → 218 passed / 5 deselected；needs-infra 端到端验证因 Docker 未运行记 BLOCKED） | 3 | FIXED@6b73d44 |
 | T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | DONE | `T09-text2sql-union` | `5649543` | #87 | PASS（票面验收脚本（路径修正为 `sys.path.insert(0,'app')`）→ 打印 `OK: UNION 绕过已封堵`；`pytest -k text2sql` → 27 passed；全量 `-m "not integration"` → 245 passed / 5 deselected） | 3 | FIXED@6b73d44 |
 | T10 | text2sql 使用只读数据库账号兜底 | #41 | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
-| T11 | 清除裸 except 并补日志 | #42 | TODO | — | — | — | — | 4 | PENDING |
-| T12 | 收敛数据库连接池与会话生命周期 | #43 | TODO | — | — | — | — | 4 | PENDING |
-| T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | TODO | — | — | — | — | 5 | PENDING |
+| T11 | 清除裸 except 并补日志 | #42 | DONE | `T11-remove-bare-except` | `d4b1228` | #90 | PASS（`! grep -nE "except\s*:" <四文件>` → 无输出；全仓裸 except 计数 → 0；全量 `-m "not integration"` → 248 passed） | 4 | PENDING |
+| T12 | 收敛数据库连接池与会话生命周期 | #43 | DONE | `T12-db-pool-schema` | `1f57882` | #91 | PASS（`grep -nE "pool_pre_ping\|pool_recycle\|pool_size" core/database.py` → 有命中；票面脚本（路径+env 占位修正）→ 打印 `OK: 连接池参数存在`；create_all 改 `DB_AUTO_CREATE=1` 显式开关） | 4 | PENDING |
+| T13 | 显式标注 LangGraph 运行时路径为有意保留 | #44 | DONE | `T13-langgraph-annotation` | `ad7baa6` | #92 | PASS（`grep -c "NG-2" graph.py` → 7；保留字样 8 处；本票 diff 无删除的函数；`pytest -k deep_research_v2` → 25 passed） | 4 | PENDING |
 | T14 | 显式标注 V1 ReAct 编排为保留的备选路线 | #45 | TODO | — | — | — | — | 5 | PENDING |
 | T15 | 抽离 serialize_event | #46 | TODO | — | — | — | — | 5 | PENDING |
 | T16 | 修复文档与代码漂移 | #47 | TODO | — | — | — | — | 6 | PENDING |
@@ -216,3 +216,8 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T09 | 验收：票面脚本 → 打印 `OK: UNION 绕过已封堵`；`pytest tests -q -k text2sql` → **27 passed**；全量 `pytest tests -m "not integration"` → **245 passed / 5 deselected**（388.38s）。ruff 无新增告警，密钥红线自查通过 | 批次 3（T07–T09）收批，进入第 3 批 `code-review`（fixed point `57f69e0`） |
 | 2026-09-13 | — | **第 3 批 `code-review`（双轴并行，fixed point `57f69e0`，终点 `fbe55f8`）**：标准轴 4 条 + 规格轴 3 条，去重后 **6 条**（2 修 4 保留）。规格轴独立复验：NG-2/NG-3 零触碰、T07 密钥清除完整、T09 风险条核实成立、T08 门控语义变化判定为「前提不成立即无取舍」（全局检索从未工作过，V1 有现成先例），不构成需用户裁决的分叉 | 明细见「第 3 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 3 批 findings 修复**：`validate_sql` 的 UNION 校验改词边界匹配（`\bUNION\b`），避免误拦 `union_id` 等标识符，补 3 用例锁行为；`test_db_password_required.py` 源码断言补注释说明保留理由。修复后全量 `pytest tests -m "not integration"` → **248 passed / 5 deselected**（398.03s） | 修复 commit `6b73d44`；fixed point 推进至 `6b73d44`，进入第 4 批（T11–T13） |
+| 2026-09-13 | T11 | 实施 + 合并：8 处裸 except（实测 8 处：graph.py 消息队列、dr_g.py 计划 JSON 回退、news_collection_service 3 处、smart_analyzer 3 处）全部改为 `except Exception` + 按上下文记日志（预期失败分支 `logger.debug`、非预期失败 `logger.warning`，统计汇总处含 `exc_info`）；smart_analyzer 补模块级 logger；控制流不变；`dr_g.py` 属 NG-3 仅改 except 未删函数 | commit `d4b1228`，PR #90 已 merge（`27122ee`），issue #42 自动关闭 |
+| 2026-09-13 | T12 | 实施 + 合并：`core/database.py` 补 `pool_size=5` / `max_overflow=10` / `pool_recycle=1800`（`pool_pre_ping` 原已有），取值依据写入代码注释；`app_main.py` 的 `create_all` 默认不执行，改为 `DB_AUTO_CREATE=1` 显式开关（scripts/ 两处初始化脚本的 create_all 属显式初始化动作，保持原样）；READMED 补「数据库建表」章节（迁移 SQL 已核实全部 `IF NOT EXISTS` 幂等）；`.env.example` 补 `DB_AUTO_CREATE` 占位 | commit `1f57882`，PR #91 已 merge（`043e4c6`），issue #43 自动关闭 |
+| 2026-09-13 | T12 | 验收修正：票面脚本 `sys.path` 与导出名不符合项目约定，且直接导入 `core.database` 会触发 `core/__init__` 的 JWT 导入期校验，脚本需先 `setdefault` JWT/口令测试占位变量 —— 已实测修正并写入 `tickets.md` T12「实施修正」 | 验收 #1/#2 PASS |
+| 2026-09-13 | T13 | 实施 + 合并（纯注释，零可执行代码变更）：`graph.py` 模块 docstring 改为「双执行路径」说明；`LANGGRAPH_AVAILABLE` 导入处、`__init__` 图构建处、`_build_langgraph`、6 个 `_*_node` 打包注释、`_run_with_langgraph`、`run()` 注释掉的调用点，全部加「有意保留 / 不得删除 / PRD NG-2」标注，并写明启用方式（恢复注释分支即可） | commit `ad7baa6`，PR #92 已 merge（`1eb4077`），issue #44 自动关闭 |
+| 2026-09-13 | — | **流程事故与纠正（T13）**：commit 误落在本地 `main` 上（漏开分支）。纠正：把该 commit 挂回 `T13-langgraph-annotation` 分支、`git branch -f main <远端SHA>` 回退 main 引用，未 push、未污染远端历史。后续开分支动作前置 | 已纠正，§5 未被实质违反 |
