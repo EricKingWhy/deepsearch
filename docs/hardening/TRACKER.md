@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01/T02/T03/T41/T04/T05/T06 合并） | `41009b9cf28587891d2900efbc5ecf40dd84eff6` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T07 + T41 合并） | `e4d82a740ceca7b345d1d2e9261292e811b41f33` |
 | 当前批次 | 3（T07–T09） |
 | 当前 fixed point（上一批审查结束 commit） | `57f69e0`（第 2 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 7 |
+| 已完成 | 8 |
 | 决策票待裁决 | T18、T19、T20、T37 |
 
 ## 批次审查记录
@@ -86,7 +86,7 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | T04 | document_router 增加鉴权 | #35 | DONE | `T04-document-router-auth` | `33724cc` | #78 | PASS（T04 当时 `pytest -q -k document_auth` → 10 passed；第 2 批审查并入 `test_router_auth.py` 后，现用 `-k router_auth` → 47 passed；鉴权依赖计数 = 2） | 2 | FIXED@57f69e0 |
 | T05 | chat / search / news 路由补充鉴权 | #36 | DONE | `T05-harden-chat-search-news-auth` | `cee1c33` | #80 | PASS（`pytest -q -k "auth or unauthorized"` → 47 passed；三路由鉴权计数 = 2/2/2；`news_router` 实测 8 个端点非 9） | 2 | FIXED@57f69e0 |
 | T06 | 收紧 CORS 配置 | #37 | DONE | `T06-tighten-cors` | `18ed8f8` | #81 | PASS（`pytest tests/core/test_cors_config.py` → 14 passed；通配 + 凭据的硬编码组合已消失；`py_compile app_main` 通过） | 2 | FIXED@57f69e0 |
-| T07 | docker-compose 明文口令改为环境变量注入 | #38 | TODO | — | — | — | — | 3 | PENDING |
+| T07 | docker-compose 明文口令改为环境变量注入 | #38 | DONE | `T07-compose-secrets` | `1552d13` | #83 | PASS（`pytest tests/core/test_db_password_required.py` → 15 passed；`docker compose config --quiet` → exit=0；全仓 `grep postgres123\|minioadmin` 受控文件无残留） | 3 | PENDING |
 | T08 | 修复 Scout 本地知识库检索的集合名不匹配 | #39 | TODO | — | — | — | — | 3 | PENDING |
 | T09 | 修复 text2sql SQL 校验可被 UNION SELECT 绕过 | #40 | TODO | — | — | — | — | 3 | PENDING |
 | T10 | text2sql 使用只读数据库账号兜底 | #41 | BLOCKED | — | — | — | 等待用户创建只读角色 | 4 | PENDING |
@@ -182,3 +182,6 @@ T03 下游仍保留 `file_name=file.filename` —— 复核确认为**合规**�
 | 2026-09-13 | T06 | **R-03 实测闭合**：`withCredentials` 在 `frontend/src` 命中 0 处 → 前端不依赖 CORS 凭据，通配 + `credentials=False` 不影响本地联调，**不构成架构分叉**。另修正原验收 #2 不可执行的问题（`from app.app_main import ...` 会拉起全部路由与 DB 引擎；换成 `core.cors` 又会触发 `core/__init__` 的导入期 JWT 校验），改用 §11.3 的 `importlib` 按文件路径加载 | `pytest tests/core/test_cors_config.py` → 14 passed |
 | 2026-09-13 | — | **第 2 批 `code-review`（双轴并行，fixed point `19547b0`）**：标准轴 7 条 + 规格轴 7 条，去重后 **11 条**（9 修 2 保留）。规格轴独立复验了三项关键声明：R-03 成立、T05 无匿名调用方成立、T41 方案 A 白名单未并轨成立。另发现 `docs/agents/issue-tracker.md` 不存在，规格来源取自本地 `prd.md`/`tickets.md` | 明细见「第 2 批审查 findings 明细」 |
 | 2026-09-13 | — | **第 2 批 findings 修复**：合并两个重复的鉴权测试文件（`test_document_auth.py` 并入 `test_router_auth.py`，改为 4 路由 / 17 端点统一参数表）；把源码字符串匹配断言换成结构化 `APIRouter.dependencies`；修正「不占内存」误导注释、`news_router` 注释 9→8、`knowledge_router` 未使用导入、`.env.example` CORS 措辞 | commit `57f69e0`；`pytest tests -m "not integration"` → **198 passed / 5 deselected** |
+| 2026-09-13 | T07 | 实施 + 合并：`core/database.py` 新增 `_require_env(name)`，`POSTGRES_PASSWORD` 改为导入期校验（缺失/空 → 抛 `RuntimeError` 并点名变量）；`docker-compose.yml` / `backend/docker-compose-base.yml` 的 postgres、minio 口令改为 `${POSTGRES_PASSWORD}` / `${MINIO_ROOT_USER}` / `${MINIO_ROOT_PASSWORD}` 注入，并给 milvus-standalone 补 `MINIO_ACCESS_KEY_ID` / `MINIO_SECRET_ACCESS_KEY`（原为硬编码弱口令）；新增根级 `.env.example` 与 `backend/.env.example` 的占位项；`READMED.md` / `start-services.sh` / `backend/README.md` 明文口令清除；新增 `tests/core/test_db_password_required.py`（15 用例） | commit `1552d13`，PR #83 已 merge（`e4d82a7`），issue #38 自动关闭 |
+| 2026-09-13 | T07 | 验收：`pytest tests/core/test_db_password_required.py` → **15 passed**；`docker compose config --quiet` → exit=0；受控文件 `grep -rn "postgres123\|minioadmin"` 无残留。全量 `pytest tests -m "not integration"` → **213 passed / 5 deselected**（400.52s） | 批次 3 起算（fixed point `57f69e0`） |
+| 2026-09-13 | T07 | **本机 `.env` 未轮换的决策**：本地 `backend/.env` 的 `POSTGRES_PASSWORD` 仍是 11 字符弱口令（等于 `postgres` + 数字后缀），与现有 DB volume 数据绑定。轮换需 `ALTER USER` 或 `docker compose down -v`（**丢数据**），故**不**在票据内自动执行；改为在 `.env.example` 注明轮换步骤，把决策留给用户 | 记录于本行；非回归 |
