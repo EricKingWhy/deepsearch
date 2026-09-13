@@ -12,9 +12,9 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T23、T26 + T41 合并） | `4dde37a0419b1beb4b4a7bc6b05417a33c497056` |
+| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T23、T26 + T41 合并） | `d1732cea2fbe2c4ada2530284981f248217c0a32` |
 | 当前批次 | 8（T24–T25；T20 为决策票待裁决；T10 为 needs-human 保持 BLOCKED） |
-| 当前 fixed point（上一批审查结束 commit） | 本记录 commit（第 7 批审查修复，SHA 于下文回填） |
+| 当前 fixed point（上一批审查结束 commit） | `d1732ce`（第 7 批审查修复 commit） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
@@ -31,7 +31,7 @@
 | 4 | T11–T13 | `6b73d44` | `975eea8` | 5 | `1f52bfc` | FIXED |
 | 5 | T14–T16 | `1f52bfc` | `381c929` | 4 | `d345685` | FIXED |
 | 6 | T17–T19 | `d345685` | `3e18063` | 4 | `9fbdf3f` | FIXED |
-| 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `（本记录 commit，SHA 于下文回填）` | FIXED |
+| 7 | T21–T23 + T26 | `9fbdf3f` | `4dde37a` | 4 | `d1732ce` | FIXED |
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -202,12 +202,12 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T18 | requirements.txt 去重与依赖分区 | #49 | DONE | `T18-requirements-dedup` | `68d00b2` | #102 | PASS（无重复声明；三关键依赖均在；packaging 逐行解析 47 条通过。**用户裁决 A**：不引入版本锁文件） | 6 | FIXED@9fbdf3f |
 | T19 | 决策票：alembic 去留 | #50 | DONE | `T19-alembic-annotation` | `f98a81d` | #103 | PASS（**用户裁决 C**：保留依赖 + 「预留未使用」注释；READMED 迁移章节在位；T18 验收复跑 PASS） | 6 | FIXED@9fbdf3f |
 | T20 | 决策票：chat/index.tsx 是否拆分 | #51 | BLOCKED | — | — | — | 等待用户裁决 | — | — |
-| T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | FIXED@（本记录，SHA 待回填） |
-| T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | FIXED@（本记录，SHA 待回填） |
-| T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | FIXED@（本记录，SHA 待回填） |
+| T21 | 新增 LICENSE | #52 | DONE | `T21-license` | `a091d04` | #106 | PASS（MIT 默认（票面授权），版权人 EricKingWhy，commit 注明可更换） | 7 | FIXED@d1732ce |
+| T22 | 新增 CONTRIBUTING.md | #53 | DONE | `T22-contributing` | `8bdd1e3` | #109 | PASS（5 小节 ≥4；密钥红线命中；全部细则回链不复制；依赖 T26 已先行合并） | 7 | FIXED@d1732ce |
+| T23 | 新增 .editorconfig | #54 | DONE | `T23-editorconfig` | `a458d7d` | #107 | PASS（root=true；py 4/ts 2 空格；end_of_line 保持 lf（票面风险条）；不统一存量换行符） | 7 | FIXED@d1732ce |
 | T24 | 新增 issue 与 PR 模板 | #55 | TODO | — | — | — | — | 8 | PENDING |
 | T25 | 新增 CHANGELOG.md 并初始化版本号 | #56 | TODO | — | — | — | — | 8 | PENDING |
-| T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | FIXED@（本记录，SHA 待回填） |
+| T26 | 新增后端 ruff 配置 | #57 | DONE | `T26-ruff-config` | `b6f1ab2` | #108 | PASS（ruff.toml 最小集 E9/F63/F7/F82；`ruff check app tests` → All checks passed!；**提前入第 7 批**以解除 T22 依赖） | 7 | FIXED@d1732ce |
 | T27 | 后端测试分层：无基础设施单测可独立运行 | #58 | TODO | — | — | — | — | 9 | PENDING |
 | T28 | 新增 CI：后端 pytest | #59 | TODO | — | — | — | — | 9 | PENDING |
 | T29 | 新增 CI：前端 lint + vitest + build | #60 | TODO | — | — | — | — | 9 | PENDING |
