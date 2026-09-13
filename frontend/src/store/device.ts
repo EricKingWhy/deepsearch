@@ -18,8 +18,8 @@ const state = proxyWithPersist({
   },
   migrations: {
     // 从 v0 迁移: useDeepsearch -> searchModes
-    // 注意：valtio-persist 调用迁移时不传参、忽略返回值，且调用点发生在旧持久化数据载入之前，
-    // 迁移机制当前无法真正改写旧数据（机制缺陷，记入 TRACKER 已知残留，待后续票修复）。
+    // 注意：valtio-persist 调用迁移时不传参、忽略返回值（`await migration()`），
+    // 迁移拿不到 proxy 入参、返回值也不被消费，因此无法改写已载入的旧持久化数据（机制缺陷，记入 TRACKER 已知残留，待后续票修复）。
     // 原迁移函数以 any 类型的 oldState 入参读取旧状态，运行时该入参恒为 undefined（潜在 TypeError，被 any 掩盖）。
     // 此处收敛为无参 no-op：保证版本簿记正常推进，且不再触碰不存在的入参
     1: (): void => {},
