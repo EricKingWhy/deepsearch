@@ -21,15 +21,12 @@ interface VisualizationProps {
 }
 
 export default function Visualization({ charts }: VisualizationProps) {
-  console.log(`[Visualization] 渲染，charts 数量: ${charts?.length || 0}`)
   if (charts?.length) {
     charts.forEach((c, i) => {
-      console.log(`[Visualization] 图表 ${i+1}: id=${c.id}, title=${c.title}, type=${c.type}, has_echarts=${!!c.echarts_option}, has_image=${!!c.image_base64}`)
     })
   }
 
   if (!charts?.length) {
-    console.log(`[Visualization] 无图表数据，显示空状态`)
     return (
       <div className={styles.empty}>
         <BarChartOutlined className={styles.emptyIcon} />

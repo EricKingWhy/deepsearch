@@ -28,7 +28,6 @@ export function Nav() {
 
   const currentIndustry = useMemo(() => {
     const industry = industries.find((i) => i.id === currentIndustryId)
-    console.log('[Nav] 当前行业:', industry?.name)
     return industry || industries[0]
   }, [currentIndustryId, industries])
 
@@ -42,7 +41,6 @@ export function Nav() {
         </div>
       ),
       onClick: () => {
-        console.log('[Nav] 切换行业:', industry.id, industry.name)
         setCurrentIndustry(industry.id)
       },
     }))
