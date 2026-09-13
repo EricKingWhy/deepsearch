@@ -1523,6 +1523,11 @@ docker run --rm deepsearch-backend:dev sh -c 'test ! -f /app/.env && echo "OK: �
 
 预期：命令 1/2 通过；命令 3/4 在 Docker 可用时通过。
 
+### 实施修正（2026-09-13，T30 实测后）
+
+- 验收 1/2 PASS（`docker compose config --quiet` 合法）；验收 3/4（真实构建+启动+容器内 .env 检查）因 **Docker daemon 未运行** 按 R-05 记 BLOCKED，Docker 可用后补跑。
+- 补充发现：`backend/app/Dockerfile`（旧式单阶段、构建上下文为 app/）为遗留文件，本票未动——如确认废弃可在后续票清理。
+
 ### 风险
 
 - **R-05**：Docker 未运行时命令 3/4 记 `BLOCKED`。命令 1/2 必须 PASS。
@@ -1566,6 +1571,11 @@ bash start-services.sh start && bash start-services.sh status
 ```
 
 预期：命令 1 无输出；命令 2 有命中；命令 3 打印 `OK`；命令 4 在 Docker 可用时全部服务 healthy。
+
+### 实施修正（2026-09-13，T31 实测后）
+
+- 验收 1/2/3 PASS；验收 4（真实执行 start/status）因 **Docker daemon 未运行** 记 BLOCKED。
+- 等待实现取「按容器名轮询 `docker inspect` Health.Status（180s 超时）」而非 `docker compose wait`——理由见票面风险条（wait 语义为等退出而非等 healthy）。
 
 ### 风险
 
