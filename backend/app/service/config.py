@@ -18,10 +18,10 @@ class ServiceConfig:
         return {
             'base_url': os.environ.get('API_BASE_URL', 'http://localhost:9380'),
             # 以下三项历史上带有真实凭据作为默认值，已随源码泄露到公开仓库。
-            # 现改为空默认值，不再静默使用泄露凭据。缺失时的行为**并不一致**，如实标注：
-            #   - api_key / default_dataset_id：调用方 DocumentService 显式校验后抛错（响亮失败）；
-            #   - serper_api_key：web_search_service 会照常发请求并带上空 X-API-KEY，
-            #     表现为第三方 401/403，**不是**启动期显式失败（§4 总门禁记为已知残留）。
+            # 现改为空默认值，不再静默使用泄露凭据。缺失时三者都是**响亮失败**（T47 已补齐）：
+            #   - api_key / default_dataset_id：调用方 DocumentService 显式校验后抛错；
+            #   - serper_api_key：WebSearchService.search() 在发请求前抛 ValueError（方案 C，
+            #     调用期显式报错），不再带空 X-API-KEY 静默发请求。
             'api_key': os.environ.get('API_KEY', ''),
             'default_dataset_id': os.environ.get('DEFAULT_DATASET_ID', ''),
             'serper_api_key': os.environ.get('SERPER_API_KEY', ''),

@@ -18,6 +18,11 @@ class WebSearchService:
         
         Args:
             api_key: API key for Serper.dev. If not provided, will attempt to read from environment.
+
+        Note:
+            密钥为空时**不在此处报错**：serper 是可选检索能力，而本服务在 chat 路由里
+            由共用依赖 `get_services()` 构造 —— 构造期报错会连坐会话创建等**与检索无关**
+            的端点。缺密钥的显式失败发生在 `search()` 调用期（T47 方案 C）。
         """
         self.api_key = api_key or os.environ.get('SERPER_API_KEY')
         self.host = "google.serper.dev"
@@ -46,7 +51,19 @@ class WebSearchService:
             
         Returns:
             Search results as a dictionary
+
+        Raises:
+            ValueError: 未配置 serper 密钥时（T47 方案 C）。此前会带空 `X-API-KEY` 照常发请求，
+                把「没配密钥」伪装成一次普通的搜索失败；现在改为在**发起网络请求之前**立刻抛错。
+                守卫刻意放在下方 `try` **之外** —— 放进去会被本地 `except Exception` 吞成
+                `{"error": True}`，也就退回原来的静默行为。
         """
+        if not self.api_key:
+            raise ValueError(
+                "缺少 Serper API 密钥：请配置环境变量 SERPER_API_KEY。"
+                "serper 为可选联网检索能力，但一旦真的要检索就必须有密钥 —— "
+                "拒绝以空 X-API-KEY 静默发请求（见 tickets.md T47）。"
+            )
         conn = http.client.HTTPSConnection(self.host)
         
         payload = json.dumps({
