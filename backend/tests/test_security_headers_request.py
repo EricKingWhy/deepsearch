@@ -16,7 +16,7 @@ deep_research_v2 重链 → models 顶层类）、以及**重复导入 models �
 ``Table '...' is already defined``**。改用**子进程**则每次都是干净解释器：
 真实模块按真实顺序导入、没有会话残留，既不需要往本文件堆一长串桩，也不会污染其它测试。
 
-代价：导入 ``app_main`` 约 25s，本文件是全仓最重的一个测试（相对全量 ~26s 是明显增量）。
+代价：导入 ``app_main`` 实测约 16–18s（冷启动曾见 30s），本文件是全仓最重的一个测试（相对全量 ~25s 是明显增量）。
 换来的是**唯一一处**对「中间件真的挂在 HTTP 响应上」的自动化锁，值这个价。
 
 无基础设施：``TestClient`` 只在 ``with`` 块里触发 lifespan，探针**不使用**上下文管理器，
@@ -74,7 +74,8 @@ def responses():
         env=env,
         capture_output=True,
         text=True,
-        timeout=600,
+        # 实测导入 16–18s（冷启动 30s）；180s 留 ~6 倍余量，挂死时也不至白等 10 分钟
+        timeout=180,
     )
     assert proc.returncode == 0, f"探针进程失败：\n{proc.stderr[-3000:]}"
 
