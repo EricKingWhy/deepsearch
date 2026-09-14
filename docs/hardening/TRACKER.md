@@ -318,7 +318,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T45 | 决策票：本地知识库结果形状统一（三处实现） | #152 | TODO | — | — | — | — | §4 残留 | — |
 | T46 | CSP 请求级回归测试 | #153 | TODO | — | — | — | — | §4 残留 | — |
 | T47 | 决策票：可选外部服务密钥缺失的失败语义（serper） | #154 | TODO | — | — | — | — | §4 残留 | — |
-| T48 | OpenAPI 文档版本与包版本同步 | #155 | TODO | — | — | — | — | §4 残留 | — |
+| T48 | OpenAPI 文档版本与包版本同步 | #155 | DONE | `T48-openapi-version-sync` | `2cb0489` | #159 | PASS（两种导入模式实测均 `0.1.0`；`ruff check app` → All checks passed；`pytest tests -q` → 298 passed / 17 deselected；`grep -n version= app/app_main.py` 无 `2.0.0`） | 1 | PENDING |
 | T49 | needs-infra 验证补跑（T35 实机渲染 + T08 端到端） | #156 | TODO | — | — | — | — | §4 残留 | — |
 | T50 | 仓库卫生清理（.runlogs 残留 + 已合并分支） | #157 | TODO | — | — | — | — | §4 残留 | — |
 
@@ -457,3 +457,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **§4 总门禁回填 + 计划收尾**：T20 批次审查 → `FIXED@9bd4c87`；新增「§4 总门禁 findings 明细」小节（16 条：修复 8 / 保留判定 7 / 部分驳回 1）；未闭合项 **P-11 关闭、新增 P-12**（前端 CI 的 lint/vitest 仍有意注释）。**变异检查**：临时撤掉 `attachment_router` 的路由级鉴权依赖后 `test_router_auth.py` **8 failed**（含 `test_auth_dependency_is_mounted_at_router_level[attachment_router]` 与 3 个逐端点 401 用例），恢复后 **58 passed** —— 新断言确有判别力。**计划终态**：41 张票 **40 DONE**，仅 **T10** 为 `needs-human` 保持 BLOCKED（验收要求**用户本人**创建只读 DB 角色，票面明令 AI 不得持有生产库凭据）；§4 总门禁 findings **全部处置完毕**（修复 8 / 保留判定 7 / 部分驳回 1，无未处置项）；仍待人工的仅 T10 一项 | 本记录 commit |
 | 2026-09-13 | — | **§4 门禁补漏（由用户指出）：32 个 issue 从未被关闭** —— T08–T40 的 PR 正文没有 `Closes #N` 关键字（编号被写进标题或写成纯引用 `<!-- 对应 issue：#70 -->`），GitHub 不收单；而台账在多条执行日志里逐条记「issue #N **自动关闭**」，属**未核验的副作用声明** —— 双轴子代理只读仓库，天然照不到 GitHub 侧事实，13 个批次与 §4 门禁首轮均漏判。**处置**：① 统一补关 **32 个** DONE 票的 issue（逐个附实施 commit / PR / 台账指引）；**T10（#41）按需保持 OPEN**；② **根因修复**：PR 模板把 `Closes #<issue 编号>` 移到 HTML 注释之外的**正文首行**并加醒目警示；③ `LOOP-PROTOCOL.md §5` 补「关闭关键字规则 + 合并后必须核验 `gh issue view <编号> --json state` == `CLOSED`」。**教训**：凡涉及**外部系统**（GitHub / CI / 部署 / 第三方）的声明，必须回读核验（`gh issue list --state open`、`gh pr checks`、`curl`）后再写进台账，不得凭预期推定 | 本记录 commit |
 | 2026-09-14 | — | **§4 门禁残留开票**：以 ask-matt 路由（代码库健康 → improve-codebase-architecture 的候选思路）梳理 §4 保留判定 / P-12 / needs-infra 缺口，单独立项 **T42–T50**（阶段 7 · 收尾残留，里程碑 `hardening-v2`）；同步 `tickets.md` 与 GitHub issue | 新建 9 张票 + 9 个 issue（#149–#157）；`hardening-v1` 收尾不受影响 |
+| 2026-09-14 | T48 | 实施 + 合并：`app_main.py` 的 `FastAPI(version="2.0.0")` 改为读取 `app/__init__.py` 的 `__version__`（单一来源，0.1.0）。因 app_main 有包内 / 脚本 / 容器顶层三种导入方式，用 try/except 两条路径解析，避免任一模式 ImportError | commit `2cb0489`，PR #159；两模式均得 0.1.0、ruff All checks passed、pytest 298 passed / 17 deselected |
