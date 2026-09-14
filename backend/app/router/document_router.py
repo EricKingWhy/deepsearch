@@ -13,9 +13,7 @@ from service.docmind_service import process_document_with_docmind
 from router.auth_router import get_current_user_required
 from core.upload_security import (
     ensure_supported_extension,
-    read_upload_with_limit,
-    safe_filename,
-    MAX_UPLOAD_BYTES,
+    save_upload,
 )
 from schemas.document import (
     DeleteDocumentsRequest,
@@ -74,14 +72,10 @@ async def upload_document(
         document_id = str(uuid.uuid4())
 
         # 保存上传的文件到临时位置。
-        # 落盘文件名由服务端生成（uuid + 规范化扩展名），**不使用 file.filename** ——
-        # 该字符串完全由客户端控制，"../../" 片段足以把文件写到 /tmp 之外（事实 F-02）。
-        # 读取时分块并限长，避免超大文件一次性读入内存。
-        os.makedirs(UPLOAD_TEMP_DIR, exist_ok=True)
-        temp_file_path = os.path.join(UPLOAD_TEMP_DIR, safe_filename(extension=file_extension))
-        content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
-        with open(temp_file_path, "wb") as temp_file:
-            temp_file.write(content)
+        # 落盘名由服务端生成（uuid + 规范化扩展名）、限长读取、失败清理，全部收敛到
+        # core.upload_security.save_upload —— **不使用 file.filename**（该字符串完全由
+        # 客户端控制，"../../" 片段足以把文件写到 /tmp 之外，事实 F-02），三入口共用（T44）。
+        temp_file_path = await save_upload(file, UPLOAD_TEMP_DIR, extension=file_extension)
         
         # 使用 DocMind 处理文档并存储到 Milvus
         processing_result = process_document_with_docmind(
