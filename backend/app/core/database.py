@@ -35,6 +35,17 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "industry_assistant")
 
 DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
+
+def resolve_text2sql_url() -> str:
+    """返回 text2sql 使用的连接串（T10）。
+
+    优先 `TEXT2SQL_DATABASE_URL` —— 指向只有 SELECT 权限的角色后，即使 T09 的
+    解析式 SQL 校验被绕过，写操作也会在**数据库层**被拒绝（唯一根治手段）；
+    未配置则回退主库 `DATABASE_URL`，此时解析式校验是唯一防线。
+    """
+    return os.getenv("TEXT2SQL_DATABASE_URL") or DATABASE_URL
+
+
 # 连接池参数取保守值（依据见 tickets.md T12）：
 # - pool_size=5 / max_overflow=10：单实例应用的常规并发足够；Postgres 默认 max_connections=100，
 #   多个进程（后端 + 数据初始化脚本）同时连接也不会逼近上限。
