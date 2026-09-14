@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T41 + T20 + 批次 10/11/12/13 审查修复） | `fddd6a635101500c69863f42425d35bae5a7d4db`（T20 收尾 PR #146 的 merge commit；本回填 PR 合并后 main 再前移一格） |
-| 当前批次 | **阶段 7 第 1 批审查（已完成）** —— T42–T50 已立项；T43 / T46 / T48 已 DONE 并完成双轴审查（fixed point `60b8b47` → 审查 `e8f6864`，6 条 3 修 3 保留，修复 `96fadb4`）；T44 / T45 / T47 为决策票保持 BLOCKED；T49（needs-infra）、T10 待续 |
+| `main` 当前 tip（2026-09-14 核实，本地＝远端，已含 T01–T42 + T20 + 阶段 7 批次 7-1 审查修复） | `f04ab01acbd72c57738bb75d34cd3c06c5a700e6`（T42 收尾 PR #162 的 merge commit） |
+| 当前批次 | **阶段 7 第 2 批（进行中）** —— 7-1 已完成（fixed point `60b8b47` → 审查 `e8f6864` → 修复 `96fadb4`）；7-2 首票 **T42 已 DONE**（PR #162，fixed point 起点 `96fadb4`，待够 2–4 票收批）；待续 T49（needs-infra）/ T50（仓库卫生）；T44 / T45 / T47 为决策票保持 BLOCKED；T10 待人工 |
 | 当前 fixed point（上一批审查结束 commit） | `96fadb4`（阶段 7 第 1 批审查修复 commit）；§4 总门禁审查起点 = `9342913` |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 50（T01–T41 + 阶段 7 的 T42–T50） |
-| 已完成 | 43（阶段 1–6 的 40 + 阶段 7 的 T43 / T46 / T48） |
+| 已完成 | 44（阶段 1–6 的 40 + 阶段 7 的 T42 / T43 / T46 / T48） |
 | 决策票待裁决 | **T44 / T45 / T47**（阶段 7，等待用户裁决 A/B/C）；另有 T10 为 needs-human 保持 BLOCKED |
 
 ## 批次审查记录
@@ -335,7 +335,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | DONE | `T39-text2sql-tests` | `708fdbe` | #140 | PASS（**票面前提部分不成立**：该文件在 T09 已建立，本票实为扩展既有文件，30 → **41 例**（要求 ≥15）；补 TRUNCATE / ALTER / CREATE / GRANT / REVOKE / 时间盲注 6 例、子查询 3 例、大小写混写 1 例、超长 SQL（800 列、>4000 字符）1 例；先用探针实测真实行为再写断言，**未发现真实缺陷、未放宽任何校验范围**；pytest tests -q → 247 passed / 17 deselected（T39 时点；T40/T37 合并后 265）、ruff All checks passed） | 13 | FIXED@`7773c84` |
 | T40 | 补 security 鉴权单元测试 | #71 | DONE | `T40-security-tests` | `c4e2510` | #141 | PASS（新增 `tests/core/test_security.py` **18 例**（要求 ≥6）：往返 / 篡改签名 / 篡改载荷 / 无 sub / 畸形串 / 过期（负 `expires_delta`，未引入 freezegun）/ 另一密钥 / `get_current_user_required` 缺头·非 Bearer·垃圾 Token → 401、有效 Token + 启用用户 → 200、未知用户 → 401、已禁用用户 → 403。票面第 5 项（弱密钥 / 缺失密钥 → 配置期失败）已由 T02 的 `test_security_jwt.py` 覆盖，**刻意不重复**；**不连库** —— `get_user_by_id` 用 monkeypatch 接管，`oauth2_scheme` 实测 `auto_error=False` 故缺头与非 Bearer 都落到 `if not token` 的 401 分支；密钥自查无 `sk-*` 命中；pytest tests -q → 265 passed / 17 deselected） | 13 | FIXED@`7773c84` |
 | T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | FIXED@57f69e0 |
-| T42 | 前端 eslint 存量清零并启用 CI lint | #149 | TODO | — | — | — | — | §4 残留 | — |
+| T42 | 前端 eslint 存量清零并启用 CI lint | #149 | DONE | `T42-eslint-cleanup` | `24e2542` | #162 | PASS（`npx eslint .` **87 problems（78 errors / 9 warnings）→ 0**；不降级规则（`frontend/eslint.config.js` 未改）、不批量压制，仅 3 处逐行 `eslint-disable`（declaration-merge 签名占位 / `state_json` 收窄 / 聚合 memo 依赖）均注明理由；新增 `utils/error-message.ts` 的 `errorDetail()` 收敛 catch 取值、请求层 `AxiosResponse<any>` → `unknown`、删死代码 `buildContentBlocks`、`news.tsx` 3 处 U+3000 全角空格。取消 `ci-frontend.yml` 的 lint step 注释并同步原因注释。验收：`npx eslint .` → 0 problems、`npm run test` → 33 passed / 6 files、`npm run build` 通过、YAML 合法；CI frontend job **pass 52s**（含新启用的 lint step）、backend job pass 1m6s） | 7-2 | PENDING |
 | T43 | 消除前端集成用例时序抖动并启用 CI vitest | #150 | DONE | `T43-vitest-flake` | `be1ea7c` | #161 | PASS（**复现成功**：6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`；定位为**预算不足**而非竞态 —— 重交互用例单条 2.6–2.9s vs 默认 5000ms 只有 1.7 倍余量；修法 `vitest.config.ts` 设 `testTimeout: 20000`（断言与墙钟无关，唯一计时用例走 fake timers）；`userEvent({delay:null})` 实测只降 2963→2642ms，弃用。启用 ci-frontend 的 vitest step。验收：6 份并发 6/6 全绿 + 串行 10 次全绿（33 passed / 6 files）；eslint 78/9 持平） | 7-1 | FIXED@96fadb4 |
 | T44 | 决策票：上传落盘生命周期并轨（三路由） | #151 | TODO | — | — | — | — | §4 残留 | — |
 | T45 | 决策票：本地知识库结果形状统一（三处实现） | #152 | TODO | — | — | — | — | §4 残留 | — |
@@ -484,3 +484,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-14 | T46 | 实施 + 合并：新增 `tests/test_security_headers_request.py`，用 `TestClient` 发**真实请求**锁定 CSP 中间件行为（`/hello` 带 CSP、`/openapi.json` 与 `/docs` 豁免、`/docsx` 不豁免），补上「源码文本断言」看不到的接线缺口。**在子进程内导入 app_main**：同会话内会连锁踩坑（conftest 占位包缺名 → deep_research_v2 重链 → models 顶层类 → 重复导入 models 触发 `Table 'chat_attachments' is already defined`），子进程每次干净解释器；`TestClient` 不用 `with` 故不触发 lifespan（无基础设施） | commit `4ba9287`，PR #160；4 passed、变异检查 2 failed 后恢复、全量 302 passed / 17 deselected、ruff All checks passed |
 | 2026-09-14 | T43 | 实施 + 合并：**复现**前端 test 的「时序抖动」—— 6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`（`OutlineApprovalPanel.test.tsx` 的 `edits, adds…`、`deep-research-integration.test.tsx` 的两条）。根因是**默认 5000ms 对 2.6–2.9s 的重交互用例只有 1.7 倍余量**，非竞态。修法：`frontend/vitest.config.ts` 设 `testTimeout: 20000`；启用 `ci-frontend.yml` 的 `Test (vitest)` step（lint 仍注释，属 T42）。弃用 `userEvent({delay:null})`（实测仅 2963→2642ms） | commit `be1ea7c`，PR #161；6 份并发 6/6 全绿、串行 10 次全绿、eslint 78/9 持平 |
 | 2026-09-14 | T43/T46/T48 | **阶段 7 第 1 批双轴审查**（fixed point `60b8b47` → 审查 `e8f6864`）：标准轴 0 硬违规 + 4 judgement call、规格轴 2 条 → 去重 **6 条（3 修 3 保留）**。已修 `96fadb4`：T46 子进程超时 600→180s、docstring 数值与实测对齐（16–18s / 冷启动 30s）。保留判定：T46 marker（`needs_infra` 会反选掉唯一的请求级 CSP 锁）、T46 子进程形态（同进程 `Table ... already defined`）、T43 timeout-vs-竞态（实测为预算不足非竞态）。已核验 T48 第三模式（`python app/app_main.py` 无 ImportError） | 修复 commit `96fadb4`，进入阶段 7 第 2 批 |
+| 2026-09-14 | T42 | 实施 + 合并：前端 eslint 存量 **87 problems（78 errors / 9 warnings）**清零并启用 CI lint step。逐类收敛（`no-explicit-any` / `no-unused-vars` / `no-empty-object-type` / `no-wrapper-object-types` / `no-irregular-whitespace` / `react-hooks/exhaustive-deps`），**不降级任何规则**（`frontend/eslint.config.js` 未改）、**不批量压制**（仅 3 处逐行 `eslint-disable`，均注明理由）；新增 `utils/error-message.ts` 收敛 catch 取值、请求层 `AxiosResponse<any>` → `unknown`、删死代码 `buildContentBlocks`。取消 `ci-frontend.yml` 的 lint step 注释并同步原因注释（CRLF 逐字节保留） | commit `24e2542`，PR #162（merge `f04ab01`）；`npx eslint .` → 0 problems、`npm run test` → 33 passed / 6 files、`npm run build` 通过；CI frontend **pass 52s**（含新启用 lint step）、backend pass 1m6s；`gh issue view 149` → **CLOSED** |
