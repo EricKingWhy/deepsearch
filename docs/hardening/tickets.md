@@ -2394,6 +2394,28 @@ cd backend && pytest tests -q
 
 > GitHub issue：#156　**状态**：TODO
 
+### 复核记录（2026-09-14，批次 7-3）
+
+**结论：维持 `BLOCKED`，但阻塞根因由「Docker 未运行」上移到「第三方账号侧」—— 已尽量推进并拿到外部错误原文。**
+
+- **Docker 前置：已解除。** 7 个容器全部 `Up (healthy)`（milvus / postgres / minio / redis / elasticsearch / etcd + backend）。
+- **T08 端到端：不可执行（外部账号）。**
+  - 解析侧：新建 `demo` 知识库（集合名 → `kb_demo`）并上传 `data/华电科工.pdf`，文档状态 `failed`；直接探针 `service.docmind_service.submit_job` 返回
+    `DocMindServiceNotOpen — You have not open the docMind service.`（阿里云 DocMind 未开通）。
+  - 向量侧：直接探针 `service.embedding_service.generate_embedding` 返回 `None`，DashScope 响应
+    `HTTP 400 AllocationQuota.FreeTierOnly`（免费额度耗尽，账号处于「仅用免费额度」模式）。
+  - 两者都需**用户在阿里云侧操作**（开通 DocMind / 充值或关闭「仅用免费额度」），AI 无法代劳。
+- **T35 实机渲染：未执行（前置链更长）。** 浏览器前置已满足（本机 Chrome + Edge 可用），但三处 echarts
+  （`knowledge-graph` / `process-report` / `visualization`）都是**深研结果详情页的子组件、无独立路由**，
+  必须先跑完一次深研才能到达；深研本身同样受第三方额度约束。
+- **未伪造任何通过**：所有结论均来自可复现的直接探针命令与原始错误响应。
+- **环境副作用已清理**：验证用 `demo` 知识库及其失败文档行经 API `DELETE`（HTTP 204），`knowledge_bases` 计数归零；
+  为验证而在宿主机临时启动的 8001 后端已停止（容器 8000 未改动）。
+
+**衍生发现 → `P-13`**：`docker compose` 的 `backend` 服务以 `env_file: ./backend/.env` 注入，而该文件为**宿主机导向**
+（`POSTGRES_HOST=localhost` / `MILVUS_HOST=localhost`）→ 容器内任何 DB / Milvus 端点均 500（`/hello` 不碰库故未被 T30 验收 3 暴露）。
+根治需在 compose 补 `environment:` 覆盖，属代码变更、超出本票「无代码变更」范围，故记入 TRACKER 未闭合项。
+
 ---
 
 ## T50 仓库卫生清理（.runlogs 残留 + 已合并分支）
