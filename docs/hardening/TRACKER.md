@@ -12,13 +12,13 @@
 |------|-----|
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
-| `main` 当前 tip（2026-09-14 核实，本地＝远端，已含 T01–T42 + T20 + 阶段 7 批次 7-1 审查修复） | `f04ab01acbd72c57738bb75d34cd3c06c5a700e6`（T42 收尾 PR #162 的 merge commit） |
-| 当前批次 | **阶段 7 第 2 批（进行中）** —— 7-1 已完成（fixed point `60b8b47` → 审查 `e8f6864` → 修复 `96fadb4`）；7-2 首票 **T42 已 DONE**（PR #162，fixed point 起点 `96fadb4`，待够 2–4 票收批）；待续 T49（needs-infra）/ T50（仓库卫生）；T44 / T45 / T47 为决策票保持 BLOCKED；T10 待人工 |
+| `main` 当前 tip（2026-09-14 核实，本地＝远端，已含 T01–T42 + T20 + 阶段 7 批次 7-1 审查修复 + T42/T50 收尾登记） | SHA 由紧随其后的**回填 commit**写入（T42 收尾 PR #162 的 merge = `f04ab01`；T42/T50 登记见「执行日志」末两条） |
+| 当前批次 | **阶段 7 第 2 批（已达收批票数）** —— 7-1 已完成（fixed point `60b8b47` → 审查 `e8f6864` → 修复 `96fadb4`）；7-2 已完成 **T42**（PR #162）与 **T50**（无被跟踪文件变更，纯仓库卫生），fixed point 起点 `96fadb4`，2 票达 §3 批大小下限可收批；余 **T49**（needs-infra，需浏览器 + Milvus + embedding 凭据）；T44 / T45 / T47 为决策票保持 BLOCKED；T10 待人工 |
 | 当前 fixed point（上一批审查结束 commit） | `96fadb4`（阶段 7 第 1 批审查修复 commit）；§4 总门禁审查起点 = `9342913` |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
 | 总 ticket 数 | 50（T01–T41 + 阶段 7 的 T42–T50） |
-| 已完成 | 44（阶段 1–6 的 40 + 阶段 7 的 T42 / T43 / T46 / T48） |
+| 已完成 | 45（阶段 1–6 的 40 + 阶段 7 的 T42 / T43 / T46 / T48 / T50） |
 | 决策票待裁决 | **T44 / T45 / T47**（阶段 7，等待用户裁决 A/B/C）；另有 T10 为 needs-human 保持 BLOCKED |
 
 ## 批次审查记录
@@ -343,7 +343,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T47 | 决策票：可选外部服务密钥缺失的失败语义（serper） | #154 | TODO | — | — | — | — | §4 残留 | — |
 | T48 | OpenAPI 文档版本与包版本同步 | #155 | DONE | `T48-openapi-version-sync` | `2cb0489` | #159 | PASS（两种导入模式实测均 `0.1.0`；`ruff check app` → All checks passed；`pytest tests -q` → 298 passed / 17 deselected；`grep -n version= app/app_main.py` 无 `2.0.0`） | 7-1 | FIXED@96fadb4 |
 | T49 | needs-infra 验证补跑（T35 实机渲染 + T08 端到端） | #156 | TODO | — | — | — | — | §4 残留 | — |
-| T50 | 仓库卫生清理（.runlogs 残留 + 已合并分支） | #157 | TODO | — | — | — | — | §4 残留 | — |
+| T50 | 仓库卫生清理（.runlogs 残留 + 已合并分支） | #157 | DONE | —（无被跟踪文件变更） | —（本记录 commit） | —（无变更，免 PR） | PASS（① **分支清理**：删除已并入 `main` 的**本地 33 个 + 远端 32 个**（T01–T07 / T22 / T32–T42 + batch2/10/11/12/13 系列 + docker-acceptance-backfill）；`git branch --merged main` 仅剩 `main` + 他工具**活跃 worktree 分支** `codex/deep-research-outline-approval`（有意保留，不可删）；`git ls-remote --heads origin` 仅剩 `main`。② **`.runlogs` 清理**：**81M / 3639 文件**（主体 `venv-broken-025154` + 22 个散落日志/脚本，含 `env-backup-*` 与 eslint 全量 JSON）经**用户确认**后按 §11.1 用 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 删除并重建空目录。验收三命令全满足：`git branch --merged main` 无可删分支、`ls .runlogs` 空、`git status --short` 干净。**本票无任何被跟踪文件变更**，故无分支/PR） | 7-2 | PENDING |
 
 ## 待办 / 未闭合项
 
@@ -353,9 +353,9 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 |----|------|------|------|
 | **P-01** | 后端 venv 依赖安装（pytest 可用） | ✅ 已完成 | 已解决。可用 venv：`C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe`（Python 3.11.1 + pytest 9.1.1）。绕过 safe-delete 防护的完整配方见 `LOOP-PROTOCOL.md` §11。 |
 | **P-02** | T01 的 pytest 补跑 | ✅ 已完成 | `pytest tests/service/test_dr_g_config.py -v` → **9 passed**（参数化展开后为 9 个用例，1 warning 为无关的 `asyncio_mode` 配置项告警）。 |
-| **P-03** | 清理 `.runlogs/venv-broken-*`（约 5000 个文件） | 待处理 | 现存 1 个：`.runlogs/venv-broken-025154`。需用户确认后删除（批量删除防护会拦截）。 |
+| **P-03** | 清理 `.runlogs/venv-broken-*`（约 5000 个文件） | ✅ **已完成** | T50 处置（2026-09-14）：经**用户确认**后按 §11.1 逃生口 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 删除整份 `.runlogs` 残骸（实测 81M / 3639 文件，含 `venv-broken-025154`）并重建空目录。**P-03 关闭。** |
 | **P-04** | 本地 `main` 与远端合并态同步 | ✅ 已完成 | 已 fast-forward 到 `b5abdbb`（PR #72 合并提交），本地＝远端。 |
-| **P-05** | 删除已合并的 T01/T02/T03 本地/远端分支 | 待处理 | `T01-remove-hardcoded-credentials`、`T02-require-jwt-secret`、`T03-harden-document-upload` 均已并入 `main`，可择机清理，非阻塞。 |
+| **P-05** | 删除已合并的 T01/T02/T03 本地/远端分支 | ✅ **已完成** | T50 处置（2026-09-14）：扩面清理**全部**已并入 `main` 的分支 —— **本地删 33 个、远端删 32 个**（T01–T07 / T22 / T32–T42 + batch2/10/11/12/13 系列 + docker-acceptance-backfill）。剩 `codex/deep-research-outline-approval` 为他工具的**活跃 worktree 分支**，有意保留。**P-05 关闭。** |
 | **P-06** | 工作树被反复清空（环境侧） | **反复出现（4 次），每票必查** | 现象从 `backend/tests`（20 文件）升级到 `backend/app` + `backend/tests`（114 → 111 文件），并会**在 git 命令执行中途**发生。已在 `LOOP-PROTOCOL.md` §9.2 / §9.3 固化恢复步骤与六条硬规则（**禁止 `git add -A`**、不 checkout main、commit 前状态必须为空）。 |
 | **P-07** | venv 缺少 `bcrypt` | ✅ 已完成 | `passlib[bcrypt]` 的 extra 未随 primary 依赖装入。已用 `uv pip install --python <venv> "bcrypt>=4.0"` 补齐（bcrypt 5.0.0），配方同 §11。 |
 | **P-08** | 文档文件也会被静默回退 | **每票必查** | 实测：某次 `TRACKER.md` 的编辑报「成功」但**未落盘**，被后来的提交带成旧内容；同一批里另一些编辑却保住了。**对策**：写完文档后 `sed -n` / `grep` 复核，再提交。 |
@@ -485,3 +485,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-14 | T43 | 实施 + 合并：**复现**前端 test 的「时序抖动」—— 6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`（`OutlineApprovalPanel.test.tsx` 的 `edits, adds…`、`deep-research-integration.test.tsx` 的两条）。根因是**默认 5000ms 对 2.6–2.9s 的重交互用例只有 1.7 倍余量**，非竞态。修法：`frontend/vitest.config.ts` 设 `testTimeout: 20000`；启用 `ci-frontend.yml` 的 `Test (vitest)` step（lint 仍注释，属 T42）。弃用 `userEvent({delay:null})`（实测仅 2963→2642ms） | commit `be1ea7c`，PR #161；6 份并发 6/6 全绿、串行 10 次全绿、eslint 78/9 持平 |
 | 2026-09-14 | T43/T46/T48 | **阶段 7 第 1 批双轴审查**（fixed point `60b8b47` → 审查 `e8f6864`）：标准轴 0 硬违规 + 4 judgement call、规格轴 2 条 → 去重 **6 条（3 修 3 保留）**。已修 `96fadb4`：T46 子进程超时 600→180s、docstring 数值与实测对齐（16–18s / 冷启动 30s）。保留判定：T46 marker（`needs_infra` 会反选掉唯一的请求级 CSP 锁）、T46 子进程形态（同进程 `Table ... already defined`）、T43 timeout-vs-竞态（实测为预算不足非竞态）。已核验 T48 第三模式（`python app/app_main.py` 无 ImportError） | 修复 commit `96fadb4`，进入阶段 7 第 2 批 |
 | 2026-09-14 | T42 | 实施 + 合并：前端 eslint 存量 **87 problems（78 errors / 9 warnings）**清零并启用 CI lint step。逐类收敛（`no-explicit-any` / `no-unused-vars` / `no-empty-object-type` / `no-wrapper-object-types` / `no-irregular-whitespace` / `react-hooks/exhaustive-deps`），**不降级任何规则**（`frontend/eslint.config.js` 未改）、**不批量压制**（仅 3 处逐行 `eslint-disable`，均注明理由）；新增 `utils/error-message.ts` 收敛 catch 取值、请求层 `AxiosResponse<any>` → `unknown`、删死代码 `buildContentBlocks`。取消 `ci-frontend.yml` 的 lint step 注释并同步原因注释（CRLF 逐字节保留） | commit `24e2542`，PR #162（merge `f04ab01`）；`npx eslint .` → 0 problems、`npm run test` → 33 passed / 6 files、`npm run build` 通过；CI frontend **pass 52s**（含新启用 lint step）、backend pass 1m6s；`gh issue view 149` → **CLOSED** |
+| 2026-09-14 | T50 | 仓库卫生清理（**无被跟踪文件变更**）：① 删净已并入 `main` 的分支 —— **本地 33 + 远端 32**，`git ls-remote --heads origin` 仅剩 `main`；本地仅剩 `main` + 他工具活跃 worktree 分支 `codex/deep-research-outline-approval`（有意保留）。② `.runlogs` 残骸 **81M / 3639 文件**（`venv-broken-025154` + 22 散落日志/脚本，含 `env-backup-*` 与 eslint 全量 JSON）经**用户确认**后按 §11.1 用 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 删除并重建空目录。验收：`git branch --merged main` 无可删分支、`ls .runlogs` 空、`git status --short` 干净。**P-03 / P-05 关闭** | 本记录 commit（无分支/PR：票面无代码变更） |
