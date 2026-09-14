@@ -2416,6 +2416,30 @@ cd backend && pytest tests -q
 （`POSTGRES_HOST=localhost` / `MILVUS_HOST=localhost`）→ 容器内任何 DB / Milvus 端点均 500（`/hello` 不碰库故未被 T30 验收 3 暴露）。
 根治需在 compose 补 `environment:` 覆盖，属代码变更、超出本票「无代码变更」范围，故记入 TRACKER 未闭合项。
 
+### 二次复核（2026-09-14 晚，用户已开通 DocMind 并指示 embedding 切换硅基流动）
+
+**结论：T08 的检索半程已在真实基础设施下验证通过；完整端到端仍 `BLOCKED`，但阻塞项已收窄到两个账号侧动作。**
+
+- **embedding 供应商切换已落地（PR #168，merge `d8d45a7`）**：`generate_embedding` 三元组改为
+  `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` 驱动（缺省回退 `DASHSCOPE_*`，旧行为不变），
+  且 **`dimensions` 改为「配置了才传」** —— 直接探针实测硅基流动 `BAAI/bge-m3` 固定 1024 维（与
+  `milvus_service.vector_dim=1024` 一致）但**不接受 `dimensions` 参数**（400，code=20015），原实现无条件传
+  `dimensions=1024`，仅改环境变量必然全量失败。硅基流动 key 仅写入 gitignore 的 `backend/.env`。
+  验收：`pytest tests -q` → **352 passed / 17 deselected**（+6）、ruff 全绿；变异检验（还原无条件透传）→ 4 failed。
+- **T08 检索半程通过（真实 Milvus + 真实 bge-m3）**：手工种入 `kb_demo` 3 chunks 后，
+  `retrieve_from_knowledge_base('demo')` 命中、url 前缀 `local://kb/demo/`，V2 `DeepScout._execute_local_search`
+  返回 3 条统一形状结果 —— **T08 修复的集合名口径（`kb_<name>` 而非 `"knowledge_base"`）闭环**。
+- **ingestion 半程仍阻塞（账号侧）**：DocMind **服务已开通**（免费额度 3000 页），但直接探针实测
+  `NoPermission — You are not authorized to perform this operation.` —— 该 AccessKey 所属 RAM 身份
+  **未被授予 DocMind 权限策略**（需在 RAM 控制台附加 `AliyunDocmindFullAccess`）。
+- **「发起 v2 研究」仍阻塞（LLM）**：直接探针实测 DashScope chat（`qwen3.6-plus`）**403 Free quota exhausted**
+  （与 embedding 同一账号限制）；`OPENROUTER_API_KEY` 长度仅 23 且非 `sk-or-` 前缀（**疑似无效 / 占位**，实测 401）。
+  T35 实机渲染依赖一次完成的深研（echarts 三处均为深研结果详情子组件、无独立路由），故同样待 LLM。
+- **验证残留已全部清理**：`kb_demo` 已 drop（Milvus collections 归零）、`demo` 知识库 DELETE 204、
+  `knowledge_bases` / `documents` 计数归零、8001 宿主后端已停、token 临时文件已删。
+- **待用户**：① RAM 授予 DocMind 权限策略；② 恢复任一可用 LLM（DashScope 充值 / 关闭「仅用免费额度」，
+  或提供有效的 OpenRouter key）。二者就绪后即可一次补跑：上传 → 解析 → 入库 → v2 研究事件流 → T35 实机渲染。
+
 ---
 
 ## T50 仓库卫生清理（.runlogs 残留 + 已合并分支）
