@@ -437,14 +437,18 @@ class ResearchService:
                         processed_urls.add(url)
                         existing_contents.append(summary)
 
+                        # 本地结果已统一为 title / site_name（T45），网络结果仍是
+                        # name / siteName；两者都接受。输出的键名**保持**
+                        # name / siteName / siteIcon —— 那是 SSE `search_result_item`
+                        # 与前端 `Source` 组件的既有契约，本票不改。
                         memory.append({
                             "subquery": subquery,
                             "url": url,
-                            "name": result.get('name', 'N/A'),
+                            "name": result.get('name', result.get('title', 'N/A')),
                             "summary": summary,
                             "snippet": result.get('snippet', ''),
-                            "siteName": result.get('siteName', 'N/A'),
-                            "siteIcon": result.get('siteIcon', 'N/A'),
+                            "siteName": result.get('siteName', result.get('site_name', 'N/A')),
+                            "siteIcon": result.get('siteIcon', ''),
                             "source": source
                         })
                         new_results_count += 1
@@ -727,7 +731,10 @@ async def parallel_search_all(
 async def search_local_knowledge(query: str, kb_name: str, top_k: int = 5) -> List[Dict]:
     """搜索本地知识库"""
     try:
-        from service.retrieval_service import retrieve_from_knowledge_base
+        from service.retrieval_service import (
+            retrieve_from_knowledge_base,
+            format_local_search_results,
+        )
         results = await asyncio.to_thread(
             retrieve_from_knowledge_base,
             kb_name=kb_name,
@@ -735,18 +742,8 @@ async def search_local_knowledge(query: str, kb_name: str, top_k: int = 5) -> Li
             top_k=top_k
         )
 
-        formatted_results = []
-        for r in results:
-            formatted_results.append({
-                'url': f"local://{kb_name}/{r.get('document_id', 'unknown')}",
-                'name': r.get('document_name', 'N/A'),
-                'summary': r.get('content_with_weight', ''),
-                'snippet': r.get('content_with_weight', '')[:200] if r.get('content_with_weight') else '',
-                'siteName': f"知识库: {kb_name}",
-                'siteIcon': '',
-                'source': 'local'
-            })
-        return formatted_results
+        # 形状由 retrieval_service 统一（T45）
+        return format_local_search_results(results, kb_name)
     except Exception as e:
         logging.error(f"Local knowledge search error: {e}")
         return []

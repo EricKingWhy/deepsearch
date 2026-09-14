@@ -38,11 +38,17 @@ except ImportError:
 # 本地知识库搜索依赖
 # 检索统一走 retrieval_service：集合名 = kb_{知识库名}（与 knowledge_router 入库侧一致）
 try:
-    from service.retrieval_service import retrieve_from_knowledge_base
+    from service.retrieval_service import (
+        retrieve_from_knowledge_base,
+        format_local_search_results,
+    )
     MILVUS_AVAILABLE = True
 except ImportError:
     try:
-        from app.service.retrieval_service import retrieve_from_knowledge_base
+        from app.service.retrieval_service import (
+            retrieve_from_knowledge_base,
+            format_local_search_results,
+        )
         MILVUS_AVAILABLE = True
     except ImportError:
         MILVUS_AVAILABLE = False
@@ -1034,22 +1040,8 @@ URL: {url}
                 top_k=top_k
             )
 
-            # 格式化结果为与网络搜索一致的格式
-            formatted_results = []
-            for r in results:
-                content = r.get("content_with_weight", "") or ""
-                formatted_results.append({
-                    'url': f"local://kb/{kb_name}/{r.get('document_id', 'unknown')}",
-                    'title': r.get('document_name', 'N/A'),
-                    'summary': content[:500],
-                    'snippet': content[:200],
-                    'site_name': f"本地知识库",
-                    'date': '',
-                    'score': r.get('score', 0),
-                    'is_local': True,
-                    'kb_name': kb_name,
-                    'doc_id': r.get('document_id')
-                })
+            # 格式化结果为与网络搜索一致的格式；形状由 retrieval_service 统一（T45）
+            formatted_results = format_local_search_results(results, kb_name)
 
             self.logger.info(f"Local search returned {len(formatted_results)} results for: {query[:30]}...")
             return formatted_results
