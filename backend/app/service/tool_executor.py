@@ -237,7 +237,10 @@ class ToolExecutor:
             return []
 
         try:
-            from service.retrieval_service import retrieve_from_knowledge_base
+            from service.retrieval_service import (
+                retrieve_from_knowledge_base,
+                format_local_search_results,
+            )
             results = await asyncio.to_thread(
                 retrieve_from_knowledge_base,
                 kb_name=kb_name,
@@ -245,20 +248,8 @@ class ToolExecutor:
                 top_k=top_k
             )
 
-            # 转换为统一格式
-            formatted_results = []
-            for r in results:
-                formatted_results.append({
-                    'url': f"local://{kb_name}/{r.get('document_id', 'unknown')}",
-                    'name': r.get('document_name', 'N/A'),
-                    'summary': r.get('content_with_weight', ''),
-                    'snippet': r.get('content_with_weight', '')[:200] if r.get('content_with_weight') else '',
-                    'siteName': f"知识库: {kb_name}",
-                    'siteIcon': '',
-                    'source': 'local'
-                })
-
-            return formatted_results
+            # 形状由 retrieval_service 统一（T45）
+            return format_local_search_results(results, kb_name)
 
         except Exception as e:
             logging.error(f"Knowledge search error: {e}")
