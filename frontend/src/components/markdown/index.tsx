@@ -30,9 +30,9 @@ export default function Markdown(props: {
     }
 
     const marked = new Marked({
-      extensions: props.extensions,
+      extensions,
     })
-    const html = marked.parse(props.value ?? '', {
+    const html = marked.parse(value ?? '', {
       gfm: false,
       renderer,
     })

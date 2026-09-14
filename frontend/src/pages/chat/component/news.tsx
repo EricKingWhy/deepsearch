@@ -22,7 +22,7 @@ export default function News() {
   return (
     <div className={styles['news-list']}>
       <div className={styles['news-list__total']}>
-        过去24小时更新： 政策 <b>286</b>　纪要 <b>73</b>　研报 <b>371</b>　新闻{' '}
+        过去24小时更新： 政策 <b>286</b> 纪要 <b>73</b> 研报 <b>371</b> 新闻{' '}
         <b>4044</b>
       </div>
 

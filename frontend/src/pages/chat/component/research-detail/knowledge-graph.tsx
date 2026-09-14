@@ -38,6 +38,12 @@ interface KnowledgeGraphProps {
   data?: KnowledgeGraphData
 }
 
+// ECharts tooltip 回调参数（只声明本处用到的字段，避免 any）
+interface GraphTooltipParams {
+  dataType?: string
+  data: Record<string, string | undefined>
+}
+
 const typeConfig: Record<string, { color: string; label: string }> = {
   core: { color: '#1677ff', label: '核心' },
   tech: { color: '#722ed1', label: '技术' },
@@ -64,9 +70,9 @@ export default function KnowledgeGraph({ data }: KnowledgeGraphProps) {
   const option = {
     tooltip: {
       trigger: 'item',
-      formatter: (params: any) => {
+      formatter: (params: GraphTooltipParams) => {
         if (params.dataType === 'node') {
-          const typeLabel = typeConfig[params.data.nodeType]?.label || params.data.nodeType
+          const typeLabel = typeConfig[params.data.nodeType ?? '']?.label || params.data.nodeType
           return `<strong>${params.data.name}</strong><br/>类型: ${typeLabel}`
         }
         if (params.dataType === 'edge') {

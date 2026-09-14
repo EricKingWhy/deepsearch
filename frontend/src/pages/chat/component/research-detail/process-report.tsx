@@ -154,7 +154,6 @@ function parseContentWithCharts(
   let lastIndex = 0
   let match
   let graphInserted = false
-  let firstH2Passed = false
 
   while ((match = imageRegex.exec(content)) !== null) {
     const altText = match[1]
@@ -173,7 +172,6 @@ function parseContentWithCharts(
         if (h2Count >= 1) {
           blocks.push({ type: 'knowledgeGraph', data: knowledgeGraph })
           graphInserted = true
-          firstH2Passed = true
         }
       }
     }

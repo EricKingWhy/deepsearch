@@ -18,7 +18,7 @@ export const errorToastPlugin: IRequestPlugin = {
     instance.interceptors.response.use(
       (response) => response,
       (error) => {
-        const response = error.response as AxiosResponse<any> | undefined
+        const response = error.response as AxiosResponse<{ message?: string; error?: string }> | undefined
         const config = (response?.config ?? error?.config) as AxiosRequestConfig
 
         if (config && !config.errorToast) return Promise.reject(error)

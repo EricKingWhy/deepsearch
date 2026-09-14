@@ -6,9 +6,9 @@
 import { AxiosResponse } from 'axios'
 
 export class ResponseError extends Error {
-  response: AxiosResponse<any> | undefined
+  response: AxiosResponse<unknown> | undefined
 
-  constructor(message: string, response?: AxiosResponse<any>) {
+  constructor(message: string, response?: AxiosResponse<unknown>) {
     super(message)
     this.response = response
   }

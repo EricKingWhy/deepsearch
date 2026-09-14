@@ -34,6 +34,8 @@ declare module 'axios' {
     unwrap?: boolean
   }
 
+  // D 为对齐 axios 原始 AxiosResponse<T, D> 签名所必需（声明合并要求参数列表一致），此处无法使用
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 见上，仅签名占位
   export interface AxiosResponse<T, D> {
     /**
      * 展开接口数据前的原始数据

@@ -32,6 +32,7 @@ import {
   EyeOutlined,
 } from '@ant-design/icons'
 import { useSnapshot } from 'valtio'
+import { errorDetail } from '@/utils'
 import { knowledgeState, knowledgeActions, KnowledgeBase, KBDocument } from '@/store/knowledge'
 import { authState } from '@/store/auth'
 import { useNavigate } from 'react-router-dom'
@@ -104,7 +105,7 @@ export default function KnowledgePage() {
         pollingRef.current = null
       }
     }
-  }, [currentKnowledgeBase?.id, currentKnowledgeBase?.documents])
+  }, [currentKnowledgeBase])
 
   if (!isLoggedIn) {
     return (
@@ -125,8 +126,8 @@ export default function KnowledgePage() {
       message.success('知识库创建成功')
       setCreateModalOpen(false)
       form.resetFields()
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '创建失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '创建失败')
     }
   }
 
@@ -138,8 +139,8 @@ export default function KnowledgePage() {
       setEditModalOpen(false)
       setEditingKb(null)
       editForm.resetFields()
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '更新失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '更新失败')
     }
   }
 
@@ -147,8 +148,8 @@ export default function KnowledgePage() {
     try {
       await knowledgeActions.deleteKnowledgeBase(kbId)
       message.success('知识库删除成功')
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '删除失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '删除失败')
     }
   }
 
@@ -176,12 +177,12 @@ export default function KnowledgePage() {
         filename: file.name,
         docId: result?.id,
       })
-    } catch (error: any) {
+    } catch (error) {
       setUploadResult({
         success: false,
         message: '上传失败',
         filename: file.name,
-        error: error?.response?.data?.detail || error?.message || '网络请求失败',
+        error: errorDetail(error) || (error as Error | undefined)?.message || '网络请求失败',
       })
     }
     return false
@@ -217,8 +218,8 @@ export default function KnowledgePage() {
     try {
       await knowledgeActions.deleteDocument(currentKnowledgeBase.id, docId)
       message.success('文档删除成功')
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '删除失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '删除失败')
     }
   }
 

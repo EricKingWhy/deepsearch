@@ -76,7 +76,7 @@ export default function DatabasePage() {
   const [tables, setTables] = useState<TableInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
-  const [tableData, setTableData] = useState<any[]>([])
+  const [tableData, setTableData] = useState<Record<string, unknown>[]>([])
   const [tableColumns, setTableColumns] = useState<string[]>([])
   const [dataLoading, setDataLoading] = useState(false)
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 })
@@ -86,26 +86,7 @@ export default function DatabasePage() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchResult, setSearchResult] = useState<Text2SQLResponse | null>(null)
 
-  const fetchTables = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await api.database.getTables()
-      // 过滤只展示行业相关的表
-      const filteredTables = (res.data || []).filter(t => ALLOWED_TABLES.includes(t.name))
-      setTables(filteredTables)
-      if (filteredTables.length > 0) {
-        setSelectedTable(filteredTables[0].name)
-        fetchTableData(filteredTables[0].name, 1)
-      }
-    } catch (error: any) {
-      console.error('获取表列表失败:', error)
-      message.error('获取表列表失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const fetchTableData = async (tableName: string, page: number) => {
+  const fetchTableData = useCallback(async (tableName: string, page: number) => {
     setDataLoading(true)
     try {
       const res = await api.database.getTableData(tableName, {
@@ -121,19 +102,38 @@ export default function DatabasePage() {
           total: res.data.total || 0,
         }))
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('获取表数据失败:', error)
       message.error('获取表数据失败')
     } finally {
       setDataLoading(false)
     }
-  }
+  }, [pagination.pageSize])
+
+  const fetchTables = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.database.getTables()
+      // 过滤只展示行业相关的表
+      const filteredTables = (res.data || []).filter(t => ALLOWED_TABLES.includes(t.name))
+      setTables(filteredTables)
+      if (filteredTables.length > 0) {
+        setSelectedTable(filteredTables[0].name)
+        fetchTableData(filteredTables[0].name, 1)
+      }
+    } catch (error) {
+      console.error('获取表列表失败:', error)
+      message.error('获取表列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchTableData])
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchTables()
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, fetchTables])
 
   const handleSelectTable = (tableName: string) => {
     setSelectedTable(tableName)
@@ -163,7 +163,7 @@ export default function DatabasePage() {
           message.error(res.data.error)
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('自然语言查询失败:', error)
       message.error('查询失败，请重试')
     } finally {
@@ -330,8 +330,8 @@ export default function DatabasePage() {
                         <div key={rowIdx} style={{ display: 'flex', minWidth: (searchResult.columns?.length || 1) * 150, borderBottom: rowIdx < searchResult.data.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
                           {searchResult.columns?.map((col) => (
                             <div key={col} style={{ flex: '0 0 150px', padding: '10px 16px', fontSize: 13, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              <Tooltip title={String((row as any)[col] ?? '-')}>
-                                <span>{(row as any)[col] !== null && (row as any)[col] !== undefined ? String((row as any)[col]) : '-'}</span>
+                              <Tooltip title={String(row[col] ?? '-')}>
+                                <span>{row[col] !== null && row[col] !== undefined ? String(row[col]) : '-'}</span>
                               </Tooltip>
                             </div>
                           ))}

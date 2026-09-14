@@ -7,7 +7,7 @@ import IconFile from '@/assets/component/file.svg'
 import IconSend from '@/assets/component/send.svg'
 import { deviceActions, deviceState, SearchMode } from '@/store/device'
 import { Button, Input, Space, Dropdown, Checkbox, Tag } from 'antd'
-import { CloseOutlined, FileOutlined, LoadingOutlined, SyncOutlined, CheckCircleOutlined, SearchOutlined, DownOutlined } from '@ant-design/icons'
+import { FileOutlined, LoadingOutlined, SyncOutlined, CheckCircleOutlined, SearchOutlined, DownOutlined } from '@ant-design/icons'
 import classNames from 'classnames'
 import { PropsWithChildren, useState, useRef } from 'react'
 import { useSnapshot } from 'valtio'
@@ -28,7 +28,6 @@ export default function ComSender(
     attachments?: AttachmentInfo[]
     onSend?: (value: string, attachmentIds?: string[]) => void | Promise<void>
     onStop?: () => void | Promise<void>
-    onContract?: () => void
     onUploadAttachment?: (file: File) => Promise<Attachment | null>
     onRemoveAttachment?: (id: string) => void
   }>,
@@ -37,7 +36,6 @@ export default function ComSender(
     className,
     onSend,
     onStop,
-    onContract,
     loading,
     attachments = [],
     onUploadAttachment,
@@ -61,7 +59,7 @@ export default function ComSender(
     await onSend?.(value, completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined)
   }
 
-  function handlePressEnter(e: any) {
+  function handlePressEnter(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter') {
       if (e.shiftKey) {
         return

@@ -29,6 +29,7 @@ import { authState } from '@/store/auth'
 import { industryState, getCurrentIndustry } from '@/store/industry'
 import { useNavigate } from 'react-router-dom'
 import * as api from '@/api'
+import { errorDetail } from '@/utils'
 import type { BiddingItem, BiddingStats } from '@/api/news'
 import CollectionModal, { CollectionResult } from '@/components/collection-modal'
 import styles from './index.module.scss'
@@ -78,9 +79,9 @@ export default function BiddingPage() {
         setBiddingTotal(res.total)
         setBiddingStats(res.stats)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[BiddingPage] fetchBidding 错误:', error)
-      message.error(error?.response?.data?.detail || '获取招投标信息失败')
+      message.error(errorDetail(error) || '获取招投标信息失败')
     } finally {
       setBiddingLoading(false)
     }
@@ -113,14 +114,14 @@ export default function BiddingPage() {
       if (res.success) {
         await fetchBidding()
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[BiddingPage] handleCollect 错误:', error)
       setCollectionResult({
         success: false,
         message: '采集失败',
         news_collected: 0,
         bidding_collected: 0,
-        errors: [error?.message || '网络请求失败'],
+        errors: [(error as Error | undefined)?.message || '网络请求失败'],
       })
     } finally {
       setCollecting(false)

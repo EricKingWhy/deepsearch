@@ -31,13 +31,6 @@ interface ResearchProcessProps {
   onStepClick?: (stepId: string) => void
 }
 
-const stepConfig: Record<ResearchStep['type'], { icon: string; color: string }> = {
-  planning: { icon: '1', color: '#1677ff' },
-  searching: { icon: '2', color: '#1677ff' },
-  analyzing: { icon: '3', color: '#1677ff' },
-  generating: { icon: '4', color: '#1677ff' },
-}
-
 export default function ResearchProcess({ steps, selectedStepId, onStepClick }: ResearchProcessProps) {
   if (!steps.length) return null
 
@@ -46,7 +39,6 @@ export default function ResearchProcess({ steps, selectedStepId, onStepClick }: 
       <div className={styles.header}>推理过程</div>
       <div className={styles.timeline}>
         {steps.map((step, index) => {
-          const config = stepConfig[step.type]
           const isSelected = step.id === selectedStepId
           const isLast = index === steps.length - 1
 

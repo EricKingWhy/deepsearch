@@ -25,15 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ⚠️ 仍**有意**未启用 —— 原因已不再是「依赖 T33/T34」（三者均已 DONE），而是存量违规
-      #    不在本硬化计划的 41 张票范围内：`npx eslint .` 现为 **78 errors / 9 warnings**
-      #    （T33/T34 已把 89 降到 78），散落在 components/ 与 pages/ 的 legacy 代码
-      #    （no-unused-vars / no-explicit-any 等）。启用本步骤会让 CI 立刻变红；
-      #    **不得**通过关闭规则来让它变绿。
-      #    解除条件：单独立项清理这 78 处，或经裁决接受一份显式 ignore 清单（**已立项为 T42**）。
-      #    见 docs/hardening/TRACKER.md「待办 / 未闭合项」P-12。
-      # - name: Lint (eslint)
-      #   run: npm run lint
+      # ✅ 已启用（T42）：`npx eslint .` 存量 **87 problems（78 errors / 9 warnings）**已逐个收敛到
+      #    **0 problems** —— 不降级任何规则、不做批量压制；逐处修掉 `no-explicit-any` /
+      #    `no-unused-vars` / `no-empty-object-type` / `no-wrapper-object-types` /
+      #    `no-irregular-whitespace` / `react-hooks/exhaustive-deps`，仅 3 处逐行 `eslint-disable`（均注明理由）。
+      #    见 docs/hardening/tickets.md T42 / TRACKER「待办 / 未闭合项」P-12。
+      - name: Lint (eslint)
+        run: npm run lint
 
       # ✅ 已启用（T43）：原记录的「OutlineApprovalPanel 集成用例时序抖动」经复现定位为
       #    **负载下的假超时** —— 这几条 jsdom 重交互用例（外加 deep-research-integration 的
