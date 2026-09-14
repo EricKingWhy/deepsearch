@@ -2131,6 +2131,301 @@ cd backend && pytest tests/router -q -k "upload"
 
 ---
 
+
+---
+
+# 阶段 7 · §4 总门禁残留（收尾）
+
+> 来源：[`TRACKER.md`](TRACKER.md)「§4 总门禁 findings 明细」中的**保留判定 / 部分驳回**项、未闭合项 **P-12**，以及 needs-infra 验证缺口。均**不在原 41 张票范围内**，故单独立项。
+> 阶段 7 **不阻塞**已收尾的 `hardening-v1`（40/41 DONE，仅 T10 `needs-human`）。
+
+## T42 前端 eslint 存量清零并启用 CI lint
+
+- **类型**：chore　**阶段**：7　**依赖**：无　**标记**：无
+
+### 背景
+
+§4 总门禁 finding #2 与未闭合项 **P-12**：`.github/workflows/ci-frontend.yml` 的 lint step 仍被注释（启用即刻变红）。实测存量：
+
+```bash
+cd frontend && npx eslint .   # → 87 problems (78 errors, 9 warnings)
+```
+
+78 个 error 散落在 `src/components/`、`src/pages/` 的 legacy 代码；规则集为 `@typescript-eslint/recommended`（T33 已把 `no-explicit-any` 落为 error）。
+
+### 改什么
+
+1. 逐类收敛 78 个 error（`no-explicit-any` / `no-unused-vars` / `no-empty-object-type` / `no-wrapper-object-types` / `no-empty` 等），**不降级任何规则**。
+2. 取消 `ci-frontend.yml` 中 lint step 的注释。
+
+### 验收
+
+```bash
+cd frontend && npx eslint .        # 预期 0 problems
+```
+
+- workflow YAML 合法；CI frontend lint job 实测 **success**。
+
+### 风险
+
+- 存量面广、改动分散；**禁止**用 `eslint-disable` 批量压制（如必须，逐条注明理由且总量受限）。
+
+> GitHub issue：#149　**状态**：TODO
+
+---
+
+## T43 消除前端集成用例时序抖动并启用 CI vitest
+
+- **类型**：test　**阶段**：7　**依赖**：无　**标记**：无
+
+### 背景
+
+§4 总门禁 finding #2 与未闭合项 **P-12**：`ci-frontend.yml` 的 vitest step 仍被注释。原因是 `src/features/deep-research/OutlineApprovalPanel.test.tsx` 集成用例存在**时序抖动** —— 多次复跑会在「全绿」与「1–2 例超时」之间摇摆，纳入 CI 会制造假红。
+
+### 改什么
+
+1. 定位该用例对**真实计时器 / 异步流**的依赖（`setTimeout` / 流式渲染 / `act` 时机），改用 `vi.useFakeTimers()` 推进时间，或把断言换成明确的 `await waitFor(...)` 条件等待，消除对机器负载的敏感性。
+2. 取消 `ci-frontend.yml` 中 vitest step 的注释。
+
+### 验收
+
+```bash
+cd frontend && for i in $(seq 1 10); do npx vitest run || exit 1; done   # 预期 10 次全绿
+```
+
+- CI frontend test job 实测 **success**，且对同一提交连跑多次稳定。
+
+### 风险
+
+- 假定时器可能与测试内的真实异步交互复杂；**不得**为了变绿而放宽/删除断言。
+
+> GitHub issue：#150　**状态**：TODO
+
+---
+
+## T44 决策票：上传落盘生命周期并轨（三路由）
+
+- **类型**：refactor　**阶段**：7　**依赖**：T41　**标记**：`needs-decision`
+
+### 背景
+
+§4 总门禁 finding #7（保留判定，转本票）：上传**落盘生命周期**在三处**重复**，且失败清理策略已**分叉**：
+
+- `backend/app/router/document_router.py:82-83`
+- `backend/app/router/attachment_router.py:162-163`
+- `backend/app/router/knowledge_router.py:332-333`
+
+三处均为 `read_upload_with_limit` → `open/write` → `except HTTPException: raise` → `except → 500`；但**只有** document 分支在失败时清理临时文件。T41（方案 A）只并轨了**工具函数**，未并轨生命周期。
+
+### 🔴 需要用户裁决
+
+- **方案 A**：保持现状，仅记残留（零风险，但重复与策略分叉长期存在）。
+- **方案 B（推荐）**：抽公共 `save_upload(file, dest_dir) -> Path`，把「限长读取 → 写盘 → 异常映射 → 失败清理」整体并轨；三路由改用之。
+- **方案 C**：只统一**失败清理策略**（三路由都清临时文件），不并轨写盘逻辑。
+
+### 验收（按方案 B）
+
+```bash
+cd backend && pytest tests/router -q -k upload
+```
+
+- 新增用例断言「写入失败时临时文件被清理」在**三个路由上一致成立**。
+- 变异检查：撤掉清理逻辑 → 用例必须失败；恢复 → 全绿。
+
+### 风险
+
+- 属**跨路由行为变更**（清理语义），故标 `needs-decision`，**不进入自动循环**。
+
+> GitHub issue：#151　**状态**：TODO
+
+---
+
+## T45 决策票：本地知识库结果形状统一（三处实现）
+
+- **类型**：refactor　**阶段**：7　**依赖**：T08　**标记**：`needs-decision`
+
+### 背景
+
+§4 总门禁 finding #8（保留判定，转本票）：本地知识库**结果形状**有**三处**独立实现且字段已分叉：
+
+| 位置 | url 前缀 | 标题字段 | 来源字段 | 标记 |
+|------|---------|---------|---------|------|
+| `deep_research_v2/agents/scout.py:1042-1049` | `local://kb/` | `title` | `site_name` | `is_local: True` |
+| `service/dr_g.py:741-747` | `local://` | `siteName` | `source` | — |
+| `service/tool_executor.py:252` | `local://` | — | — | — |
+
+T08 只统一了**检索**（`retrieval_service`），未统一**结果形状**。
+
+### 🔴 需要用户裁决
+
+- **方案 A**：保持现状（各处自洽，记残留）。
+- **方案 B（推荐）**：统一为**单一 shape**（建议以 `scout.py` 的字段为准，因其为 V2 主链路），三处并轨 —— 需同步 **SSE 下游消费契约**与前端消费点。
+- **方案 C**：只统一 `url` 前缀（`local://kb/` vs `local://`），字段名不动。
+
+### 验收
+
+```bash
+cd backend && pytest tests -q          # 全绿
+```
+
+- 新增**形状断言**（AST 或行为）锁定统一后的字段集合。
+- 若改契约：同步前端消费点与 `docs/` 说明；变异检查证明断言有判别力。
+
+### 风险
+
+- 改动 **SSE 下游消费契约**，牵涉前端；故标 `needs-decision`。
+
+> GitHub issue：#152　**状态**：TODO
+
+---
+
+## T46 CSP 请求级回归测试
+
+- **类型**：test　**阶段**：7　**依赖**：T37　**标记**：无
+
+### 背景
+
+§4 总门禁 finding #10（保留判定，部分已修）：CSP 中间件的唯一自动化锁是 `app_main.py` 的**源码文本**断言（批次 13 补的接线断言）。把中间件注册包进一个恒假分支，该断言仍会绿 —— 缺**请求级回归**。
+
+### 改什么
+
+1. 新增 `backend/tests/test_security_headers_request.py`，用 `TestClient(app_main.app)` 发真实请求：
+   - `GET /hello` → 响应头**含** `Content-Security-Policy`；
+   - `GET /openapi.json` → 响应头**不含** CSP（路径豁免，并验证 `/docsx` 不豁免的边界）。
+2. 隔离 `TestClient` 触发的 lifespan / DB 初始化（用 monkeypatch 或可注入开关），保持默认 `-m "not integration"` 可独立运行。
+
+### 验收
+
+```bash
+cd backend && pytest tests/test_security_headers_request.py -v
+```
+
+- **变异检查**：注释掉 `app.add_middleware(add_security_headers)` → 用例**失败**；恢复 → 全绿。
+
+### 风险
+
+- `TestClient` 会触发 lifespan（连 DB）；**必须**隔离，否则本票退化为 `needs-infra`。
+
+> GitHub issue：#153　**状态**：TODO
+
+---
+
+## T47 决策票：可选外部服务密钥缺失的失败语义（serper）
+
+- **类型**：refactor　**阶段**：7　**依赖**：T01　**标记**：`needs-decision`
+
+### 背景
+
+§4 总门禁 finding #12（部分已修）：`service/config.py:23-27` 注释已**如实**说明三键缺失行为 —— `api_key` / `default_dataset_id` 缺失由调用方显式失败，而 `serper_api_key` 为空时 `web_search_service` **照常发请求并带上空 `X-API-KEY`**（非显式失败）。注释已改对，但**行为**仍是隐性空转。
+
+### 🔴 需要用户裁决
+
+- **方案 A（保守）**：保持现状 —— serper 是可选搜索路径，缺失即「不启用该能力」。
+- **方案 B**：启动期显式失败（会改变「未配 serper 仍可启动」的现状）。
+- **方案 C（推荐）**：调用期显式报错 —— 需要 serper 时若密钥为空则抛明确异常 / 返回 503，而不是发空鉴权请求。
+
+### 验收（按方案 C）
+
+```bash
+cd backend && pytest tests -q
+```
+
+- 新增用例断言：serper 缺失时搜索调用**抛出明确错误**，而非静默带空 `X-API-KEY`。
+
+### 风险
+
+- serper 为**可选**能力；方案 B/C 会改变现有部署的可启动性 / 可用性，故标 `needs-decision`。
+
+> GitHub issue：#154　**状态**：TODO
+
+---
+
+## T48 OpenAPI 文档版本与包版本同步
+
+- **类型**：chore　**阶段**：7　**依赖**：T25　**标记**：无
+
+### 背景
+
+§4 总门禁 finding #14（部分驳回，记残留）：`app_main.py:90` 的 FastAPI `version="2.0.0"` 与 `backend/app/__init__.py:1` 的 `__version__ = "0.1.0"`、`frontend/package.json` 的 `0.1.0` 不一致；CHANGELOG 声称统一为 `0.1.0`。
+
+### 改什么
+
+- 把 `FastAPI(..., version="2.0.0")` 改为**单一来源**：`from app import __version__` 后 `version=__version__`。
+
+### 验收
+
+```bash
+cd backend && grep -n 'version=' app/app_main.py            # 不再出现 2.0.0
+cd backend && curl -s localhost:8000/openapi.json | python -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"  # 预期 0.1.0
+cd backend && pytest tests -q
+```
+
+### 风险
+
+- 极低；仅 OpenAPI 文档字段变更，无运行时影响。
+
+> GitHub issue：#155　**状态**：TODO
+
+---
+
+## T49 needs-infra 验证补跑（T35 实机渲染 + T08 端到端）
+
+- **类型**：test　**阶段**：7　**依赖**：T35、T08　**标记**：`needs-infra`
+
+### 背景
+
+§4 总门禁 finding #16 盘点：两条 `needs-infra` 验收**始终未执行** ——
+
+1. **T35 浏览器实机渲染**：需登录态 + 浏览器。机制侧已由「构建产物中 echarts 静态边归零、单独 chunk 按需加载」验证，但未做真实页面渲染。
+2. **T08 验收 3 端到端**：需 Milvus 内已有知识库集合 + 第三方 embedding 凭据。
+
+### 改什么
+
+- 在具备**浏览器 + 完整基础设施**的环境补跑上述两条，记录实测输出。**无代码变更**。
+
+### 验收
+
+- T35：打开「知识图谱」/「过程报告」页 → echarts 图表渲染成功、无控制台报错、Network 显示 echarts chunk **按需**加载（首屏不加载）。
+- T08：上传文档到 `kb_demo` → 发起 v2 研究 → 事件流出现**来自该文档**的 chunk。
+
+### 风险
+
+- 依赖本机 / CI 资源（浏览器、Milvus、embedding 凭据）；属**验证缺口**而非缺陷。
+
+> GitHub issue：#156　**状态**：TODO
+
+---
+
+## T50 仓库卫生清理（.runlogs 残留 + 已合并分支）
+
+- **类型**：chore　**阶段**：7　**依赖**：无　**标记**：无
+
+### 背景
+
+待办未闭合项 **P-03**（`.runlogs/venv-broken-*` 约 5000 个残留文件）与 **P-05**（已合并的 `T01`/`T02`/`T03` 等本地/远端分支）长期未清理。
+
+### 改什么
+
+1. 清理 `.runlogs` 残骸（先确认未被 git 跟踪）。
+2. 删除**已并入 main** 的本地与远端分支。
+
+### 验收
+
+```bash
+cd /d/LLMapply/industry_information_assistant
+git branch --merged main            # 不再列出可删分支
+ls .runlogs                         # 为空 / 仅剩必要目录
+git status --short                  # 干净
+```
+
+### 风险
+
+- 删除操作会触发本机**批量删除防护** → 按 `LOOP-PROTOCOL.md §11.1b`「重命名而非删除」处理；删分支前须确认已并入 `main`。
+
+> GitHub issue：#157　**状态**：TODO
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -2141,9 +2436,10 @@ cd backend && pytest tests/router -q -k "upload"
 | 4 · 工程化底座 | T21–T31 | 11 |
 | 5 · 前端质量 | T32–T37 | 6 |
 | 6 · 后端质量 | T38–T40 | 3 |
+| 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
-| **合计** | | **41** |
+| **合计** | | **50** |
 
-**其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41 —— 共 5 张。
+**其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
-**`needs-infra`**：T07（部分）、T08、T28、T29、T30、T31 —— 6 张。
+**`needs-infra`**：T07（部分）、T08、T28、T29、T30、T31、T49 —— 7 张。

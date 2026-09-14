@@ -13,7 +13,7 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T41 + T20 + 批次 10/11/12/13 审查修复） | `fddd6a635101500c69863f42425d35bae5a7d4db`（T20 收尾 PR #146 的 merge commit；本回填 PR 合并后 main 再前移一格） |
-| 当前批次 | **§4 总门禁（已完成）** —— 40/41 DONE；T20 决策票已收尾（AI 裁决 A：记录基线、不拆分）；对整条分支的**最终全量双轴审查**（fixed point = 计划起始基线 `9342913` → `fddd6a6`）已跑，findings 已修复并回填；T10 为 needs-human 保持 BLOCKED（需人工只读 DB 账号） |
+| 当前批次 | **§4 总门禁（已完成）** —— 40/41 DONE；T20 决策票已收尾（AI 裁决 A：记录基线、不拆分）；对整条分支的**最终全量双轴审查**（fixed point = 计划起始基线 `9342913` → `fddd6a6`）已跑，findings 已修复并回填；T10 为 needs-human 保持 BLOCKED（需人工只读 DB 账号）。另：§4 残留已立项 **T42–T50**（阶段 7），见下方映射 |
 | 当前 fixed point（上一批审查结束 commit） | `7773c84`（第 13 批审查修复 commit）；§4 总门禁的审查起点 = `9342913`（计划起始基线） |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
@@ -248,6 +248,23 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 > 说明：T35 行原记入口 chunk `63833 B` 是**批次 12 时点**的测量；其后 T37（批次 13）改动了前端源码（新增 `utils/local-storage.ts` 等 5 文件），入口 chunk 随之变为上值 —— 数值漂移属预期，非回归。
 > 另注：本次 `npm run build` 首次尝试被本机**沙箱的批量删除防护**拦下（vite 清空 `dist/assets` 的 160 个条目超过阈值），与代码无关；按 `LOOP-PROTOCOL §11.1b` 的「重命名而非删除」原则把旧 `dist` 移入 `.git/` 后正常构建成功。
 
+### 新建票（§4 门禁残留 → T42–T50，2026-09-14）
+
+> 阶段 7 · 收尾残留；里程碑 `hardening-v2`；GitHub issue 编号见下表。**均不在原 41 张票范围内**，不阻塞 `hardening-v1` 的收尾。
+
+| 新票 | 来源 | 说明 |
+|------|------|------|
+| T42 | §4 #2 / P-12 | 前端 eslint 存量 78 errors 清零并启用 CI lint |
+| T43 | §4 #2 / P-12 | 消除 OutlineApprovalPanel 集成用例时序抖动并启用 CI vitest |
+| T44 | §4 #7 | 决策票：上传落盘生命周期并轨（三路由重复 + 清理策略分叉） |
+| T45 | §4 #8 | 决策票：本地知识库结果形状统一（三处实现字段分叉） |
+| T46 | §4 #10 | CSP 请求级回归测试（替代源码文本断言） |
+| T47 | §4 #12 | 决策票：可选外部服务密钥（serper）缺失的失败语义 |
+| T48 | §4 #14 | OpenAPI 文档版本与包版本同步 |
+| T49 | §4 #16 | needs-infra 验证补跑（T35 实机渲染 + T08 端到端） |
+| T50 | P-03 / P-05 | 仓库卫生清理（.runlogs 残留 + 已合并分支） |
+
+
 ## ticket 明细
 
 状态取值：`TODO` / `DOING` / `DONE` / `BLOCKED` / `CANCELLED`
@@ -295,6 +312,15 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T39 | 补 text2sql.validate_sql 单元测试 | #70 | DONE | `T39-text2sql-tests` | `708fdbe` | #140 | PASS（**票面前提部分不成立**：该文件在 T09 已建立，本票实为扩展既有文件，30 → **41 例**（要求 ≥15）；补 TRUNCATE / ALTER / CREATE / GRANT / REVOKE / 时间盲注 6 例、子查询 3 例、大小写混写 1 例、超长 SQL（800 列、>4000 字符）1 例；先用探针实测真实行为再写断言，**未发现真实缺陷、未放宽任何校验范围**；pytest tests -q → 247 passed / 17 deselected（T39 时点；T40/T37 合并后 265）、ruff All checks passed） | 13 | FIXED@`7773c84` |
 | T40 | 补 security 鉴权单元测试 | #71 | DONE | `T40-security-tests` | `c4e2510` | #141 | PASS（新增 `tests/core/test_security.py` **18 例**（要求 ≥6）：往返 / 篡改签名 / 篡改载荷 / 无 sub / 畸形串 / 过期（负 `expires_delta`，未引入 freezegun）/ 另一密钥 / `get_current_user_required` 缺头·非 Bearer·垃圾 Token → 401、有效 Token + 启用用户 → 200、未知用户 → 401、已禁用用户 → 403。票面第 5 项（弱密钥 / 缺失密钥 → 配置期失败）已由 T02 的 `test_security_jwt.py` 覆盖，**刻意不重复**；**不连库** —— `get_user_by_id` 用 monkeypatch 接管，`oauth2_scheme` 实测 `auto_error=False` 故缺头与非 Bearer 都落到 `if not token` 的 401 分支；密钥自查无 `sk-*` 命中；pytest tests -q → 265 passed / 17 deselected） | 13 | FIXED@`7773c84` |
 | T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | FIXED@57f69e0 |
+| T42 | 前端 eslint 存量清零并启用 CI lint | #149 | TODO | — | — | — | — | §4 残留 | — |
+| T43 | 消除前端集成用例时序抖动并启用 CI vitest | #150 | TODO | — | — | — | — | §4 残留 | — |
+| T44 | 决策票：上传落盘生命周期并轨（三路由） | #151 | TODO | — | — | — | — | §4 残留 | — |
+| T45 | 决策票：本地知识库结果形状统一（三处实现） | #152 | TODO | — | — | — | — | §4 残留 | — |
+| T46 | CSP 请求级回归测试 | #153 | TODO | — | — | — | — | §4 残留 | — |
+| T47 | 决策票：可选外部服务密钥缺失的失败语义（serper） | #154 | TODO | — | — | — | — | §4 残留 | — |
+| T48 | OpenAPI 文档版本与包版本同步 | #155 | TODO | — | — | — | — | §4 残留 | — |
+| T49 | needs-infra 验证补跑（T35 实机渲染 + T08 端到端） | #156 | TODO | — | — | — | — | §4 残留 | — |
+| T50 | 仓库卫生清理（.runlogs 残留 + 已合并分支） | #157 | TODO | — | — | — | — | §4 残留 | — |
 
 ## 待办 / 未闭合项
 
@@ -313,7 +339,7 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | **P-09** | `attachment_router` / `knowledge_router` 同源路径穿越 | **已转 T41（#75）** | 第 1 批审查的两条 findings 合并为决策票 T41，等用户裁决白名单策略后执行。 |
 | **P-10** | 全量 pytest 恒有 1 条 `needs-infra` 失败（非回归） | 已知，非阻塞 | 该用例为 `tests/service/test_research_observability_service.py::test_run_event_lifecycle_sequence_pagination_and_user_scope`，带 `@pytest.mark.integration`，需真实 Postgres（Docker 未启动 → `localhost:5432` 连接被拒）。**判定：环境性失败，与任何 ticket 无关。** 跑验收请统一加 `-m "not integration"`（当前该口径为 **198 passed / 5 deselected**），不要把这条计入回归。 |
 | **P-11** | Docker 栈验收依赖宿主机资源（新增阻塞项） | ✅ **已完成** | 批次 12 补跑 T30 验收 3/4、T31 验收 4：镜像构建 ✅（4m32s）、镜像内无 `.env` ✅；compose 起 backend ❌ —— 依次暴露三个环境/配置问题：① 仓库根 `.env` 缺失导致 MinIO 凭据为空、Milvus `Access Denied` 关闭（已在本机创建 `.env`，gitignore 内，不提交）；② Milvus healthcheck 无 `start_period`，启动期 1–2 分钟返回 500/超时即被判 unhealthy，`depends_on: service_healthy` 直接失败（**已修：`start_period: 120s`**）；③ 修完待重跑时 **C 盘耗尽（201G 中仅剩 3.7G）**，daemon 报 "Docker Desktop is unable to start"。**§4 总门禁已全部解除**：C 盘腾出至 12G 可用后，`docker desktop restart` 使 WSL `docker-desktop` 发行版重启、引擎恢复（server 29.4.1）；`docker compose up -d backend` ✅ 全依赖 healthy、`curl /hello` ✅；`bash start-services.sh start/status` ✅ 四个中间件全「运行中」。**T30 验收 3 与 T31 验收 4 由此转为 PASS。** |
-| **P-12** | 前端 CI 的 lint / vitest 两个 step 仍**有意**注释（§4 总门禁新增，未闭合） | **未闭合** | `.github/workflows/ci-frontend.yml` 只跑 build。两个 step 的**原因已变**：不再是「依赖 T32–T34」（三者均已 DONE），而是 ① `npx eslint .` 存量 **78 errors / 9 warnings**，散落在 `components/`、`pages/` 的 legacy 代码，**不在本计划 41 张票范围内** —— 启用会让 CI 立刻变红，且**不得**通过关闭规则来变绿；② `src/features/deep-research/OutlineApprovalPanel` 集成用例存在**时序抖动**（多次复跑在全绿与 1–2 例超时之间摇摆），纳入 CI 会制造假红。workflow 注释已按实情重写。**解除条件**：lint → 单独立项清理这 78 处或经裁决接受显式 ignore 清单；vitest → 定位并消除该用例的时序依赖。 |
+| **P-12** | 前端 CI 的 lint / vitest 两个 step 仍**有意**注释（§4 总门禁新增，未闭合） | **未闭合** | `.github/workflows/ci-frontend.yml` 只跑 build。两个 step 的**原因已变**：不再是「依赖 T32–T34」（三者均已 DONE），而是 ① `npx eslint .` 存量 **78 errors / 9 warnings**，散落在 `components/`、`pages/` 的 legacy 代码，**不在本计划 41 张票范围内** —— 启用会让 CI 立刻变红，且**不得**通过关闭规则来变绿；② `src/features/deep-research/OutlineApprovalPanel` 集成用例存在**时序抖动**（多次复跑在全绿与 1–2 例超时之间摇摆），纳入 CI 会制造假红。workflow 注释已按实情重写。**解除条件**：lint → 单独立项清理这 78 处或经裁决接受显式 ignore 清单；vitest → 定位并消除该用例的时序依赖。 **→ 已立项为 T42 / T43（阶段 7）。** |
 | **R-01** | 5 个历史泄露凭据的服务商侧吊销 | **未闭合** | 用户决定暂不处理 |
 
 ## 执行日志
@@ -430,3 +456,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-13 | — | **§4 总门禁 findings 修复**：① `attachment_router.py` 改为 router 级 `dependencies=[Depends(get_current_user_required)]`（同 `document_router` T04 写法），并移除 3 处未使用的 `current_user` 参数、上传路径 `user_id` 去 `None` 分支；`test_router_auth.py` 把 `attachment_router` 并入 `ROUTER_MODULES` / `EXPECTED_ENDPOINT_COUNTS`（端点护栏 4），用例 47 → **58 passed**；② `ci-frontend.yml` 两个 step 的注释按实情重写（78 errors 属 41 票外存量 / vitest 时序抖动），T29 验收口径改为如实描述，新增未闭合项 **P-12**；③ `service/config.py` 注释按实情分列三键缺失行为；④ 台账勘误（main tip → `fddd6a6` 并补 T20、T27 integration 5→4、T37 18→22、T38 命令 1/2 = **7/119** 且澄清真实可执行残留 = 0、T30 验收 3 与 T31 验收 4 → PASS、P-11 关闭）。验证：`pytest tests -q` → **298 passed / 17 deselected**（287 + 11 新断言）、`ruff check app tests` → All checks passed、`eslint` 78/9 持平、`tsc` 23 持平、`vitest` 33 passed / 6 files、`vite build` 通过；Docker 侧 `docker compose up -d backend` + `curl /hello` ✅、`bash start-services.sh start/status` ✅ | 本记录 commit；两轴 findings 明细见上 |
 | 2026-09-13 | — | **§4 总门禁回填 + 计划收尾**：T20 批次审查 → `FIXED@9bd4c87`；新增「§4 总门禁 findings 明细」小节（16 条：修复 8 / 保留判定 7 / 部分驳回 1）；未闭合项 **P-11 关闭、新增 P-12**（前端 CI 的 lint/vitest 仍有意注释）。**变异检查**：临时撤掉 `attachment_router` 的路由级鉴权依赖后 `test_router_auth.py` **8 failed**（含 `test_auth_dependency_is_mounted_at_router_level[attachment_router]` 与 3 个逐端点 401 用例），恢复后 **58 passed** —— 新断言确有判别力。**计划终态**：41 张票 **40 DONE**，仅 **T10** 为 `needs-human` 保持 BLOCKED（验收要求**用户本人**创建只读 DB 角色，票面明令 AI 不得持有生产库凭据）；§4 总门禁 findings **全部处置完毕**（修复 8 / 保留判定 7 / 部分驳回 1，无未处置项）；仍待人工的仅 T10 一项 | 本记录 commit |
 | 2026-09-13 | — | **§4 门禁补漏（由用户指出）：32 个 issue 从未被关闭** —— T08–T40 的 PR 正文没有 `Closes #N` 关键字（编号被写进标题或写成纯引用 `<!-- 对应 issue：#70 -->`），GitHub 不收单；而台账在多条执行日志里逐条记「issue #N **自动关闭**」，属**未核验的副作用声明** —— 双轴子代理只读仓库，天然照不到 GitHub 侧事实，13 个批次与 §4 门禁首轮均漏判。**处置**：① 统一补关 **32 个** DONE 票的 issue（逐个附实施 commit / PR / 台账指引）；**T10（#41）按需保持 OPEN**；② **根因修复**：PR 模板把 `Closes #<issue 编号>` 移到 HTML 注释之外的**正文首行**并加醒目警示；③ `LOOP-PROTOCOL.md §5` 补「关闭关键字规则 + 合并后必须核验 `gh issue view <编号> --json state` == `CLOSED`」。**教训**：凡涉及**外部系统**（GitHub / CI / 部署 / 第三方）的声明，必须回读核验（`gh issue list --state open`、`gh pr checks`、`curl`）后再写进台账，不得凭预期推定 | 本记录 commit |
+| 2026-09-14 | — | **§4 门禁残留开票**：以 ask-matt 路由（代码库健康 → improve-codebase-architecture 的候选思路）梳理 §4 保留判定 / P-12 / needs-infra 缺口，单独立项 **T42–T50**（阶段 7 · 收尾残留，里程碑 `hardening-v2`）；同步 `tickets.md` 与 GitHub issue | 新建 9 张票 + 9 个 issue（#149–#157）；`hardening-v1` 收尾不受影响 |
