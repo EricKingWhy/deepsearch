@@ -186,7 +186,9 @@ class ReActContext:
             if isinstance(item, dict):
                 title = item.get('name', item.get('title', 'N/A'))
                 content = item.get('summary', item.get('content', ''))[:150]
-                source = item.get('source', 'unknown')
+                # 本地知识库结果在 T45 后统一为 title/site_name/is_local，无 source 字段，
+                # 直接 .get('source') 会把本地条目误判为 unknown（批次 7-3 审查发现）
+                source = item.get('source') or ('local' if item.get('is_local') else 'unknown')
                 summaries.append(f"[{i+1}] ({source}) {title}: {content}...")
             else:
                 summaries.append(f"[{i+1}] {str(item)[:200]}...")
