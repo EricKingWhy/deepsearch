@@ -4,6 +4,7 @@
  */
 
 import * as api from '@/api'
+import { errorDetail } from '@/utils'
 import { authActions } from '@/store/auth'
 import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
 import { Button, Form, Input, message } from 'antd'
@@ -17,7 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [isLogin, setIsLogin] = useState(true)
 
-  const from = (location.state as any)?.from?.pathname || '/chat'
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/chat'
 
   const onLogin = async (values: { username: string; password: string }) => {
     setLoading(true)
@@ -26,8 +27,8 @@ export default function LoginPage() {
       authActions.login(data.access_token, data.user)
       message.success('登录成功')
       navigate(from, { replace: true })
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '登录失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '登录失败')
     } finally {
       setLoading(false)
     }
@@ -54,8 +55,8 @@ export default function LoginPage() {
       authActions.login(data.access_token, data.user)
       message.success('注册成功')
       navigate(from, { replace: true })
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '注册失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '注册失败')
     } finally {
       setLoading(false)
     }

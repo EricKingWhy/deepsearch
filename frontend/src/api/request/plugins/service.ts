@@ -32,16 +32,15 @@ export const servicePlugin: IRequestPlugin = {
         return response
       },
       (error) => {
-        const response = error.response as AxiosResponse<any> | undefined
+        const response = error.response as AxiosResponse<Record<string, unknown>> | undefined
 
         const data = response?.data
-        if (!response || !isObject(data)) return Promise.reject(error)
+        if (!response || !data || !isObject(data)) return Promise.reject(error)
         if (!(CODE_KEY in data)) return Promise.reject(error)
 
         const code = data[CODE_KEY]
         if (code !== 'success') {
-          const message =
-            data[MESSAGE_KEY] || data.detail || 'API data exception'
+          const message = String(data[MESSAGE_KEY] || data.detail || 'API data exception')
           const error = new ResponseError(message, response)
           return Promise.reject(error)
         }

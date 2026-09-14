@@ -4,7 +4,7 @@
  */
 
 import { LinkOutlined, FileTextOutlined, BarChartOutlined, BulbOutlined } from '@ant-design/icons'
-import { Empty, Tag, Collapse } from 'antd'
+import { Empty, Tag } from 'antd'
 import styles from './index.module.scss'
 
 // 搜索结果类型
@@ -42,16 +42,15 @@ export interface StepDetailData {
   extractedFacts?: ExtractedFact[]
   dataPoints?: DataPoint[]
   insights?: string[]
-  outline?: any[]
+  outline?: unknown[]
   content?: string
 }
 
 interface StepDetailPanelProps {
   detail: StepDetailData | null
-  onClose?: () => void
 }
 
-export default function StepDetailPanel({ detail, onClose }: StepDetailPanelProps) {
+export default function StepDetailPanel({ detail }: StepDetailPanelProps) {
   if (!detail) {
     return (
       <div className={styles.panel}>

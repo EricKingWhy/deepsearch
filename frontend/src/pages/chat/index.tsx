@@ -4,7 +4,7 @@
  */
 
 import * as api from '@/api'
-import type { ResearchTimeline } from '@/api/session'
+import type { Message, ResearchTimeline } from '@/api/session'
 import ComPageLayout from '@/components/page-layout'
 import ComSender, { AttachmentInfo } from '@/components/sender'
 import { ChatRole, ChatType } from '@/configs'
@@ -274,8 +274,8 @@ export default function Index() {
         message.success(`附件 ${file.name} 上传成功`)
         return res.data
       }
-    } catch (e: any) {
-      message.error(`附件上传失败: ${e.message || '未知错误'}`)
+    } catch (e) {
+      message.error(`附件上传失败: ${(e as Error).message || '未知错误'}`)
       // 移除失败的附件
       setAttachments(prev => prev.filter(a => a.id !== tempId))
     }
@@ -389,11 +389,12 @@ export default function Index() {
             }
 
             // 辅助函数：从 V2 格式中提取实际内容
-            const extractContent = (data: any): string => {
+            const extractContent = (data: unknown): string => {
               if (typeof data === 'string') return data
               if (typeof data === 'object' && data !== null) {
                 // V2 格式: content 是对象 { agent, content: "实际内容" }
-                if (typeof data.content === 'string') return data.content
+                const record = data as Record<string, unknown>
+                if (typeof record.content === 'string') return record.content
                 // 如果 content 也是对象，尝试 JSON 格式化
                 return JSON.stringify(data, null, 2)
               }
@@ -424,7 +425,6 @@ export default function Index() {
             // V2 研究步骤事件 (新增)
             if (json.type === 'research_step') {
               const content = json.content || json
-              const stepId = content.step_id || `step_${Date.now()}`
               const stepType = content.step_type as ResearchStep['type']
 
               // 转换 stats 从 snake_case 到 camelCase
@@ -493,13 +493,13 @@ export default function Index() {
               const searchingType = researchStepsRef.current.find(s => s.type === 'searching') ? 'searching' : 'researching'
               const detail = researchDetailsRef.current.get(searchingType)
               if (detail) {
-                const newResults = results.map((r: any, i: number) => ({
-                  id: r.id || `sr_${Date.now()}_${i}`,
-                  title: r.title,
-                  source: r.source,
-                  date: r.date,
-                  url: r.url,
-                  snippet: r.snippet,
+                const newResults = results.map((r: Record<string, unknown>, i: number) => ({
+                  id: (r.id as string) || `sr_${Date.now()}_${i}`,
+                  title: r.title as string,
+                  source: r.source as string,
+                  date: r.date as string,
+                  url: r.url as string,
+                  snippet: r.snippet as string,
                 }))
                 // 增量模式：累加结果；否则替换
                 if (isIncremental && detail.searchResults) {
@@ -645,7 +645,7 @@ export default function Index() {
 
               let content = '**研究大纲**\n\n'
               if (outline.length > 0) {
-                content += outline.map((sec: any, i: number) =>
+                content += outline.map((sec: Record<string, unknown>, i: number) =>
                   `${i + 1}. **${sec.title}**\n   ${sec.description || ''}`
                 ).join('\n\n')
               }
@@ -679,11 +679,11 @@ export default function Index() {
               }
               // 设置引用
               if (json.references && json.references.length > 0) {
-                target.reference = json.references.map((ref: any, i: number) => ({
+                target.reference = json.references.map((ref: Record<string, unknown>, i: number) => ({
                   id: i + 1,
-                  title: ref.title || ref.source_name || '来源',
-                  link: ref.url || ref.source_url || '',
-                  content: ref.content || ref.summary || '',
+                  title: (ref.title as string) || (ref.source_name as string) || '来源',
+                  link: (ref.url as string) || (ref.source_url as string) || '',
+                  content: (ref.content as string) || (ref.summary as string) || '',
                   source: ref.source_type === 'local' ? 'knowledge' : 'web',
                 }))
               }
@@ -704,10 +704,10 @@ export default function Index() {
               target.researchPlan = {
                 understanding: json.understanding || '',
                 strategy: json.strategy || '',
-                subQueries: (json.sub_queries || []).map((sq: any) => ({
-                  query: sq.query,
-                  purpose: sq.purpose,
-                  tool: sq.tool,
+                subQueries: (json.sub_queries || []).map((sq: Record<string, unknown>) => ({
+                  query: sq.query as string,
+                  purpose: sq.purpose as string,
+                  tool: sq.tool as string,
                 })),
                 expectedAspects: json.expected_aspects || [],
               }
@@ -718,7 +718,7 @@ export default function Index() {
               target.reactSteps.push({
                 step: 0,
                 type: 'plan',
-                content: `**研究计划**\n\n理解: ${json.understanding}\n\n策略: ${json.strategy}\n\n子查询:\n${(json.sub_queries || []).map((sq: any) => `• ${sq.query} (${sq.purpose})`).join('\n')}`,
+                content: `**研究计划**\n\n理解: ${json.understanding}\n\n策略: ${json.strategy}\n\n子查询:\n${(json.sub_queries || []).map((sq: Record<string, unknown>) => `• ${sq.query} (${sq.purpose})`).join('\n')}`,
                 timestamp: Date.now(),
               })
             }
@@ -1107,11 +1107,11 @@ export default function Index() {
             } else if (['answer', 'final_answer'].includes(json.type)) {
               target.content = `${target.content}${json.content || ''}`
             } else if (json.type === 'reference_materials') {
-              target.reference = json.content?.map((o: any) => ({
-                id: o.reference_id,
-                title: o.name,
-                link: o.url,
-                content: o.summary,
+              target.reference = json.content?.map((o: Record<string, unknown>) => ({
+                id: o.reference_id as number,
+                title: o.name as string,
+                link: o.url as string,
+                content: o.summary as string,
                 source: o.source === 'local' ? 'knowledge' : 'web',
               }))
             }
@@ -1288,7 +1288,7 @@ export default function Index() {
     const loadBarrier = messagesLoadBarrierRef.current
 
     // 辅助函数：将消息数组填充到 chat.list
-    function populateMessages(messages: any[]) {
+    function populateMessages(messages: Message[]) {
       const liveItems = [...chat.list]
       const restoredItems: API.ChatItem[] = []
       for (const msg of messages) {
@@ -1305,7 +1305,7 @@ export default function Index() {
             chatItem.think = msg.thinking
           }
           if (msg.references_data?.references) {
-            chatItem.reference = msg.references_data.references as any
+            chatItem.reference = msg.references_data.references as API.Reference[]
           }
         }
 
@@ -1349,7 +1349,7 @@ export default function Index() {
     async function loadSessionMessages() {
       try {
         const res = await api.session.getSession(id!)
-        const session = (res as any).data || res
+        const session = res.data
 
         if (
           previousIdRef.current === loadId &&
@@ -1381,7 +1381,9 @@ export default function Index() {
 
     async function loadCheckpoint() {
       try {
-        let checkpointResponse: any
+        let checkpointResponse:
+          | Awaited<ReturnType<typeof api.session.getFullResearchCheckpoint>>
+          | undefined
         let checkpointError: unknown
         const checkpointRequest = api.session
           .getFullResearchCheckpoint(id!)
@@ -1396,7 +1398,7 @@ export default function Index() {
         if (checkpointError) throw checkpointError
         if (previousIdRef.current !== loadId) return
         const res = checkpointResponse
-        const response = (res as any).data || res
+        const response = res?.data
         if (response?.success && response?.checkpoint) {
           const checkpoint = response.checkpoint
 
@@ -1457,18 +1459,21 @@ export default function Index() {
 
             // 恢复 UI 状态
             const uiState = checkpoint.ui_state_json
+            // state_json 是后端自由结构，完整收窄需重写整条 checkpoint 恢复链（超出本票范围）
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 见上，全文件仅此一处
             const stateJson = checkpoint.state_json as any
 
 
             // 恢复研究步骤 - 如果没有步骤数据，创建默认步骤
             let steps: ResearchStep[] = []
             if (uiState?.research_steps && uiState.research_steps.length > 0) {
-              steps = uiState.research_steps.map((s: any) => ({
-                id: s.type || `step_${Date.now()}`,
+              steps = uiState.research_steps.map((s: Record<string, unknown>) => ({
+                id: (s.type as string) || `step_${Date.now()}`,
                 type: s.type as ResearchStep['type'],
-                title: s.type || '',
-                status: checkpoint.status === 'completed' ? 'completed' : s.status || 'completed',
-                stats: s.stats,
+                title: (s.type as string) || '',
+                subtitle: (s.subtitle as string) || '',
+                status: checkpoint.status === 'completed' ? 'completed' : ((s.status as ResearchStep['status']) || 'completed'),
+                stats: s.stats as ResearchStep['stats'],
               }))
             } else {
               // 创建默认研究步骤（基于可用数据推断）
@@ -1504,13 +1509,13 @@ export default function Index() {
                 const searchingType = researchDetailsRef.current.has('searching') ? 'searching' : 'researching'
                 const detail = researchDetailsRef.current.get(searchingType)
                 if (detail) {
-                  detail.searchResults = uiState.search_results.map((r: any, i: number) => ({
-                    id: r.id || `sr_${i}`,
-                    title: r.title || r.source_name || '',
-                    source: r.source || 'web',
-                    url: r.url || r.source_url || '',
-                    snippet: r.snippet || r.content || '',
-                    date: r.date || '',
+                  detail.searchResults = uiState.search_results.map((r: Record<string, unknown>, i: number) => ({
+                    id: (r.id as string) || `sr_${i}`,
+                    title: (r.title as string) || (r.source_name as string) || '',
+                    source: (r.source as string) || 'web',
+                    url: (r.url as string) || (r.source_url as string) || '',
+                    snippet: (r.snippet as string) || (r.content as string) || '',
+                    date: (r.date as string) || '',
                   }))
                 }
               }
@@ -1598,11 +1603,11 @@ export default function Index() {
 
               const refs = uiState?.references || stateJson.references || []
               if (refs.length > 0 && !restoredAssistant.reference?.length) {
-                restoredAssistant.reference = refs.map((ref: any, i: number) => ({
+                restoredAssistant.reference = refs.map((ref: Record<string, unknown>, i: number) => ({
                   id: i + 1,
-                  title: ref.title || ref.source_name || '来源',
-                  link: ref.link || ref.url || ref.source_url || '',
-                  content: ref.content || ref.summary || '',
+                  title: (ref.title as string) || (ref.source_name as string) || '来源',
+                  link: (ref.link as string) || (ref.url as string) || (ref.source_url as string) || '',
+                  content: (ref.content as string) || (ref.summary as string) || '',
                   source:
                     ref.source === 'knowledge' || ref.source_type === 'local'
                       ? 'knowledge'
@@ -1694,7 +1699,7 @@ export default function Index() {
     return () => {
       window.removeEventListener('scroll', handleScroll)
     }
-  }, [])
+  }, [chat.list])
 
   // 处理步骤点击，切换显示详情 (旧版)
   const handleStepClick = useCallback((stepId: string) => {
@@ -1729,7 +1734,7 @@ export default function Index() {
     let streamingReport = ''
     let allSections: ResearchDetailData['sections'] = []
 
-    researchDetailsRef.current.forEach((detail, stepId) => {
+    researchDetailsRef.current.forEach((detail) => {
 
       // 收集搜索结果
       if (detail.searchResults && detail.searchResults.length > 0) {
@@ -1768,7 +1773,10 @@ export default function Index() {
     }
 
     return aggregated
-  }, [isDeepResearchMode, selectedResearchDetail, researchSteps, researchDataVersion])  // researchSteps/version 变化时重新计算
+    // researchSteps / researchDataVersion 是「ref 内容变化」的显式失效信号：本 memo 读的是
+    // researchDetailsRef.current（ref 不参与依赖追踪），必须靠它们触发重算，故刻意保留。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上，非多余依赖
+  }, [isDeepResearchMode, selectedResearchDetail, researchSteps, researchDataVersion])
 
   // 确定右侧面板显示内容
   const rightPanelContent = useMemo(() => {

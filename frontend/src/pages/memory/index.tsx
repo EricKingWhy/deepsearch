@@ -13,9 +13,7 @@ import {
   Popconfirm,
   Tag,
   Empty,
-  Spin,
   Typography,
-  Timeline,
   Collapse,
 } from 'antd'
 import {
@@ -27,6 +25,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons'
 import { useSnapshot } from 'valtio'
+import { errorDetail } from '@/utils'
 import { authState } from '@/store/auth'
 import { useNavigate } from 'react-router-dom'
 import * as api from '@/api'
@@ -39,7 +38,7 @@ import styles from './index.module.scss'
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 const { Search } = Input
 
 export default function MemoryPage() {
@@ -59,8 +58,8 @@ export default function MemoryPage() {
         setMemories(res.data.memories)
         setTotal(res.data.total)
       }
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '获取记忆列表失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '获取记忆列表失败')
     } finally {
       setLoading(false)
     }
@@ -96,8 +95,8 @@ export default function MemoryPage() {
       if (res.data) {
         setSearchResults(res.data)
       }
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '搜索失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '搜索失败')
     } finally {
       setSearchLoading(false)
     }
@@ -112,8 +111,8 @@ export default function MemoryPage() {
       if (searchResults) {
         setSearchResults(searchResults.filter(r => r.id !== memoryId))
       }
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '删除失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '删除失败')
     }
   }
 

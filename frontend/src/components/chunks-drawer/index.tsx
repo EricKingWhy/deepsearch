@@ -3,11 +3,12 @@
  * 未经授权，禁止转售或仿制。
  */
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Drawer, Spin, Empty, Tag, Typography, message } from 'antd'
 import { FileTextOutlined } from '@ant-design/icons'
 import * as knowledgeApi from '@/api/knowledge'
 import type { ChunkInfo } from '@/api/knowledge'
+import { errorDetail } from '@/utils'
 import styles from './index.module.scss'
 
 const { Text, Paragraph } = Typography
@@ -31,25 +32,25 @@ export default function ChunksDrawer({
   const [chunks, setChunks] = useState<ChunkInfo[]>([])
   const [totalCount, setTotalCount] = useState(0)
 
-  useEffect(() => {
-    if (open && kbId && docId) {
-      fetchChunks()
-    }
-  }, [open, kbId, docId])
-
-  const fetchChunks = async () => {
+  const fetchChunks = useCallback(async () => {
     setLoading(true)
     try {
       const res = await knowledgeApi.getDocumentChunks(kbId, docId)
       setChunks(res.data.chunks)
       setTotalCount(res.data.chunk_count)
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || '获取切片失败')
+    } catch (error) {
+      message.error(errorDetail(error) || '获取切片失败')
       setChunks([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [kbId, docId])
+
+  useEffect(() => {
+    if (open && kbId && docId) {
+      fetchChunks()
+    }
+  }, [open, kbId, docId, fetchChunks])
 
   const handleClose = () => {
     setChunks([])
@@ -81,7 +82,7 @@ export default function ChunksDrawer({
         <Empty description="暂无切片数据" />
       ) : (
         <div className={styles.chunkList}>
-          {chunks.map((chunk, index) => (
+          {chunks.map((chunk) => (
             <div key={chunk.index} className={styles.chunkItem}>
               <div className={styles.chunkHeader}>
                 <Tag color="purple">#{chunk.index + 1}</Tag>

@@ -8,7 +8,6 @@ import type { NewsItem, BiddingItem } from '@/api/news'
 import IconNews from '@/assets/layout/news.svg'
 import ComSender, { AttachmentInfo } from '@/components/sender'
 import { useQuery } from '@/router/hook'
-import { deviceState } from '@/store/device'
 import { industryState } from '@/store/industry'
 import { setPageTransport } from '@/utils'
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
@@ -24,7 +23,6 @@ import { transportToChatEnter } from './shared'
 export default function NewChat() {
   const query = useQuery()
   const navigate = useNavigate()
-  const device = useSnapshot(deviceState)
   const industry = useSnapshot(industryState)
 
   // 获取当前行业名称
@@ -69,8 +67,6 @@ export default function NewChat() {
     async function fetchHotItems() {
       try {
         setNewsLoading(true)
-        const thirtyDaysAgo = dayjs().subtract(30, 'day')
-
         // 并行获取资讯和招投标
         const [newsRes, biddingRes] = await Promise.all([
           api.news.getNewsList({
@@ -188,7 +184,7 @@ export default function NewChat() {
         const { data } = await api.session.createSession({ title: '新对话' })
         sessionId = data.id
         setPendingSessionId(sessionId)
-      } catch (e) {
+      } catch {
         message.error('创建会话失败')
         return null
       }
@@ -228,8 +224,8 @@ export default function NewChat() {
           )
         )
       }
-    } catch (e: any) {
-      message.error(`附件上传失败: ${e.message || '未知错误'}`)
+    } catch (e) {
+      message.error(`附件上传失败: ${(e as Error).message || '未知错误'}`)
       setAttachments(prev => prev.filter(a => a.id !== tempId))
     }
     return null

@@ -38,7 +38,7 @@ function findHost(url: string) {
   })
 }
 
-const 来源 = (props: { item: API.ChatItem }) => {
+const SourceList = (props: { item: API.ChatItem }) => {
   const { item } = props
 
   const source = useMemo(() => {
@@ -100,7 +100,7 @@ const 来源 = (props: { item: API.ChatItem }) => {
                   const url = new URL(item.link)
                   domainName = url.hostname.replace(/^www\./, '')
                 }
-              } catch (e) {
+              } catch {
                 domainName = item.link || ''
               }
               // 截断标题，保留合理长度
@@ -436,7 +436,7 @@ export function Result(props: {
         },
       },
     ],
-    [item, item.reference],
+    [item],
   )
 
   return (
@@ -472,7 +472,7 @@ export function Result(props: {
         />
       </Section>
 
-      {item.reference?.length && !item.loading ? <来源 item={item} /> : null}
+      {item.reference?.length && !item.loading ? <SourceList item={item} /> : null}
 
       {item.image_results?.images?.length && !item.loading ? (
         <图像 item={item} />
