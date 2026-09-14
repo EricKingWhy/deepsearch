@@ -13,13 +13,13 @@
 | 计划起始基线 commit（第一批审查的 fixed point） | `9342913` |
 | PRD / ticket 落盘 commit | `2047a77` |
 | `main` 当前 tip（2026-09-13 核实，本地＝远端，已含 T01–T41 + T20 + 批次 10/11/12/13 审查修复） | `fddd6a635101500c69863f42425d35bae5a7d4db`（T20 收尾 PR #146 的 merge commit；本回填 PR 合并后 main 再前移一格） |
-| 当前批次 | **§4 总门禁（已完成）** —— 40/41 DONE；T20 决策票已收尾（AI 裁决 A：记录基线、不拆分）；对整条分支的**最终全量双轴审查**（fixed point = 计划起始基线 `9342913` → `fddd6a6`）已跑，findings 已修复并回填；T10 为 needs-human 保持 BLOCKED（需人工只读 DB 账号）。另：§4 残留已立项 **T42–T50**（阶段 7），见下方映射 |
-| 当前 fixed point（上一批审查结束 commit） | `7773c84`（第 13 批审查修复 commit）；§4 总门禁的审查起点 = `9342913`（计划起始基线） |
+| 当前批次 | **阶段 7 第 1 批审查（已完成）** —— T42–T50 已立项；T43 / T46 / T48 已 DONE 并完成双轴审查（fixed point `60b8b47` → 审查 `e8f6864`，6 条 3 修 3 保留，修复 `96fadb4`）；T44 / T45 / T47 为决策票保持 BLOCKED；T49（needs-infra）、T10 待续 |
+| 当前 fixed point（上一批审查结束 commit） | `96fadb4`（阶段 7 第 1 批审查修复 commit）；§4 总门禁审查起点 = `9342913` |
 | 当前分支命名 | `T<编号>-<短描述>`（**必须扁平，禁止 `/`**，见协议 §9.1） |
 | 合并目标 | 本地 `main` 分支（merge commit，不用 squash） |
-| 总 ticket 数 | 41（T01–T40 + 第 1 批审查衍生 T41） |
-| 已完成 | 40 |
-| 决策票待裁决 | 无（T18 / T19 / T20 / T37 均已裁决：A / C / A / A） |
+| 总 ticket 数 | 50（T01–T41 + 阶段 7 的 T42–T50） |
+| 已完成 | 43（阶段 1–6 的 40 + 阶段 7 的 T43 / T46 / T48） |
+| 决策票待裁决 | **T44 / T45 / T47**（阶段 7，等待用户裁决 A/B/C）；另有 T10 为 needs-human 保持 BLOCKED |
 
 ## 批次审查记录
 
@@ -38,6 +38,29 @@
 | 11 | T33–T34 | `9420c8c` | `a445014` | 4 | `4691e72` | FIXED |
 | 12 | T35–T38 | `4691e72` | `beef8e6` | 19 | `114fcf9` | FIXED |
 | 13 | T39–T40 + T37 | `114fcf9` | `82a63c9` | 5 | `7773c84` | FIXED |
+
+## 阶段 7 批次审查记录
+
+> 阶段 7（T42–T50）独立于阶段 1–6 的批次编号，故批次号加前缀 `7-`，与上表区分。
+
+| 批次 | 覆盖 ticket | fixed point（起点） | 审查 commit（终点） | findings 数 | 修复 commit | 状态 |
+|------|------------|--------------------|--------------------|------------|------------|------|
+| 7-1 | T43 / T46 / T48 | `60b8b47` | `e8f6864` | 6 | `96fadb4` | FIXED |
+
+### 7-1 findings 明细（`60b8b47` → `e8f6864`，修复 commit `96fadb4`）
+
+双轴并行审查：**标准轴 0 硬违规 + 4 条 judgement call；规格轴 2 条**。去重后 **6 条**：3 修 3 保留。
+
+| # | 轴 | finding | 处置 |
+|---|----|---------|------|
+| 1 | 标准 | T46 `subprocess.run(timeout=600)` 过宽：探针若挂死要白等满 10 分钟才失败 | **已修** `96fadb4`：收紧为 180s（实测导入 16–18s、冷启 30s，约 6 倍余量） |
+| 2 | 标准 | T46 docstring「导入约 25s」与 TRACKER 行「约 16s」不一致（同一数值两处漂移） | **已修** `96fadb4`：实测 3 次 16.5 / 18.0 / 30.2s（冷启动），全量 24.96s；两处统一为「16–18s（冷启动曾见 30s）/ 全量 ~25s」 |
+| 3 | 标准 | T46 未打 `slow` / `integration` 标记，偏离仓库 marker 惯例 | **保留判定**：`needs_infra` 会被默认 `addopts=-m "not needs_infra"` **反选**，等于关掉本仓唯一的请求级 CSP 锁；`integration` 语义是「需 PostgreSQL」，本测试不碰 DB；`slow` 未在 `pytest.ini` 注册。三者皆不适配 → 保持无标记 |
+| 4 | 标准 | T46 用子进程跑 `TestClient`，偏离仓库「conftest 占位包 + 同进程断言」惯例 | **保留判定**：docstring 已记根因 —— 同进程导入 `app_main` 会触发 `Table '...' is already defined`（重复导入 models），子进程是唯一干净路径 |
+| 5 | 规格 | T43 票面要求「消除时序抖动」，实现只把 `testTimeout` 5000→20000ms，措辞与实现不符 | **保留判定**：复现证实是「预算不足」非竞态 —— 重交互用例单条 2.6–2.9s vs 5000ms 仅 1.7 倍余量；唯一涉时用例走 fake timers，无真实竞态可消除。已在 T43 行记根因 |
+| 6 | 规格 | T48 第三种导入模式（`python app/app_main.py`，走 `except ImportError` 分支）无显式验证记录 | **已核验**：`timeout 30 python app/app_main.py` 无 ImportError、uvicorn 正常起服 → `except` 分支解析 `0.1.0` 成功；三模式（包导入 / 脚本 / 容器顶层）齐备 |
+
+**本批验收复核**：T43 `npm run test` → 33 passed / 6 files、eslint 78/9 持平；T46 `pytest tests -q` → 302 passed / 17 deselected（基线 298 → +4）、`ruff` 全绿；T48 三模式均 `0.1.0`、`pytest tests -q` → 298 passed。**NG-2 / NG-3 未出现在本批 diff（`60b8b47`..`e8f6864`）**。
 
 ### 第 1 批审查 findings 明细（`9342913` → `5651c98`，修复 commit `19547b0`）
 
@@ -313,12 +336,12 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | T40 | 补 security 鉴权单元测试 | #71 | DONE | `T40-security-tests` | `c4e2510` | #141 | PASS（新增 `tests/core/test_security.py` **18 例**（要求 ≥6）：往返 / 篡改签名 / 篡改载荷 / 无 sub / 畸形串 / 过期（负 `expires_delta`，未引入 freezegun）/ 另一密钥 / `get_current_user_required` 缺头·非 Bearer·垃圾 Token → 401、有效 Token + 启用用户 → 200、未知用户 → 401、已禁用用户 → 403。票面第 5 项（弱密钥 / 缺失密钥 → 配置期失败）已由 T02 的 `test_security_jwt.py` 覆盖，**刻意不重复**；**不连库** —— `get_user_by_id` 用 monkeypatch 接管，`oauth2_scheme` 实测 `auto_error=False` 故缺头与非 Bearer 都落到 `if not token` 的 401 分支；密钥自查无 `sk-*` 命中；pytest tests -q → 265 passed / 17 deselected） | 13 | FIXED@`7773c84` |
 | T41 | 合并三处上传实现，消除 attachment / knowledge 路径穿越 | #75 | DONE | `T41-consolidate-upload-security` | `1182ccb` | #76 | PASS（`pytest tests/router -k upload` → 40 passed；三路由 `py_compile` 通过） | 2 | FIXED@57f69e0 |
 | T42 | 前端 eslint 存量清零并启用 CI lint | #149 | TODO | — | — | — | — | §4 残留 | — |
-| T43 | 消除前端集成用例时序抖动并启用 CI vitest | #150 | DONE | `T43-vitest-flake` | `be1ea7c` | #161 | PASS（**复现成功**：6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`；定位为**预算不足**而非竞态 —— 重交互用例单条 2.6–2.9s vs 默认 5000ms 只有 1.7 倍余量；修法 `vitest.config.ts` 设 `testTimeout: 20000`（断言与墙钟无关，唯一计时用例走 fake timers）；`userEvent({delay:null})` 实测只降 2963→2642ms，弃用。启用 ci-frontend 的 vitest step。验收：6 份并发 6/6 全绿 + 串行 10 次全绿（33 passed / 6 files）；eslint 78/9 持平） | 1 | PENDING |
+| T43 | 消除前端集成用例时序抖动并启用 CI vitest | #150 | DONE | `T43-vitest-flake` | `be1ea7c` | #161 | PASS（**复现成功**：6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`；定位为**预算不足**而非竞态 —— 重交互用例单条 2.6–2.9s vs 默认 5000ms 只有 1.7 倍余量；修法 `vitest.config.ts` 设 `testTimeout: 20000`（断言与墙钟无关，唯一计时用例走 fake timers）；`userEvent({delay:null})` 实测只降 2963→2642ms，弃用。启用 ci-frontend 的 vitest step。验收：6 份并发 6/6 全绿 + 串行 10 次全绿（33 passed / 6 files）；eslint 78/9 持平） | 7-1 | FIXED@96fadb4 |
 | T44 | 决策票：上传落盘生命周期并轨（三路由） | #151 | TODO | — | — | — | — | §4 残留 | — |
 | T45 | 决策票：本地知识库结果形状统一（三处实现） | #152 | TODO | — | — | — | — | §4 残留 | — |
-| T46 | CSP 请求级回归测试 | #153 | DONE | `T46-csp-request-level-test` | `4ba9287` | #160 | PASS（新增 `tests/test_security_headers_request.py` **4 passed**（子进程内 `TestClient` 发真实请求）；变异检查：撤掉 `@app.middleware("http")` → 2 failed，恢复 → 4 passed；全量 `pytest tests -q` → **302 passed / 17 deselected**（基线 298 → +4）；`ruff check app tests` → All checks passed。代价：导入 app_main 约 16s） | 1 | PENDING |
+| T46 | CSP 请求级回归测试 | #153 | DONE | `T46-csp-request-level-test` | `4ba9287` | #160 | PASS（新增 `tests/test_security_headers_request.py` **4 passed**（子进程内 `TestClient` 发真实请求）；变异检查：撤掉 `@app.middleware("http")` → 2 failed，恢复 → 4 passed；全量 `pytest tests -q` → **302 passed / 17 deselected**（基线 298 → +4）；`ruff check app tests` → All checks passed。代价：导入 app_main 实测 16–18s、冷启动 30s） | 7-1 | FIXED@96fadb4 |
 | T47 | 决策票：可选外部服务密钥缺失的失败语义（serper） | #154 | TODO | — | — | — | — | §4 残留 | — |
-| T48 | OpenAPI 文档版本与包版本同步 | #155 | DONE | `T48-openapi-version-sync` | `2cb0489` | #159 | PASS（两种导入模式实测均 `0.1.0`；`ruff check app` → All checks passed；`pytest tests -q` → 298 passed / 17 deselected；`grep -n version= app/app_main.py` 无 `2.0.0`） | 1 | PENDING |
+| T48 | OpenAPI 文档版本与包版本同步 | #155 | DONE | `T48-openapi-version-sync` | `2cb0489` | #159 | PASS（两种导入模式实测均 `0.1.0`；`ruff check app` → All checks passed；`pytest tests -q` → 298 passed / 17 deselected；`grep -n version= app/app_main.py` 无 `2.0.0`） | 7-1 | FIXED@96fadb4 |
 | T49 | needs-infra 验证补跑（T35 实机渲染 + T08 端到端） | #156 | TODO | — | — | — | — | §4 残留 | — |
 | T50 | 仓库卫生清理（.runlogs 残留 + 已合并分支） | #157 | TODO | — | — | — | — | §4 残留 | — |
 
@@ -460,3 +483,4 @@ T23 未统一存量换行符（diff 仅新文件）；T26 零违规故「ignore 
 | 2026-09-14 | T48 | 实施 + 合并：`app_main.py` 的 `FastAPI(version="2.0.0")` 改为读取 `app/__init__.py` 的 `__version__`（单一来源，0.1.0）。因 app_main 有包内 / 脚本 / 容器顶层三种导入方式，用 try/except 两条路径解析，避免任一模式 ImportError | commit `2cb0489`，PR #159；两模式均得 0.1.0、ruff All checks passed、pytest 298 passed / 17 deselected |
 | 2026-09-14 | T46 | 实施 + 合并：新增 `tests/test_security_headers_request.py`，用 `TestClient` 发**真实请求**锁定 CSP 中间件行为（`/hello` 带 CSP、`/openapi.json` 与 `/docs` 豁免、`/docsx` 不豁免），补上「源码文本断言」看不到的接线缺口。**在子进程内导入 app_main**：同会话内会连锁踩坑（conftest 占位包缺名 → deep_research_v2 重链 → models 顶层类 → 重复导入 models 触发 `Table 'chat_attachments' is already defined`），子进程每次干净解释器；`TestClient` 不用 `with` 故不触发 lifespan（无基础设施） | commit `4ba9287`，PR #160；4 passed、变异检查 2 failed 后恢复、全量 302 passed / 17 deselected、ruff All checks passed |
 | 2026-09-14 | T43 | 实施 + 合并：**复现**前端 test 的「时序抖动」—— 6 份并发 `npx vitest run` 稳定出现 3–4 例 `Test timed out in 5000ms`（`OutlineApprovalPanel.test.tsx` 的 `edits, adds…`、`deep-research-integration.test.tsx` 的两条）。根因是**默认 5000ms 对 2.6–2.9s 的重交互用例只有 1.7 倍余量**，非竞态。修法：`frontend/vitest.config.ts` 设 `testTimeout: 20000`；启用 `ci-frontend.yml` 的 `Test (vitest)` step（lint 仍注释，属 T42）。弃用 `userEvent({delay:null})`（实测仅 2963→2642ms） | commit `be1ea7c`，PR #161；6 份并发 6/6 全绿、串行 10 次全绿、eslint 78/9 持平 |
+| 2026-09-14 | T43/T46/T48 | **阶段 7 第 1 批双轴审查**（fixed point `60b8b47` → 审查 `e8f6864`）：标准轴 0 硬违规 + 4 judgement call、规格轴 2 条 → 去重 **6 条（3 修 3 保留）**。已修 `96fadb4`：T46 子进程超时 600→180s、docstring 数值与实测对齐（16–18s / 冷启动 30s）。保留判定：T46 marker（`needs_infra` 会反选掉唯一的请求级 CSP 锁）、T46 子进程形态（同进程 `Table ... already defined`）、T43 timeout-vs-竞态（实测为预算不足非竞态）。已核验 T48 第三模式（`python app/app_main.py` 无 ImportError） | 修复 commit `96fadb4`，进入阶段 7 第 2 批 |
