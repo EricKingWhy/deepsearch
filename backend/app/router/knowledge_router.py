@@ -10,10 +10,8 @@ from sqlalchemy.orm import Session
 
 from core.database import get_db
 from core.upload_security import (
-    MAX_UPLOAD_BYTES,
     ensure_supported_extension,
-    read_upload_with_limit,
-    safe_filename,
+    save_upload,
 )
 from models.knowledge import KnowledgeBase, Document
 from models.user import User
@@ -325,21 +323,9 @@ async def upload_document(
     # 验证文件类型：先剥离客户端塞入的目录片段，再比对白名单
     ext = ensure_supported_extension(file.filename, ALLOWED_EXTENSIONS)
 
-    # 保存文件到临时目录：落盘名由服务端生成，**不使用 file.filename**
-    # （该字符串完全由客户端控制，"../../" 片段足以写出 UPLOAD_DIR）
-    file_path = os.path.join(UPLOAD_DIR, safe_filename(extension=ext))
-    try:
-        content = await read_upload_with_limit(file, MAX_UPLOAD_BYTES)
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-    except HTTPException:
-        # 413 等业务异常直接透出，不要被下面的兜底转成 500
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"文件保存失败: {str(e)}"
-        )
+    # 落盘名由服务端生成、限长读取、失败清理统一 —— 详见 core.upload_security.save_upload（T44）。
+    # **不使用 file.filename**（该字符串完全由客户端控制，"../../" 片段足以写出 UPLOAD_DIR）
+    file_path = await save_upload(file, UPLOAD_DIR, extension=ext)
 
     # 获取文件大小
     file_size = os.path.getsize(file_path)

@@ -1,7 +1,7 @@
 # Copyright © 2026 深圳市深维智见教育科技有限公司 版权所有
 # 未经授权，禁止转售或仿制。
 
-"""文件上传安全工具：文件名净化、扩展名校验、大小限制。
+"""文件上传安全工具：文件名净化、扩展名校验、大小限制、落盘生命周期。
 
 **为什么独立成模块**：``router/document_router.py`` 会连带引入 milvus / ES / docmind
 等重依赖，导致这些纯粹的上传校验逻辑无法在「无基础设施」的 CI 中验证（见 T27 口径）。
@@ -16,7 +16,7 @@ import uuid
 from typing import Iterable, Optional
 
 from fastapi import HTTPException
-from starlette.status import HTTP_400_BAD_REQUEST
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
 # 分块读取上传内容时的块大小
 READ_CHUNK_BYTES = 1024 * 1024
@@ -100,3 +100,57 @@ async def read_upload_with_limit(upload, max_bytes: int) -> bytes:
             )
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _remove_quietly(path: str) -> None:
+    """尽力删除文件，忽略错误。
+
+    本函数只用在**异常处理路径**上：那里再抛异常会掩盖原始错误，
+    而「文件本来就不存在」属正常情况（例如 413 在写盘之前就失败了）。
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+async def save_upload(
+    upload,
+    dest_dir: str,
+    *,
+    extension: str,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+) -> str:
+    """把上传内容写入 ``dest_dir`` 下的服务端命名文件，返回落盘路径。
+
+    把「建目录 → 限长读取 → 写盘 → 异常映射 → 失败清理」并轨到一处，
+    供 document / attachment / knowledge 三个上传入口共用（T44 方案 B）。
+
+    并轨前三个入口的**失败清理策略是分叉的**：只有 document 分支会在失败后删掉
+    半截文件，attachment / knowledge 会留下孤儿文件。本函数统一保证
+    「**任何失败都不留残留文件**」。
+
+    ``extension`` 必须来自**已通过白名单校验**的返回值（各入口白名单不同，故不在此
+    重复校验），例如 ``ensure_supported_extension(file.filename, ALLOWED)``。
+
+    异常语义：
+    - 累计读取超过 ``max_bytes`` → 原样透出 413（不被下面的兜底转成 500）；
+    - 写盘期间其它任何异常 → 删掉半截文件后抛 500（``文件保存失败: ...``）。
+    """
+    os.makedirs(dest_dir, exist_ok=True)
+    file_path = os.path.join(dest_dir, safe_filename(extension=extension))
+    try:
+        content = await read_upload_with_limit(upload, max_bytes)
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except HTTPException:
+        # 413 等业务异常原样透出，不要被下面的兜底转成 500
+        _remove_quietly(file_path)
+        raise
+    except Exception as e:
+        _remove_quietly(file_path)
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"文件保存失败: {str(e)}",
+        )
+    return file_path
