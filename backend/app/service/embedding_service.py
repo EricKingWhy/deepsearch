@@ -2,11 +2,13 @@
 # 未经授权，禁止转售或仿制。
 
 """
-Embedding 服务 - 使用阿里 DashScope
+Embedding 服务 - OpenAI 兼容 /embeddings（供应商由环境变量切换）
 
 功能：
-1. generate_embedding - 使用 text-embedding-v4 生成向量
-2. rerank_similarity - 使用 DashScope Rerank 重排序
+1. generate_embedding - 生成向量。缺省仍是 DashScope text-embedding-v4；可经
+   EMBEDDING_MODEL / EMBEDDING_BASE_URL / EMBEDDING_API_KEY 切换供应商
+   （如硅基流动 BAAI/bge-m3，细节见函数 docstring）。
+2. rerank_similarity - 使用 DashScope Rerank 重排序（仍读 DASHSCOPE_API_KEY）
 """
 
 import os
@@ -28,31 +30,44 @@ def generate_embedding(
     text: str | List[str],
     api_key: str = None,
     base_url: str = None,
-    model_name: str = "text-embedding-v4",
-    dimensions: int = 1024,
+    model_name: str | None = None,
+    dimensions: int | None = None,
     encoding_format: str = "float",
     max_batch_size: int = 10
 ) -> Optional[List[float] | List[List[float]]]:
     """
-    生成文本的向量嵌入（使用阿里 text-embedding-v4）
+    生成文本的向量嵌入（OpenAI 兼容 /embeddings，供应商由环境变量决定）
+
+    环境变量（默认值保持 DashScope 旧行为，切换供应商零代码改动）：
+    - EMBEDDING_API_KEY    优先；缺省回退 DASHSCOPE_API_KEY
+    - EMBEDDING_BASE_URL   优先；缺省回退 DASHSCOPE_BASE_URL，再缺省 DashScope 兼容模式
+    - EMBEDDING_MODEL      缺省 text-embedding-v4（如硅基流动 BAAI/bge-m3）
+    - EMBEDDING_DIMENSIONS 可选。**不设置就不向供应商传 dimensions** —— 硅基流动 bge-m3
+      对该参数直接 400（code=20015，实测 2026-09-14），而 DashScope v4 需要它；
+      bge-m3 固定 1024 维，与 milvus_service.vector_dim 一致，故无需设置。
 
     Args:
         text: 单个文本或文本列表
         api_key: API密钥（默认从环境变量获取）
         base_url: API基础URL（默认从环境变量获取）
-        model_name: 模型名称
-        dimensions: 向量维度（默认1024）
+        model_name: 模型名称（缺省读 EMBEDDING_MODEL）
+        dimensions: 向量维度；None 时不向供应商传该参数
         encoding_format: 编码格式
-        max_batch_size: 最大批量大小（阿里云限制为10）
+        max_batch_size: 最大批量大小（DashScope 限制为10）
 
     Returns:
         单个文本时返回向量，文本列表时返回向量列表
     """
-    api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
-    base_url = base_url or os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    api_key = api_key or os.getenv("EMBEDDING_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+    base_url = base_url or os.getenv("EMBEDDING_BASE_URL") or os.getenv(
+        "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    model_name = model_name or os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
+    if dimensions is None:
+        dimensions = os.getenv("EMBEDDING_DIMENSIONS")
 
     if not api_key:
-        logger.warning("错误: 缺少 DASHSCOPE_API_KEY 环境变量")
+        logger.warning("错误: 缺少 EMBEDDING_API_KEY / DASHSCOPE_API_KEY 环境变量")
         return None
 
     try:
@@ -64,11 +79,13 @@ def generate_embedding(
     # 单个文本
     if isinstance(text, str):
         try:
+            kwargs = {"encoding_format": encoding_format}
+            if dimensions:
+                kwargs["dimensions"] = int(dimensions)
             completion = client.embeddings.create(
                 model=model_name,
                 input=text,
-                dimensions=dimensions,
-                encoding_format=encoding_format
+                **kwargs
             )
             return completion.data[0].embedding
         except Exception as e:
@@ -83,11 +100,13 @@ def generate_embedding(
             batch = text[i:i + max_batch_size]
 
             try:
+                kwargs = {"encoding_format": encoding_format}
+                if dimensions:
+                    kwargs["dimensions"] = int(dimensions)
                 completion = client.embeddings.create(
                     model=model_name,
                     input=batch,
-                    dimensions=dimensions,
-                    encoding_format=encoding_format
+                    **kwargs
                 )
                 batch_embeddings = [item.embedding for item in completion.data]
                 all_embeddings.extend(batch_embeddings)
