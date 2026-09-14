@@ -2,13 +2,12 @@
 # 未经授权，禁止转售或仿制。
 
 """数据库探索路由 - PostgreSQL 可视化 + Text2SQL"""
-import os
 from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from core.database import get_db
+from core.database import get_db, resolve_text2sql_url
 from models.user import User
 from router.auth_router import get_current_user_required
 from service.database_explorer import DatabaseExplorer
@@ -215,17 +214,9 @@ async def text2sql_query(
         # 获取 LLM 配置
         config = get_config()
 
-        # 构建数据库连接字符串
-        db_url = os.getenv("DATABASE_URL", "")
-        if not db_url:
-            # 从单独的环境变量构建
-            pg_host = os.getenv("POSTGRES_HOST", "localhost")
-            pg_port = os.getenv("POSTGRES_PORT", "5432")
-            pg_user = os.getenv("POSTGRES_USER", "postgres")
-            pg_pass = os.getenv("POSTGRES_PASSWORD", "")
-            pg_db = os.getenv("POSTGRES_DB", "industry_assistant")
-            if pg_host and pg_user and pg_db:
-                db_url = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+        # 构建数据库连接字符串：T10 —— 优先只读账号（TEXT2SQL_DATABASE_URL），
+        # 未配置时回退主库。解析优先级集中在 core.database.resolve_text2sql_url。
+        db_url = resolve_text2sql_url()
 
         # 创建 Text2SQL 服务 (使用 qwen-plus 更稳定的 JSON 输出)
         service = Text2SQLService(
