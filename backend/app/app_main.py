@@ -84,10 +84,19 @@ async def lifespan(app: FastAPI):
     shutdown_tracing(timeout_seconds=5.0)
 
 
+# 版本号单一来源 = app/__init__.py 的 __version__（T25 初始化，CHANGELOG 0.1.0 同源），不再硬编码。
+# app_main 有三种导入方式，故两种路径都试：
+#   ① 包内导入（pytest：`from app import app_main`）；
+#   ② 脚本 / 容器顶层导入（`python app/app_main.py`、`uvicorn app_main:app`），此时包目录自身在 sys.path 上。
+try:
+    from app import __version__ as _APP_VERSION
+except ImportError:
+    from __init__ import __version__ as _APP_VERSION
+
 app = FastAPI(
     title="行业信息助手 API",
     description="基于 AI Agent 的行业信息助手系统",
-    version="2.0.0",
+    version=_APP_VERSION,
     lifespan=lifespan
 )
 
