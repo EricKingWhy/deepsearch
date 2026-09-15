@@ -2392,7 +2392,7 @@ cd backend && pytest tests -q
 
 - 依赖本机 / CI 资源（浏览器、Milvus、embedding 凭据）；属**验证缺口**而非缺陷。
 
-> GitHub issue：#156　**状态**：TODO
+> GitHub issue：#156　**状态**：DONE　（**两半均已闭合**：T08 端到端见 `.runlogs/t49_r3_verify.out`；T35 实机渲染见 T54 / PR #176 的 Playwright e2e `frontend/e2e/echarts-lazy-render.spec.ts`，实机 2 passed。**故 BLOCKED 解除**）
 
 ### 复核记录（2026-09-14，批次 7-3）
 
@@ -2583,7 +2583,7 @@ cd backend
 ```bash
 cd frontend
 npm run test          # → 37 passed / 6 files（基线 33 → +4）
-npx tsc --noEmit      # → 无输出
+npx tsc -p tsconfig.app.json --noEmit   # → 17 errors（存量，不在本票范围；见 P-19）
 npx eslint .          # → 无输出（T42 的 0 problems 保持）
 ```
 
@@ -2858,7 +2858,7 @@ C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
 - 三处上传的**异常处理骨架**仍各自为政（`except HTTPException: raise` / `except Exception → 500`
   各写一遍）。T44 方案 A 明确只要求并轨工具函数，故记残留。
 
-> GitHub issue：#179　**状态**：TODO
+> GitHub issue：#179　**状态**：DONE　（**已由 PR #180 关闭**：把 `core/upload_security._remove_quietly` 提升为公共 `remove_quietly(path, *, logger=None)`，`document_router` 两处清理改走守卫；`gh issue view 179` → `CLOSED`）
 
 ---
 

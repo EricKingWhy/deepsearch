@@ -105,11 +105,38 @@ def test_roundtrip_without_username_yields_none_username():
 def test_tampered_signature_is_rejected():
     token = security.create_access_token({"sub": "u-1"})
     header, payload, signature = token.split(".")
-    flipped = "a" if signature[-1] != "a" else "b"
 
-    tampered = ".".join([header, payload, signature[:-1] + flipped])
+    # ⚠️ 必须改**中间**字符，不能改末位 —— 这是 §4 门禁（第二轮）实测出来的坑：
+    # 签名是 32 字节 HMAC，base64url（无填充）后是 **43 个字符**，末位字符只承载
+    # **4 个有效比特**（可出现的取值只有 A/E/I/M/Q/U/Y/c/g/k/o/s/w/0/4/8 这 16 个）。
+    # 因此「把末位换成高 4 位相同的另一个字符」（例如把 'Y' 换成 'a'，二者高 4 位都是 0110）
+    # 解码后**字节完全相同**，签名依然有效 —— 篡改是个空操作。
+    # 实测：改末位时 **6.20%（248/4000）** 的 token 篡改无效，使本用例偶发假红。
+    # 中间字符承载 6 个有效比特，换成任何不同字符都必然改变解码字节。
+    mid = len(signature) // 2
+    flipped = "A" if signature[mid] != "A" else "B"
 
+    tampered = ".".join([header, payload, signature[:mid] + flipped + signature[mid + 1:]])
+
+    assert tampered != token
     assert security.decode_token(tampered) is None
+
+
+def test_tampered_signature_is_rejected_for_many_tokens():
+    """同一件事做 200 次：**每一次**都必须被拒（把「偶发假红」变成确定性）。
+
+    原实现改末位字符，只在末位恰好是 'Y' 时才真正改变字节（约 1/16），其余情况下
+    「篡改」是空操作、验签照过（实测 6.20%，248/4000）。本用例用 200 个不同 token
+    覆盖各种末位取值，保证「改中间字符」这条修法在任何取值下都成立。
+    """
+    for i in range(200):
+        token = security.create_access_token({"sub": f"u-{i}"})
+        header, payload, signature = token.split(".")
+        mid = len(signature) // 2
+        flipped = "A" if signature[mid] != "A" else "B"
+        tampered = ".".join([header, payload, signature[:mid] + flipped + signature[mid + 1:]])
+
+        assert security.decode_token(tampered) is None, f"第 {i} 个 token 的签名篡改未被检出"
 
 
 def test_tampered_payload_is_rejected():
