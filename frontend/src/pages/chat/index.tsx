@@ -318,6 +318,11 @@ export default function Index() {
             query: chatMessage,
             session_id: id,  // 传递会话 ID 用于检查点保存
             search_modes: deviceState.searchModes as string[],  // 传递搜索模式
+            // P-15：本地知识库模式必须携带 kb_name —— 后端 `Scout._execute_local_search`
+            // 在 kb_name 为空时**静默跳过**本地检索，用户只会拿到零结果且无任何报错
+            kb_name: (deviceState.searchModes as string[]).includes('local')
+              ? (deviceState.kbName || undefined)
+              : undefined,
           }, { signal: controller.signal })
         } else if (attachmentIds && attachmentIds.length > 0) {
           // 使用带附件的聊天接口

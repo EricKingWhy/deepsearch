@@ -178,6 +178,9 @@ export function deepsearch(
     query: string
     session_id?: string
     search_modes?: string[]  // 搜索模式: 'web' = 网络搜索, 'local' = 本地知识库
+    // 本地知识库名称：仅 'local' 模式需要。后端按集合 `kb_<名称>` 检索，
+    // 为空时会**静默跳过**本地检索（零结果且无报错）—— 故本地模式必须下发（缺陷 P-15）
+    kb_name?: string
   },
   options?: AxiosRequestConfig,
 ) {
