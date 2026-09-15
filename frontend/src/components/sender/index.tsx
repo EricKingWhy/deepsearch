@@ -6,7 +6,9 @@
 import IconFile from '@/assets/component/file.svg'
 import IconSend from '@/assets/component/send.svg'
 import { deviceActions, deviceState, SearchMode } from '@/store/device'
-import { Button, Input, Space, Dropdown, Checkbox, Tag } from 'antd'
+import { knowledgeActions, knowledgeState } from '@/store/knowledge'
+import type { KnowledgeBase } from '@/api/knowledge'
+import { Button, Input, Space, Dropdown, Checkbox, Tag, Select } from 'antd'
 import { FileOutlined, LoadingOutlined, SyncOutlined, CheckCircleOutlined, SearchOutlined, DownOutlined } from '@ant-design/icons'
 import classNames from 'classnames'
 import { PropsWithChildren, useState, useRef } from 'react'
@@ -44,7 +46,21 @@ export default function ComSender(
   } = props
   const [value, setValue] = useState('')
   const device = useSnapshot(deviceState)
+  const knowledge = useSnapshot(knowledgeState)
+  const kbList = knowledge.knowledgeBases as KnowledgeBase[]
+  const isLocalMode = (device.searchModes as SearchMode[]).includes('local')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 勾选「本地知识库」时若尚未选库，默认取第一个。
+  // 后端在 kb_name 为空时会**静默跳过**本地检索（零结果且无报错），
+  // 只勾模式不选库等于什么都没搜（缺陷 P-15）。
+  function handleToggleLocal() {
+    const turningOn = !(device.searchModes as SearchMode[]).includes('local')
+    deviceActions.toggleSearchMode('local')
+    if (turningOn && !device.kbName && kbList.length > 0) {
+      deviceActions.setKbName(kbList[0].name)
+    }
+  }
 
   async function send() {
     if (loading) return
@@ -173,6 +189,10 @@ export default function ComSender(
 
           <Dropdown
             trigger={['click']}
+            onOpenChange={(open) => {
+              // 打开时才拉取知识库列表，避免每次渲染都发请求
+              if (open && kbList.length === 0) knowledgeActions.fetchKnowledgeBases()
+            }}
             dropdownRender={() => (
               <div className="com-sender__search-dropdown">
                 <Checkbox
@@ -182,11 +202,27 @@ export default function ComSender(
                   深度搜索（网络）
                 </Checkbox>
                 <Checkbox
-                  checked={(device.searchModes as SearchMode[]).includes('local')}
-                  onChange={() => deviceActions.toggleSearchMode('local')}
+                  checked={isLocalMode}
+                  onChange={handleToggleLocal}
                 >
                   本地知识库
                 </Checkbox>
+                {isLocalMode && (
+                  kbList.length > 0 ? (
+                    <Select
+                      size="small"
+                      className="com-sender__kb-select"
+                      placeholder="选择知识库"
+                      value={(device.kbName as string) || undefined}
+                      onChange={(value: string) => deviceActions.setKbName(value)}
+                      options={kbList.map((kb) => ({ label: kb.name, value: kb.name }))}
+                    />
+                  ) : (
+                    <div className="com-sender__kb-empty">
+                      {knowledge.loading ? '加载知识库…' : '暂无知识库，请先在「知识库」页创建'}
+                    </div>
+                  )
+                )}
               </div>
             )}
           >

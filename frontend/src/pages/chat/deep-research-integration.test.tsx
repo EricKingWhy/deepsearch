@@ -23,8 +23,13 @@ vi.mock('@/api', () => ({ session: apiMocks }))
 vi.mock('@/utils', () => ({
   usePageTransport: () => ({ data: { ctx: undefined }, dataReady: true }),
 }))
+const deviceMocks = vi.hoisted(() => ({
+  // P-15：改为可变，便于逐用例切换搜索模式与知识库
+  state: { searchModes: ['web'] as string[], kbName: '' },
+}))
+
 vi.mock('@/store/device', () => ({
-  deviceState: { searchModes: ['web'] },
+  deviceState: deviceMocks.state,
   deviceActions: { setChatting: vi.fn() },
 }))
 vi.mock('@/store/session', () => ({
@@ -159,6 +164,8 @@ describe('deep research outline approval integration', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
+    deviceMocks.state.searchModes = ['web']
+    deviceMocks.state.kbName = ''
     apiMocks.getSession.mockResolvedValue({ data: { messages: [] } })
     apiMocks.getFullResearchCheckpoint.mockResolvedValue({
       data: { success: false },
@@ -729,5 +736,38 @@ describe('deep research outline approval integration', () => {
     expect(screen.queryByText('Old resumed final report')).not.toBeInTheDocument()
     expect(screen.queryByText('Running checkpoint draft')).not.toBeInTheDocument()
     expect(apiMocks.addMessage).not.toHaveBeenCalled()
+  })
+
+  // P-15：本地知识库模式必须把 kb_name 带下去 —— 后端 `Scout._execute_local_search`
+  // 在 kb_name 为空时会「静默跳过」本地检索（零结果且无报错），用户勾了模式却什么都没搜。
+  it('forwards the selected knowledge base when local search is enabled', async () => {
+    deviceMocks.state.searchModes = ['local']
+    deviceMocks.state.kbName = 'demo'
+    const user = userEvent.setup()
+
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Start research' }))
+
+    await waitFor(() =>
+      expect(apiMocks.deepsearch).toHaveBeenCalledWith(
+        expect.objectContaining({ search_modes: ['local'], kb_name: 'demo' }),
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('omits kb_name when local search is disabled', async () => {
+    deviceMocks.state.searchModes = ['web']
+    deviceMocks.state.kbName = 'demo'  // 残留的旧选择不应被带出去
+    const user = userEvent.setup()
+
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Start research' }))
+
+    await waitFor(() => expect(apiMocks.deepsearch).toHaveBeenCalled())
+    expect(apiMocks.deepsearch).toHaveBeenCalledWith(
+      expect.objectContaining({ kb_name: undefined }),
+      expect.anything(),
+    )
   })
 })

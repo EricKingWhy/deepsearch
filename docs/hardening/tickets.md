@@ -2553,6 +2553,52 @@ cd backend
 
 ---
 
+## T52 — 前端「本地知识库」模式从不传 kb_name，导致静默零结果（P-15）
+
+- **类型**：fix　**阶段**：追加（T49 复核衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+`grep -rn "kb_name" frontend/src` **零命中** —— `pages/chat/index.tsx` 的 deepsearch 请求只发
+`search_modes`。而后端 `Scout._execute_local_search` 在 `kb_name` 为空时**直接跳过**本地检索，
+只写一条 warning（生产日志里该告警出现 **18 次**，全部来自浏览器会话）。
+
+于是用户在 UI 勾选「本地知识库」必然拿到**零结果且无任何报错** —— 该模式在 UI 上实际
+**完全不可用**，且是静默失效。T49 的 T35 实机渲染若走本地模式亦被其挡住。
+
+### 改什么
+
+勾选「本地知识库」时给出知识库选择器，并把选中的知识库名随请求下发。
+
+### 最小改法
+
+- `store/device.ts`：新增持久化字段 `kbName` + `setKbName()`（与 `searchModes` 同策略）。
+- `components/sender/index.tsx`：本地模式时在下拉内渲染知识库 `Select`；**展开下拉时按需**
+  拉取列表；勾选时若尚未选库则**默认取第一个**；无知识库时给中文提示而非静默。
+- `pages/chat/index.tsx`：**仅当**模式含 `local` 时才下发 `kb_name`（避免把残留旧选择带给网络搜索）。
+- `api/session.ts`：`deepsearch` 参数补 `kb_name?`。
+
+### 验收
+
+```bash
+cd frontend
+npm run test          # → 37 passed / 6 files（基线 33 → +4）
+npx tsc --noEmit      # → 无输出
+npx eslint .          # → 无输出（T42 的 0 problems 保持）
+```
+
+变异检验：① `kb_name` 取值恒 `undefined` → 1 failed；② 去掉 `local` 门控 → 1 failed；
+还原后 18 passed。
+
+### 风险
+
+- 勾选本地模式依赖至少存在一个知识库；无知识库时给中文提示，不静默。
+- 「未选库时默认取第一个」是**有意选择**：否则用户勾了模式却什么都没搜，正是本票要消除的静默行为。
+
+> GitHub issue：#171　**状态**：TODO
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -2565,8 +2611,8 @@ cd backend
 | 6 · 后端质量 | T38–T40 | 3 |
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
-| 追加 · 缺陷（T49 复核衍生） | T51 | 1 |
-| **合计** | | **51** |
+| 追加 · 缺陷（T49 复核衍生） | T51–T52 | 2 |
+| **合计** | | **52** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。

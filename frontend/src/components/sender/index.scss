@@ -147,4 +147,16 @@
       color: #333;
     }
   }
+
+  // 本地知识库模式下的知识库选择器（P-15：不选库后端会静默跳过本地检索）
+  .com-sender__kb-select {
+    width: calc(100% - 24px);
+    margin: 4px 12px 0;
+  }
+
+  .com-sender__kb-empty {
+    padding: 2px 12px 8px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+  }
 }

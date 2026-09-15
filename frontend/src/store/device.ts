@@ -15,6 +15,7 @@ const state = proxyWithPersist({
   getStorage: () => storage,
   persistStrategies: {
     searchModes: PersistStrategy.SingleFile,
+    kbName: PersistStrategy.SingleFile,
   },
   migrations: {
     // 从 v0 迁移: useDeepsearch -> searchModes
@@ -29,6 +30,9 @@ const state = proxyWithPersist({
     chatting: false,
     // 搜索模式: 'web' = 深度搜索(网络), 'local' = 本地知识库
     searchModes: [] as SearchMode[],
+    // 本地知识库模式选中的知识库名（后端按集合 kb_<名称> 检索）。
+    // 为空时后端会静默跳过本地检索 —— 只勾模式不选库等于什么都没搜（缺陷 P-15）
+    kbName: '',
   },
 })
 
@@ -46,6 +50,9 @@ const actions = {
     } else {
       state.searchModes = [...currentModes, mode]
     }
+  },
+  setKbName(kbName: string) {
+    state.kbName = kbName
   },
   // 兼容旧代码
   get useDeepsearch() {
