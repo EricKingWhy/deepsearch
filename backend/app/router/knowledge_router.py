@@ -77,8 +77,27 @@ def doc_to_response(doc: Document) -> DocumentResponse:
     )
 
 
+def _remove_temp_file(file_path: str) -> None:
+    """删除上传落盘的临时文件；失败只告警，绝不外抛。
+
+    该函数在后台任务的 `finally` 中调用。此前这里是裸的 `os.remove`：一旦抛异常
+    （Windows 下句柄仍被占用 → `PermissionError`；并发上传/重试 → `FileNotFoundError`），
+    异常会逸出整个后台任务并穿透 ASGI —— 实测会**直接终止 uvicorn 进程**（T53 / P-17）。
+    清理失败留一个残留文件是可接受的代价，绝不该让整个服务不可用。
+    """
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except OSError as exc:
+        logger.warning(f"临时文件清理失败，已保留 {file_path}：{exc}")
+
+
 async def process_document(document_id: str, file_path: str, kb_name: str, db_session_factory):
-    """后台处理文档（使用 DocMind 解析、向量化、存储到 Milvus 集合 kb_{知识库名}；历史上曾计划写 ES，已弃用）"""
+    """后台处理文档（使用 DocMind 解析、向量化、存储到 Milvus 集合 kb_{知识库名}；历史上曾计划写 ES，已弃用）
+
+    本函数经 `background_tasks.add_task` 调度、在响应**已经发出之后**才运行 —— 此处抛出的异常
+    没有任何调用方接管，会一路穿透到 ASGI 服务器。故调度入口必须用 `run_document_processing`（见下）。
+    """
     from service.docmind_service import process_document_with_docmind
 
     # 创建新的数据库会话
@@ -120,9 +139,23 @@ async def process_document(document_id: str, file_path: str, kb_name: str, db_se
 
     finally:
         db.close()
-        # 清理临时文件
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # 清理临时文件（内部自兜底，清理失败绝不外抛）
+        _remove_temp_file(file_path)
+
+
+async def run_document_processing(document_id: str, file_path: str, kb_name: str, db_session_factory) -> None:
+    """`background_tasks` 的调度入口：把后台处理的意外异常挡在 ASGI 之外。
+
+    Starlette 的 `BackgroundTask` 在响应发出后执行，其异常**无人接管**，会穿透到服务器 ——
+    实测表现为**整个 uvicorn 进程终止**（客户端只看到读超时，服务端不产生任何用户可见错误）。
+    这一层只记日志、绝不外抛：一个后台任务永远不该有能力打掉整个服务。
+    """
+    try:
+        await process_document(document_id, file_path, kb_name, db_session_factory)
+    except Exception:
+        logger.exception(
+            f"后台文档处理未预期失败（服务保持存活）：document_id={document_id} file={file_path}"
+        )
 
 
 @router.get("", response_model=List[KnowledgeBaseResponse])
@@ -353,7 +386,7 @@ async def upload_document(
 
     # 在后台处理文档
     background_tasks.add_task(
-        process_document,
+        run_document_processing,
         str(doc.id),
         file_path,
         kb.name,
