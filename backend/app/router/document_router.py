@@ -1,6 +1,7 @@
 # Copyright © 2026 深圳市深维智见教育科技有限公司 版权所有
 # 未经授权，禁止转售或仿制。
 
+import logging
 import os
 import time
 import uuid
@@ -13,6 +14,7 @@ from service.docmind_service import process_document_with_docmind
 from router.auth_router import get_current_user_required
 from core.upload_security import (
     ensure_supported_extension,
+    remove_quietly,
     save_upload,
 )
 from schemas.document import (
@@ -31,6 +33,8 @@ router = APIRouter(
     tags=["documents"],
     dependencies=[Depends(get_current_user_required)],
 )
+
+logger = logging.getLogger(__name__)
 
 # Get service configuration
 def get_document_service():
@@ -85,9 +89,10 @@ async def upload_document(
             chunk_size=500
         )
 
-        # 清理临时文件
+        # 清理临时文件。经 `remove_quietly` 收敛：文件删不掉（Windows 句柄占用 →
+        # PermissionError）不能让「文档已处理成功」的请求反而失败（T56 / 终审 §4 N3）。
         if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+            remove_quietly(temp_file_path, logger=logger)
 
         # 检查处理结果
         if not processing_result["success"]:
@@ -106,9 +111,11 @@ async def upload_document(
         # 重新抛出HTTP异常
         raise
     except Exception as e:
-        # 清理临时文件
+        # 清理临时文件。这里是**最关键的一处**：此前是裸 `os.remove`，它一旦抛出（同一
+        # 个文件很可能正是刚才失败的那一个），异常会从这个 except 里逸出，把下面精心
+        # 准备的 500 覆盖成裸 OSError（T56 / 终审 §4 N3）。
         if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+            remove_quietly(temp_file_path, logger=logger)
         
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
