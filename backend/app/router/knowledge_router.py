@@ -77,13 +77,19 @@ def doc_to_response(doc: Document) -> DocumentResponse:
     )
 
 
-def _remove_temp_file(file_path: str) -> None:
-    """删除上传落盘的临时文件；失败只告警，绝不外抛。
+def _remove_file_quietly(file_path: str) -> None:
+    """删除一个文件；失败只告警，绝不外抛。
 
-    该函数在后台任务的 `finally` 中调用。此前这里是裸的 `os.remove`：一旦抛异常
-    （Windows 下句柄仍被占用 → `PermissionError`；并发上传/重试 → `FileNotFoundError`），
-    异常会逸出整个后台任务并穿透 ASGI —— 实测会**直接终止 uvicorn 进程**（T53 / P-17）。
-    清理失败留一个残留文件是可接受的代价，绝不该让整个服务不可用。
+    调用方有两处：后台处理的 `finally`、以及删除文档端点。两处的共同要求是
+    「删不掉也不能出事」——
+
+    - 后台路径：此前这里是裸的 `os.remove`，一旦抛异常（Windows 下句柄仍被占用 →
+      `PermissionError`；并发上传/重试 → `FileNotFoundError`），异常会逸出整个后台任务
+      并穿透 ASGI —— 实测会**直接终止 uvicorn 进程**（T53 / P-17）。
+    - 删除文档端点：裸 `os.remove` 抛异常会让请求 500，且**记录也删不掉** ——
+      用户点了删除却什么都没发生。
+
+    故统一收敛到这里：清理失败留一个残留文件是可接受的代价，绝不该让服务或记录删除被拖住。
     """
     try:
         if os.path.exists(file_path):
@@ -140,7 +146,7 @@ async def process_document(document_id: str, file_path: str, kb_name: str, db_se
     finally:
         db.close()
         # 清理临时文件（内部自兜底，清理失败绝不外抛）
-        _remove_temp_file(file_path)
+        _remove_file_quietly(file_path)
 
 
 async def run_document_processing(document_id: str, file_path: str, kb_name: str, db_session_factory) -> None:
@@ -552,9 +558,11 @@ async def delete_document(
             detail="文档不存在"
         )
 
-    # 删除文件（如果存在）
-    if doc.file_path and os.path.exists(doc.file_path):
-        os.remove(doc.file_path)
+    # 删除文件（如果存在）。
+    # 文件删不掉（Windows 句柄占用等）不得拦住记录删除 —— 否则用户点了删除却什么都没发生、
+    # 只拿到一个 500。清理本身改为静默告警（见 _remove_file_quietly）。
+    if doc.file_path:
+        _remove_file_quietly(doc.file_path)
 
     # 更新知识库文档计数
     kb.document_count = max((kb.document_count or 0) - 1, 0)
