@@ -2705,7 +2705,7 @@ node node_modules/@playwright/test/cli.js test e2e/echarts-lazy-render.spec.ts -
   （LOOP-PROTOCOL §11.1 同一现象；CI 不受影响）。
 - 该 spec 暂**不在 CI 中执行**（CI 前端 job 只 build）；是否纳入 CI 属独立决策，不在本票范围。
 
-> GitHub issue：#175　**状态**：TODO
+> GitHub issue：#175　**状态**：DONE　**PR**：#176　**merge**：`1013d53`
 
 ---
 
