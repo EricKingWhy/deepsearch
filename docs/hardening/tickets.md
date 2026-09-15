@@ -2706,6 +2706,81 @@ node node_modules/@playwright/test/cli.js test e2e/echarts-lazy-render.spec.ts -
 - 该 spec 暂**不在 CI 中执行**（CI 前端 job 只 build）；是否纳入 CI 属独立决策，不在本票范围。
 
 > GitHub issue：#175　**状态**：DONE　**PR**：#176　**merge**：`1013d53`
+## T55 — 聊天附件路由缺归属校验（已登录用户可越权读写删他人会话附件）
+
+- **类型**：fix　**阶段**：追加（§4 总门禁终审衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+`attachment_router.py` 在上一轮 §4 总门禁**只补了一半**：终审 finding #1 把该路由从
+`get_current_user`（可选认证）改为 router 级 `get_current_user_required`，堵住了**匿名**访问。
+但**归属**从未校验 —— 读 / 删端点只验资源**存在**，不验资源**属于谁**：
+
+| 入口 | 现状 |
+|------|------|
+| `POST /attachments`（上传） | 只验目标会话存在，不验属于本人 → 可把附件塞进他人会话 |
+| `GET /attachments/{id}` | 按 ID 查，不校验归属 |
+| `GET /attachments/session/{sid}` | 按 session 查，不校验归属 |
+| `DELETE /attachments/{id}` | 按 ID 查后直接删（含落盘文件） |
+
+`upload_attachment` 写入时**记了** `user_id=current_user.id`，读 / 删却从不回看 ——
+属「写时记、读时不查」的半修复。后果：任何已登录用户拿到（或猜到）一个 UUID，
+即可读取他人会话的附件清单与详情、删除他人附件及其落盘文件。终审 §4 复检标准轴命中（N1）。
+
+**同仓对照**：`session_router.py` 的 7 处会话查询一律 `ChatSession.user_id == current_user.id`；
+`knowledge_router.py` 的 `KnowledgeBase.user_id == current_user.id` 同理。
+`attachment_router` 是全仓**唯一**没有归属校验的会话子资源路由。
+
+### 改什么
+
+四个入口补归属校验，写法与 `session_router` 同型：JOIN `ChatSession` 过滤
+`ChatSession.user_id == current_user.id`，查不到即 404。**不改数据模型、不加依赖。**
+
+### 关键取舍（两处，均需在评审时可辩护）
+
+1. **以会话归属为准，而非 `ChatAttachment.user_id`**：后者 `nullable=True`，历史行可能为空；
+   `ChatSession.user_id` 是 `NOT NULL`，且已是全仓既定的归属轴。以会话归属可同时覆盖历史行。
+2. **「非本人」返回 404 而非 403**：避免向攻击者泄漏「该 UUID 存在」。与 `session_router`
+   把「非本人」直接过滤成「查不到」的既有行为一致。
+
+### 验收
+
+```bash
+cd backend
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m pytest tests/router/test_attachment_ownership.py -q      # → 15 passed
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m pytest tests -q                                          # → 388 passed / 17 deselected（基线 374 → +14）
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m ruff check app tests                                     # → All checks passed
+```
+
+### 用例的判别力（关键，不是「断言某个滤条件字符串存在」那种恒真写法）
+
+测试文件用 `_FakeDB` 顶替 `get_db`，其查询引擎**真的执行** WHERE 约束，且**只认**
+`chat_sessions.user_id` 这一列才能解析归属 —— 于是「去掉归属过滤」会真的导致非本人也能查到行
+（= 修复前的漏洞行为），404 断言随之失败。
+
+**变异检验**（`.runlogs/t55_mutation.py`，四轮各撤一处归属过滤）：
+
+| 变异 | 结果 |
+|------|------|
+| M1 撤 `upload_attachment` 归属过滤 | **2 failed**（越权上传用例 + 源码锁） |
+| M2 撤 `get_attachment` 归属过滤 | **2 failed** |
+| M3 撤 `get_session_attachments` 归属过滤 | **2 failed** |
+| M4 撤 `delete_attachment` 归属过滤 | **2 failed** |
+| 还原 | 15 passed，文件字节与基线 sha256 一致 |
+
+### 风险
+
+- **行为变更**：他人会话的附件由「可读 / 可删」变为「404」。这是修复目标，不是回归 ——
+  前端不会跨用户读同一 session（会话本身已按 `user_id` 隔离）。
+- 不触碰上传落盘路径（`core.upload_security.save_upload`）、不改任何响应结构。
+
+> GitHub issue：#177　**状态**：TODO
+
+---
+
 
 ---
 
@@ -2728,7 +2803,8 @@ node node_modules/@playwright/test/cli.js test e2e/echarts-lazy-render.spec.ts -
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
 | 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
-| **合计** | | **54** |
+| 追加 · 缺陷（§4 总门禁衍生） | T55 | 1 |
+| **合计** | | **55** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。

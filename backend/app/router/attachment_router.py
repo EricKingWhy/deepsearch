@@ -22,6 +22,12 @@ from schemas.chat import AttachmentResponse, AttachmentListResponse
 # 与 `document_router.py`（T04）保持同一写法：依赖挂在 router 级，新增端点自动受保护。
 # 背景：本文件原先是全仓**唯一**仍用 `get_current_user`（可选认证）的路由 —— 未登录即可
 # 读取任意会话的附件清单、按 ID 取附件详情、乃至删除任意附件及其落盘文件（终审 §4 发现）。
+#
+# 归属校验（终审 §4 复检 N1 / T55）：`get_current_user_required` 只解决「匿名」这一半；
+# 读/删三个端点还必须确认资源属于**当前用户**，否则任何已登录用户凭一个 UUID 即可跨用户
+# 读删。校验以**会话归属**为准（`ChatSession.user_id`，NOT NULL）而非 `ChatAttachment.user_id`
+# （后者 nullable，历史行可能为空），与 `session_router.py` 的 7 处会话查询同型。
+# 「非本人」一律收敛为 404（而非 403），避免泄漏「该 UUID 存在」这一事实。
 router = APIRouter(
     prefix="/attachments",
     tags=["聊天附件"],
@@ -137,8 +143,15 @@ async def upload_attachment(
             detail="无效的会话ID格式"
         )
 
-    # 验证会话存在
-    session = db.query(ChatSession).filter(ChatSession.id == session_uuid).first()
+    # 验证会话存在且属于当前用户（非本人 → 404，不区分「不存在」与「非本人」）
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_uuid,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -184,9 +197,10 @@ async def upload_attachment(
 @router.get("/{attachment_id}", response_model=AttachmentResponse)
 async def get_attachment(
     attachment_id: str,
+    current_user: User = Depends(get_current_user_required),
     db: Session = Depends(get_db),
 ):
-    """获取附件详情"""
+    """获取附件详情（仅限本人会话的附件）"""
     try:
         att_uuid = UUID(attachment_id)
     except ValueError:
@@ -195,7 +209,16 @@ async def get_attachment(
             detail="无效的附件ID格式"
         )
 
-    att = db.query(ChatAttachment).filter(ChatAttachment.id == att_uuid).first()
+    # 归属过滤 + 存在性过滤合并为一次查询：非本人 → 查不到 → 404
+    att = (
+        db.query(ChatAttachment)
+        .join(ChatSession, ChatAttachment.session_id == ChatSession.id)
+        .filter(
+            ChatAttachment.id == att_uuid,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not att:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -208,9 +231,10 @@ async def get_attachment(
 @router.get("/session/{session_id}", response_model=AttachmentListResponse)
 async def get_session_attachments(
     session_id: str,
+    current_user: User = Depends(get_current_user_required),
     db: Session = Depends(get_db),
 ):
-    """获取会话的所有附件"""
+    """获取会话的所有附件（仅限本人会话）"""
     try:
         session_uuid = UUID(session_id)
     except ValueError:
@@ -219,8 +243,15 @@ async def get_session_attachments(
             detail="无效的会话ID格式"
         )
 
-    # 验证会话存在
-    session = db.query(ChatSession).filter(ChatSession.id == session_uuid).first()
+    # 验证会话存在且属于当前用户（非本人 → 404，不区分「不存在」与「非本人」）
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_uuid,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -240,9 +271,10 @@ async def get_session_attachments(
 @router.delete("/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attachment(
     attachment_id: str,
+    current_user: User = Depends(get_current_user_required),
     db: Session = Depends(get_db),
 ):
-    """删除附件"""
+    """删除附件（仅限本人会话的附件）"""
     try:
         att_uuid = UUID(attachment_id)
     except ValueError:
@@ -251,7 +283,16 @@ async def delete_attachment(
             detail="无效的附件ID格式"
         )
 
-    att = db.query(ChatAttachment).filter(ChatAttachment.id == att_uuid).first()
+    # 归属过滤 + 存在性过滤合并：非本人 → 404，且**不会删到任何东西**
+    att = (
+        db.query(ChatAttachment)
+        .join(ChatSession, ChatAttachment.session_id == ChatSession.id)
+        .filter(
+            ChatAttachment.id == att_uuid,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not att:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
