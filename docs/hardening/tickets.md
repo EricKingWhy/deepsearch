@@ -2442,6 +2442,36 @@ cd backend && pytest tests -q
 
 ---
 
+### 三次复核（2026-09-16 凌晨，复盘 09-14 那次补跑的后端日志）
+
+**结论：09-14 记的「T08 端到端通过」缺少落盘证据，应降级为「曾运行、未证实送达」；且该次补跑还实测出一个会让深研检索阶段整个崩溃的缺陷（已开 T51）。T49 仍是唯一未闭合票。**
+
+勘误依据（可复现材料）：
+
+- **`local://kb/demo` 在全 `.runlogs/` 的命中数为 0**，且**没有任何文件保存了验证脚本的 stdout** ——
+  `t49_t08_stream.py` 的断言只打屏、不落盘，违反协议 §10.2「输出落盘」，故 09-14 的「通过」结论**无法复核**。
+- 把 `t49_backend8001c.log`（755 KB，09-14 18:19–18:49）按 session 拆成时间线（脚本 `.runlogs/t49_log_timeline.py`）：
+  - session `e9e2b878`（脚本那次）：有 `YIELD search_results ×3`、**无** `kb_name is empty` 告警
+    → 本地检索**确实执行过**；但紧接着 `[SSE] No queue available for event: search_results ×43`
+    → **事件未送达消费端**。
+  - session `50c3dde7`（浏览器那次，即 T35 前置）：研究主题是「欧盟人工智能法案 / 终身学习补贴 / OECD」
+    （与脚本那次并非同一问题），期间 `kb_name is empty` 告警 **18 次** → 本地检索被全部跳过。
+- 两次运行都以 `charts=0, search_results=0` 收场，前端均未到达研究结果详情页。
+
+**衍生缺陷（详见 TRACKER 未闭合项）**：
+
+| 编号 | 一句话 | 处置 |
+|------|--------|------|
+| **P-14** | `scout.py` 的 `sources_count` 在 `source_url` 为大模型返回的数组时抛 `TypeError: unhashable type: 'list'`；异常被 `graph.py` 记为 `Task exception was never retrieved` → 检索阶段静默死亡 | **已立项 T51 并修复**（离机复现：`.runlogs/p14_repro.py`） |
+| **P-15** | 前端从不传 `kb_name`（`grep -rn "kb_name" frontend/src` 零命中），故勾选「本地知识库」必然零结果且无报错 | 用户裁定：**前端补知识库选择器** → 立项 T52 |
+| **P-16** | 恢复运行中大量 SSE 事件未进队列（`Queued event` 168 条 vs `No queue available` 246 条，其中 `search_results` 丢 120 条） | 仅观察，**未定根因**，待专门起实时客户端复现 |
+
+**T49 真实剩余缺口**：① T08 端到端（上传 → 解析 → 入库 → v2 事件流出现 `local://kb/<kb>/...`）需一次
+**有落盘证据**的完整跑；② T35 实机渲染需一次能跑完的深研（依赖 ① 与环境 / LLM 可用）。
+Docker 已停（`docker desktop status` → 未运行），补跑前须先起 Milvus / Postgres。
+
+---
+
 ## T50 仓库卫生清理（.runlogs 残留 + 已合并分支）
 
 - **类型**：chore　**阶段**：7　**依赖**：无　**标记**：无
@@ -2472,6 +2502,57 @@ git status --short                  # 干净
 
 ---
 
+## T51 — 修复 DeepScout 的 source_url 数组值导致检索阶段崩溃（P-14）
+
+- **类型**：fix　**阶段**：追加（T49 复核衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+`deep_research_v2/agents/scout.py` 的 `sources_count` 聚合为
+`len(set(f.get("source_url", "") for f in state["facts"]))`。提示词把
+`extracted_facts[].source_url` 声明为「来源URL」（单值），但一条事实有多个来源时
+大模型会返回**数组** → `TypeError: unhashable type: 'list'`。
+
+异常从 `process()` 逸出、在 `graph.py` 的 `execute_agent` 中只被记为
+`Task exception was never retrieved`，因此**检索阶段静默死亡**：不发 `research_step`
+完成事件、不发 `search_results`；日志里 UI 状态恒为 `charts=0, search_results=0`，
+前端永远进不了研究结果详情页。触发主题为「欧盟人工智能法案 / 终身学习补贴 / OECD」，
+**非边角用例**。另：`graph.py` 的 references 把该字段当 `url` 用，数组会产出非法链接。
+
+### 改什么
+
+在**写入 fact 的边界**把 `source_url` 归一为单个字符串；两处聚合再做一层
+（兼容检查点里可能残留的旧数组数据）。
+
+### 最小改法
+
+- 新增模块级 `normalize_source_url(value)`：`None` → `""`；`list` / `tuple` → 第一个非空项；
+  其它 → `str(value).strip()`。多值取**首项**，因为该字段被当作可点击链接使用。
+- 三处 `extracted_facts` 事实循环改用归一函数（单一边界，下游自然一致）。
+- 两处 `sources_count` 聚合先归一（`state["facts"]` 可能来自检查点）。
+
+### 验收
+
+```bash
+cd backend
+"C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe" -m pytest tests/service/deep_research_v2/test_scout_source_url_shape.py -q
+"C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe" -m pytest tests -q
+"C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe" -m ruff check app tests
+```
+
+预期：`10 passed`；`362 passed / 17 deselected`（基线 352 → +10）；`All checks passed`。
+变异检验：撤掉聚合归一 → 2 failed；撤掉边界归一 → 2 failed；还原后 10 passed。
+
+### 风险
+
+- 归一函数对未知类型走 `str()`，会把异常结构变成字符串而非报错 —— **有意选择**：
+  该字段只用于去重计数与链接展示，在这里响亮失败会阻断整条研究链路。
+- 引用构造处的**读取**未改：修复后 facts 恒为字符串，读路径消费的已是归一值。
+
+> GitHub issue：#169　**状态**：TODO
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -2484,7 +2565,8 @@ git status --short                  # 干净
 | 6 · 后端质量 | T38–T40 | 3 |
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
-| **合计** | | **50** |
+| 追加 · 缺陷（T49 复核衍生） | T51 | 1 |
+| **合计** | | **51** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。

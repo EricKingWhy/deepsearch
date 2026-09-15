@@ -54,6 +54,32 @@ except ImportError:
         MILVUS_AVAILABLE = False
 
 
+def normalize_source_url(value: Any) -> str:
+    """把大模型返回的 ``source_url`` 归一为单个可哈希字符串（P-14）。
+
+    背景：提示词里 ``source_url`` 写的是「来源URL」，但大模型在一条事实有多个来源时
+    会返回**数组**。下游三处都当它是字符串 —— ``set()`` 聚合直接抛
+    ``TypeError: unhashable type: 'list'``（DeepScout 检索阶段整个崩掉、研究产出为空），
+    引用侧 ``graph.py`` 又会把它当 ``url`` 用。
+
+    归一位置选在**写入 fact 的边界**（三处 ``extracted_facts`` 循环），下游自然一致；
+    聚合处再加一层是因为 ``state["facts"]`` 可能来自检查点里的旧数据。
+
+    多值取**第一个非空项**：该字段被当作可点击链接使用，拼接多值只会得到无效 URL。
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if text:
+                return text
+        return ""
+    return str(value).strip()
+
+
 class DeepScout(BaseAgent):
     """
     深度侦探 - 信息收集专家
@@ -266,7 +292,7 @@ URL: {url}
             "status": "completed",
             "stats": {
                 "results_count": len(state.get("facts", [])),
-                "sources_count": len(set(f.get("source_url", "") for f in state.get("facts", [])))
+                "sources_count": len(set(normalize_source_url(f.get("source_url")) for f in state.get("facts", [])))
             }
         })
 
@@ -330,7 +356,7 @@ URL: {url}
                     # 添加新事实
                     for fact in analysis.get("extracted_facts", []):
                         content = fact.get("content", "")
-                        source_url = fact.get("source_url", "")
+                        source_url = normalize_source_url(fact.get("source_url"))
 
                         if not self._is_duplicate_fact(content, source_url):
                             fact_entry = {
@@ -357,7 +383,7 @@ URL: {url}
             "status": "completed",
             "stats": {
                 "results_count": new_facts_count,
-                "sources_count": len(set(f.get("source_url", "") for f in state.get("facts", [])[-new_facts_count:] if new_facts_count > 0))
+                "sources_count": len(set(normalize_source_url(f.get("source_url")) for f in state.get("facts", [])[-new_facts_count:] if new_facts_count > 0))
             }
         })
 
@@ -655,7 +681,7 @@ URL: {url}
             duplicate_facts = 0
             for fact in analysis.get("extracted_facts", []):
                 content = fact.get("content", "")
-                source_url = fact.get("source_url", "")
+                source_url = normalize_source_url(fact.get("source_url"))
 
                 # 去重检查
                 if self._is_duplicate_fact(content, source_url):
@@ -879,7 +905,7 @@ URL: {url}
             added_facts = 0
             for fact in analysis.get("extracted_facts", []):
                 content = fact.get("content", "")
-                source_url = fact.get("source_url", "")
+                source_url = normalize_source_url(fact.get("source_url"))
 
                 if not self._is_duplicate_fact(content, source_url):
                     fact_entry = {
