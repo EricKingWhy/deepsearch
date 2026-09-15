@@ -2638,6 +2638,77 @@ cd backend
 - 清理失败时临时文件会留在磁盘 —— 可接受（远优于全站不可用）；日志保留 warning 以便排查。
 
 > GitHub issue：#173　**状态**：DONE（PR #174 / merge `d5a0a9d`，issue 已自动 CLOSED）
+## T54 — 把 T35 的浏览器渲染风险条款固化为可执行 e2e（ECharts 真机渲染）
+
+- **类型**：test　**阶段**：追加（T49 复核衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+T35 的票面明确要求：
+
+> 若 `echarts-for-react` 与动态 `import('echarts')` 的实例不共享，可能出现「图表不渲染」
+> 或「主题丢失」。**必须**在浏览器中实际打开一个含图表的页面验证，**不能只靠构建通过**。
+
+而实施记录写的是「**风险条款（浏览器实机验证）未执行**：本机无浏览器自动化环境
+（agent-browser 不可用），仅以构建产物 + 单元测试佐证」——
+即把「构建绿」当成了「图表能画出来」，二者不是一回事：拆包正确只保证模块边界，
+不保证懒加载后的运行时真的出图。
+
+**复核发现那条结论的前提不成立**：本机 `PLAYWRIGHT_BROWSERS_PATH` =
+`D:\DevTools\Hermes\ms-playwright`，其下已有 `chromium-1228` / `chromium-1243`（含
+`chrome.exe`）；`frontend/` 也已配好 `@playwright/test` + `playwright.config.ts`
+（含 `webServer` 自动起 vite）与既有 e2e。浏览器自动化**一直可用**，
+当初只是找错了目录（只看 `%LOCALAPPDATA%\ms-playwright`）。
+
+### 改什么
+
+新增 `frontend/e2e/echarts-lazy-render.spec.ts`，把风险条款变成机器可判定的断言。
+**不改任何生产代码。**
+
+### 最小改法
+
+- 复用既有 e2e 的桩法（`page.route('**/*')` + 末尾 `route.fallback()`）：mock 登录、会话、
+  SSE；图表数据经 `research_step` → `knowledge_graph` → `charts` 三个事件注入，
+  与真实 V2 流水线同序。不起后端、不调 LLM。
+- 两条用例覆盖两个挂载点：`visualization.tsx`（可视化图表 tab）与 `knowledge-graph.tsx`（知识图谱 tab）。
+- 桩必须补齐 `planIsValid` 的约束：章节数与研究问题数**各 ≥ 3** 且逐项非空，
+  否则「确认大纲并开始研究」按钮保持 disabled。
+
+### 验收
+
+```bash
+cd frontend
+node node_modules/@playwright/test/cli.js test e2e/echarts-lazy-render.spec.ts --project=chromium
+  # → 2 passed
+./node_modules/.bin/eslint e2e/echarts-lazy-render.spec.ts   # → 无输出
+```
+
+判据（全部机器可判定，不依赖人工看图）：
+
+1. **懒加载确实「按需」** —— 进入研究详情页后、点击图表 tab **之前**，不得发生任何
+   echarts 相关模块请求；点击之后必须发生。
+2. **图表真的画出来了** —— 图表容器的 `<canvas>` 非零尺寸，且像素中存在**不透明**像素
+   （CSS 背景不计入 canvas 像素，故「有不透明像素」= echarts 真的 draw 了），
+   并且**颜色数 > 1**（排除纯色块）。
+3. **桩必须自足** —— 断言没有任何请求漏过桩、被放行到真实后端（`localhost:8001`）；
+   否则「无 console 错误」会被漏网请求的 `ERR_CONNECTION_REFUSED` 污染而失去意义。
+4. **无未捕获异常**，且无 echarts / chart 相关的 `console.error`。
+
+**变异检验**（证明判据有判别力而非恒真）：M-A 把 `visualization.tsx` 换回**静态 import**
+（= T35 修复前状态）→ 1 failed；M-B 把 `option={chart.echarts_option}` 换成 `option={{}}`
+（模拟「图表不渲染」）→ 1 failed；还原后 2 passed 且文件字节与基线 sha256 一致。
+
+### 风险
+
+- 本机跑 e2e 需临时 `CODEBUDDY_SAFE_DELETE_ENABLED=0`：Playwright 启动时要清 `test-results/`，
+  累积目录数超阈值会撞上 WorkBuddy 批量删除守卫，表现为**启动即崩**而非测试失败
+  （LOOP-PROTOCOL §11.1 同一现象；CI 不受影响）。
+- 该 spec 暂**不在 CI 中执行**（CI 前端 job 只 build）；是否纳入 CI 属独立决策，不在本票范围。
+
+> GitHub issue：#175　**状态**：TODO
+
+---
+
 
 ---
 
@@ -2656,8 +2727,8 @@ cd backend
 | 6 · 后端质量 | T38–T40 | 3 |
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
-| 追加 · 缺陷（T49 复核衍生） | T51–T53 | 3 |
-| **合计** | | **53** |
+| 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
+| **合计** | | **54** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
