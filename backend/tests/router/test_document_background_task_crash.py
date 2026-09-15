@@ -225,6 +225,20 @@ def _source() -> str:
     return ROUTER.read_text(encoding="utf-8")
 
 
+def _region(src: str, start: str, end: str | None = None) -> str:
+    """取 `start`（含）到 `end`（不含）之间的源码片段。
+
+    锚点缺失时必须给出**可读的断言失败**，而不是 `IndexError` —— 否则一次重命名或重排
+    会伪装成「测试崩了」，而它真正想说的是「被锁定的结构变了」。
+    """
+    assert start in src, f"源码锁失效：起始锚点缺失 {start!r}（结构被改动了？）"
+    tail = src.split(start, 1)[1]
+    if end is None:
+        return tail
+    assert end in tail, f"源码锁失效：结束锚点缺失 {end!r}（结构被改动了？）"
+    return tail.split(end, 1)[0]
+
+
 def test_upload_route_schedules_the_boundary_wrapper():
     """🔒 兜底必须真的被挂在调度点上 —— 定义了不接线的守卫等于没有。"""
     src = _source()
@@ -247,7 +261,7 @@ def test_the_only_os_remove_lives_inside_the_guard():
 
     assert src.count("os.remove(") == 1, f"仍存在 {src.count('os.remove(')} 处裸 os.remove"
 
-    helper = src.split("def _remove_file_quietly", 1)[1].split("async def process_document", 1)[0]
+    helper = _region(src, "def _remove_file_quietly", "async def process_document")
     assert "os.remove(" in helper, "唯一一处 os.remove 不在守卫函数内"
     assert "except OSError" in helper, "os.remove 未被 except OSError 包住"
 
@@ -257,14 +271,14 @@ def test_finally_delegates_cleanup_to_the_guard():
     src = _source()
     assert "_remove_file_quietly(file_path)" in src, "finally 未委派给守卫函数"
 
-    body = src.split("async def process_document", 1)[1].split("async def run_document_processing", 1)[0]
+    body = _region(src, "async def process_document", "async def run_document_processing")
     assert "_remove_file_quietly(file_path)" in body, "守卫调用不在 process_document 内"
 
 
 def test_delete_document_delegates_file_removal_to_the_guard():
     """🔒 删除文档端点也必须走守卫：文件删不掉不该让请求 500、更不该让记录删不掉。"""
     src = _source()
-    region = src.split("async def delete_document", 1)[1]
+    region = _region(src, "async def delete_document")
 
     assert "_remove_file_quietly(doc.file_path)" in region, "delete_document 未委派给守卫"
     assert "os.remove(" not in region, "delete_document 仍有裸 os.remove"
@@ -273,7 +287,7 @@ def test_delete_document_delegates_file_removal_to_the_guard():
 def test_boundary_wrapper_catches_broad_exception():
     """🔒 兜底必须是 `except Exception`（窄化会漏掉不可预料的异常类型）。"""
     src = _source()
-    wrapper = src.split("async def run_document_processing", 1)[1].split('@router.get(""', 1)[0]
+    wrapper = _region(src, "async def run_document_processing", '@router.get(""')
 
     assert "except Exception" in wrapper, "边界兜底未捕获 Exception"
     assert "logger.exception" in wrapper, "兜底静默了 —— 必须留下可排查的日志"
