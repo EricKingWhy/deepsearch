@@ -2637,7 +2637,7 @@ cd backend
 
 - 清理失败时临时文件会留在磁盘 —— 可接受（远优于全站不可用）；日志保留 warning 以便排查。
 
-> GitHub issue：#173　**状态**：TODO
+> GitHub issue：#173　**状态**：DONE（PR #174 / merge `d5a0a9d`，issue 已自动 CLOSED）
 
 ---
 
