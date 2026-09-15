@@ -11,6 +11,7 @@
 文件名完全由客户端控制，``../../`` 片段足以把文件写出 ``/tmp``。
 """
 
+import logging
 import os
 import uuid
 from typing import Iterable, Optional
@@ -102,16 +103,24 @@ async def read_upload_with_limit(upload, max_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
-def _remove_quietly(path: str) -> None:
-    """尽力删除文件，忽略错误。
+def remove_quietly(path: str, *, logger: Optional[logging.Logger] = None) -> None:
+    """尽力删除文件；删不掉也**绝不外抛**（可选地留一条告警）。
 
-    本函数只用在**异常处理路径**上：那里再抛异常会掩盖原始错误，
-    而「文件本来就不存在」属正常情况（例如 413 在写盘之前就失败了）。
+    本函数只用在**清理路径**上：那里再抛异常会掩盖原始错误。两类调用方对「删不掉」
+    的期望不同，故 logger 是**可选**的：
+
+    - `save_upload` 的失败清理：文件可能**从未创建**（例如 413 在读盘之前就失败），
+      属正常情况，传 logger 只会制造噪声 → 不传，静默。
+    - 路由端点 / 后台任务的清理（`document_router` / `knowledge_router`）：文件本该
+      存在却删不掉，属异常（Windows 下句柄仍被占用 → `PermissionError`）→ 传 logger，
+      留下可观测痕迹。关键性质是二者都不让清理失败升级为请求失败乃至进程死亡
+      （T53 / P-17；T56 / 终审 §4 N3）。
     """
     try:
         os.remove(path)
-    except OSError:
-        pass
+    except OSError as exc:
+        if logger is not None:
+            logger.warning("临时文件清理失败，已保留 %s：%s", path, exc)
 
 
 async def save_upload(
@@ -145,10 +154,10 @@ async def save_upload(
             buffer.write(content)
     except HTTPException:
         # 413 等业务异常原样透出，不要被下面的兜底转成 500
-        _remove_quietly(file_path)
+        remove_quietly(file_path)
         raise
     except Exception as e:
-        _remove_quietly(file_path)
+        remove_quietly(file_path)
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"文件保存失败: {str(e)}",

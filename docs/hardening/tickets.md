@@ -2750,7 +2750,7 @@ cd backend
 C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
   -m pytest tests/router/test_attachment_ownership.py -q      # → 15 passed
 C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
-  -m pytest tests -q                                          # → 388 passed / 17 deselected（基线 374 → +14）
+  -m pytest tests -q                                          # → 389 passed / 17 deselected（基线 374 → +15）
 C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
   -m ruff check app tests                                     # → All checks passed
 ```
@@ -2777,7 +2777,91 @@ C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
   前端不会跨用户读同一 session（会话本身已按 `user_id` 隔离）。
 - 不触碰上传落盘路径（`core.upload_security.save_upload`）、不改任何响应结构。
 
-> GitHub issue：#177　**状态**：TODO
+> GitHub issue：#177　**状态**：DONE　**PR**：#178　**merge**：`1161a9e`
+## T56 — document_router 的临时文件清理仍是裸 os.remove（P-17 同族残留）
+
+- **类型**：fix　**阶段**：追加（§4 总门禁终审衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+P-17 的修复（T53）**只覆盖了 `knowledge_router`**。`document_router.py` 的上传端点
+仍有两处**裸 `os.remove`**：
+
+- 成功路径：处理完成后清临时文件；
+- `except Exception` 内：失败清临时文件 —— **这一处最关键**。
+
+两处的目标文件**很可能是同一个**：第一次 `os.remove` 因 Windows 句柄占用（`PermissionError`）
+失败后，第二次几乎必然同样失败 → 异常从 except 里逸出 → 客户端拿到的是没有业务语义的裸
+`OSError`，而不是精心构造的 `HTTPException(500, "Error processing document: …")`。
+
+进程级影响较 P-17 轻（请求级失败，不是 uvicorn 进程死亡），但**结构缺陷同族**。
+
+**为什么此前没被发现**：T53 的源码锁 `test_the_only_os_remove_lives_inside_the_guard`
+作用域是 `knowledge_router.py` **单文件**，结构性照不到 `document_router`。终审 §4 标准轴命中（N3）。
+
+### 改什么
+
+`core/upload_security` 里本就有同语义的 `_remove_quietly`（`save_upload` 的失败清理在用）；
+把它**提升为公共 `remove_quietly(path, *, logger=None)`**，并让 `document_router` 两处清理复用它。
+
+### 关键取舍：`logger` 为什么必须可选
+
+两类调用方对「删不掉」的期望**相反**，写死任一种都会退化：
+
+| 调用方 | 期望 | 理由 |
+|--------|------|------|
+| `save_upload` 的失败清理 | **静默** | 文件可能**从未创建**（413 在读盘之前就失败），告警是噪声 |
+| 路由端点 / 后台任务的清理 | **记一条 warning** | 文件本该存在却删不掉属异常（句柄占用），需要可观测痕迹 |
+
+两者共享的关键性质是「**不让清理失败升级为请求失败乃至进程死亡**」。
+
+### 验收
+
+```bash
+cd backend
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m pytest tests/router/test_document_cleanup_guard.py -q    # → 12 passed
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m pytest tests -q                                          # → 401 passed / 17 deselected
+C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe \
+  -m ruff check app tests                                     # → All checks passed
+```
+
+三层用例（**不依赖基础设施**，直接以协程调用端点函数 + mock 依赖）：
+
+1. **守卫层** —— 正常删 / 缺失时无操作 / `OSError` 时只告警不外抛 / 不传 logger 时不告警；
+2. **端点层** —— 处理成功 + 清理失败 → 请求**仍成功**；处理失败 + 清理失败 → 抛的是**本意的 500**
+   而非 `PermissionError`；处理失败 + 清理成功 → 临时文件确实被删（防「守卫改成 no-op」蒙混）；
+   `success: False` → 业务性 400 不被清理失败污染；
+3. **源码层** —— `document_router.py` 不再出现裸 `os.remove(`，两处清理都委派给守卫；
+   守卫为公共名且 `os.remove` 被 `except OSError` 包住。
+
+**变异检验**（`.runlogs/t56_mutation.py`）：
+
+| 变异 | 结果 |
+|------|------|
+| M1 两处清理改回裸 `os.remove` | **3 failed** |
+| M2 守卫去掉 `except OSError` | **3 failed** |
+| M3 守卫改成纯 no-op | **4 failed**（含「文件确实被删」三条） |
+| 还原 | 12 passed，两个文件字节与基线 sha256 一致 |
+
+### 风险
+
+- `save_upload` 的两处调用点改名，行为**完全不变**（默认不传 logger → 静默，与改前一致）。
+- `document_router` 的行为变更仅限「清理失败时不再误报为 `OSError`」。
+
+### 残留（本票**不**处理，已记账）
+
+- `knowledge_router._remove_file_quietly` 与 `core.upload_security.remove_quietly` 现在是**同一守卫的
+  两份实现**（前者多一个 `os.path.exists` 前置判断）。收敛它需要改写 T53 的 5 条源码锁（那些锁逐字
+  钉住 `_remove_file_quietly` 的名字与 `os.remove(` 计数），属独立重构，不在本票范围。
+- 三处上传的**异常处理骨架**仍各自为政（`except HTTPException: raise` / `except Exception → 500`
+  各写一遍）。T44 方案 A 明确只要求并轨工具函数，故记残留。
+
+> GitHub issue：#179　**状态**：TODO
+
+---
+
 
 ---
 
@@ -2803,8 +2887,8 @@ C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
 | 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
-| 追加 · 缺陷（§4 总门禁衍生） | T55 | 1 |
-| **合计** | | **55** |
+| 追加 · 缺陷（§4 总门禁衍生） | T55–T56 | 2 |
+| **合计** | | **56** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
