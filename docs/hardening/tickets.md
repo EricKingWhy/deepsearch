@@ -2595,7 +2595,52 @@ npx eslint .          # → 无输出（T42 的 0 problems 保持）
 - 勾选本地模式依赖至少存在一个知识库；无知识库时给中文提示，不静默。
 - 「未选库时默认取第一个」是**有意选择**：否则用户勾了模式却什么都没搜，正是本票要消除的静默行为。
 
-> GitHub issue：#171　**状态**：TODO
+> GitHub issue：#171　**状态**：DONE（PR #172 / merge `63c0574`，issue 已 CLOSED）
+## T53 — 后台文档处理：临时文件清理失败会打死整个服务（P-17）
+
+- **类型**：fix　**阶段**：追加（T49 复核衍生）　**依赖**：无　**标记**：无
+
+### 背景（事实依据）
+
+2026-09-16 补跑 T08 端到端时实测：`POST /knowledge-bases/{kb_id}/documents` 返回 **200**，后台 `process_document` 走完 DocMind → 27 切片 → 1024 维向量 → **成功写入 Milvus `kb_demo` 27 行**，紧接着执行 `knowledge_router.py:125` 的 `os.remove(file_path)` —— 该行抛异常后**整个 uvicorn 进程终止**；客户端已收到的 200 因 socket 未被正常关闭，表现为 **300s 读超时**（证据 `.runlogs/t49_r3_backend_evidence.log`）。
+
+结构缺陷与触发值无关：
+
+- `os.remove` 位于**外层** `try`（`:86`）的 `finally`（`:121`）中，而 `except Exception`（`:115`）只包住 `:96–117` → 清理异常**必然逸出** `process_document`。
+- 该函数经 `background_tasks.add_task(process_document, ...)`（`:355`）调度（Starlette `BackgroundTask`），异常会穿透整个 ASGI 应用栈。
+- 现实触发值（均非沙箱特异）：Windows 下文件句柄仍被占用 → `PermissionError`（杀软 / 搜索索引器 / 预览进程的常见行为）；并发上传或重试导致文件已删 → `FileNotFoundError`。
+
+后果：**一次临时文件清理失败 = 全站不可用**，且该失败**不产生任何用户可见错误**。
+
+### 改什么
+
+让临时文件清理成为**不可致命**的收尾动作，并让后台任务本身不再能把进程拖走。
+
+### 最小改法
+
+- `router/knowledge_router.py`：把 `os.remove` 包进自己的 `try/except OSError`，失败时记 warning并**保留**文件（供事后清理），不再外抛。
+- 同一处：给后台任务整体加**最外层兜底**，使任何未预期异常被记录而非穿透 ASGI。
+
+### 验收
+
+```bash
+cd backend
+./.venv/Scripts/python.exe -m pytest tests -q
+./.venv/Scripts/python.exe -m ruff check app tests
+```
+
+- 新增用例：构造「清理抛 `OSError`」场景，断言 `process_document` **正常返回**、文档状态仍为 `completed`、异常不外抛。
+- 再补一例：后台任务抛任意异常时也不外抛（兜底生效）。
+- **变异检验**：分别撤掉两处守卫，对应用例必须失败。
+
+### 风险
+
+- 清理失败时临时文件会留在磁盘 —— 可接受（远优于全站不可用）；日志保留 warning 以便排查。
+
+> GitHub issue：#173　**状态**：TODO
+
+---
+
 
 ---
 
@@ -2611,8 +2656,8 @@ npx eslint .          # → 无输出（T42 的 0 problems 保持）
 | 6 · 后端质量 | T38–T40 | 3 |
 | 7 · §4 门禁残留（收尾） | T42–T50 | 9 |
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
-| 追加 · 缺陷（T49 复核衍生） | T51–T52 | 2 |
-| **合计** | | **52** |
+| 追加 · 缺陷（T49 复核衍生） | T51–T53 | 3 |
+| **合计** | | **53** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
