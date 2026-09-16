@@ -37,57 +37,6 @@ export interface OutlinePendingApprovalEvent {
   research_questions: ResearchQuestion[]
 }
 
-/**
- * 后端 `add_message(state, event_type, content)`（`service/deep_research_v2/agents/base.py`）
- * 真实发出的事件类型集合 —— 覆盖 T66 归约器分支的 30 个，以及当前前端尚未消费、
- * 但仍会到达 SSE 的事件（`search_progress` / `code` / `warning` … ），后者按类型声明、
- * 不产生行为。拼写与后端字面量一致。
- */
-export type ResearchEventType =
-  | 'outline_pending_approval'
-  | 'outline'
-  | 'outline_revision'
-  | 'outline_approval'
-  | 'planning_error'
-  | 'research_start'
-  | 'research_resumed'
-  | 'research_complete'
-  | 'research_cancelled'
-  | 'checkpoint_saved'
-  | 'research_step'
-  | 'search_results'
-  | 'search_progress'
-  | 'search_result_item'
-  | 'knowledge_graph'
-  | 'charts'
-  | 'chart'
-  | 'data_insight'
-  | 'phase'
-  | 'plan'
-  | 'react_start'
-  | 'thought'
-  | 'action'
-  | 'observation'
-  | 'section_draft'
-  | 'section_content'
-  | 'report_draft'
-  | 'review'
-  | 'critic_feedback'
-  | 'revision_complete'
-  | 'keywords_generated'
-  | 'code'
-  | 'code_result'
-  | 'code_fix'
-  | 'warning'
-  | 'error'
-  | 'stock_quote'
-  | 'status'
-  | 'thinking_step'
-  | 'thinking'
-  | 'answer'
-  | 'final_answer'
-  | 'reference_materials'
-
 /** 大纲事件里的章节（后端键集与 `OutlineSection` 略有出入，均为可选）。 */
 export interface OutlineSectionPayload {
   id?: string
