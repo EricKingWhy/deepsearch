@@ -2874,6 +2874,169 @@ C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
 
 ---
 
+## T57 — 前端 Markdown 渲染未消毒（marked 输出直接 innerHTML，XSS）（P-18 / #181）
+
+### 背景（事实依据）
+
+`frontend/src/components/markdown/index.tsx` 把 `marked@15` 的解析结果**直接**交给
+`dangerouslySetInnerHTML`；marked 自 v5 起已移除内置 `sanitize`，故此处**无任何消毒**。
+`value` 是深度研究报告正文，内容源自网络检索的第三方网页（攻击者可控的间接注入路径）；
+后端 CSP（`security_headers.py` 的 `default-src 'none'`）**只作用于 API 响应、不覆盖 SPA**；
+JWT 存 `localStorage` → 一次成功注入 = 账号接管。
+
+### 改什么
+
+- 引入 `dompurify@^3.4.15`（`npm audit`：dompurify / marked 均无已知漏洞；仓库既有 11 条告警
+  来自 axios / echarts / lodash-es / react-router-dom，非本票引入）；
+- 写 DOM 前 `DOMPurify.sanitize(raw, SANITIZE_CONFIG)`：`ADD_ATTR: ['loading']`（放行自定义图片
+  渲染写的懒加载属性）、`ADD_DATA_URI_TAGS: ['img']`（图表以 base64 返回，必须放行）、
+  `FORBID_TAGS: ['script','style','iframe','object','embed','form']`；
+- **刻意不用 `ALLOWED_TAGS` 收敛成窄白名单**：正文来自第三方网页，标签种类不可预知，过窄会把
+  合法内容删成空白；消毒目标是「去掉可执行的」，不是「只留下我认识的」；
+- 顺带修掉一处被「带出」的存量类型缺陷：`marked.parse` 的声明是 `string | Promise<string>`，
+  此前因未装 `@types/trusted-types`、React 的 `TrustedHTML` 解析宽松而未报错；dompurify 带入该
+  类型包后 `tsc` 立即报 TS2322 → 改为显式收窄（非 string 则渲染空），不再把 Promise 漏进
+  `dangerouslySetInnerHTML`。
+
+### 验收
+
+- `npx vitest run src/components/markdown/markdown.test.tsx` → **9 passed**（7 例安全/保留 +
+  T60 补的「表格 / 代码块仍正常渲染」2 例），全部走渲染后真实 DOM；
+- **变异检验**：`sanitize` 换回裸 `raw` → 4 例安全用例失败、3 例「保留合法内容」仍过，还原后全绿
+ （证明用例有判别力，而非断言「源码里出现了 DOMPurify」）；
+- 全量 `npx vitest run` → 46 passed / 8 files；`npx eslint .` → 0 problems。
+
+### 风险
+
+- `gfm: false` 为**既有**设定（非本票引入），markdown 管道表语法不渲染为 `<table>`（实测渲染为
+  段落）；表格断言走原始 HTML `<table>` 透传路径，见 T60。
+
+> GitHub issue：#181　**状态**：DONE　（**已由 PR #187 关闭**，merge `1198cd8`）
+
+---
+
+## T58 — 前端类型检查证据空真：17 处存量类型错误 + 无任何类型门禁（P-19 / #182）
+
+### 背景（事实依据）
+
+根 `frontend/tsconfig.json` 是 `files: []` + `references` 的 **solution 桩** —— 不跑 `-b` 时 `tsc`
+编译**空文件集**，故 `tsc --noEmit` **恒 0 错、退出码 0**。多张票（含 T52）把它的「无输出」当作
+「类型干净」的证据，**证据强度为零**。真实检查 `npx tsc -p tsconfig.app.json --noEmit` 实测
+**17 处存量类型错误**，且 `tsc` 既不在 CI、也不在 `package.json`（`npm run build` 走 vite/esbuild，
+亦不做类型检查）→ **前端长期没有任何类型门禁**。
+
+### 改什么
+
+**第一步：清掉 17 处存量类型错误（不改运行时行为）**，其中 3 处**不是纯类型问题**：
+
+- `chat/index.tsx`：`checkpoint.status === 'reviewing'` 的分支**从未可达**（`status` 只有
+  `running|paused|completed|failed`）→ 改读 `checkpoint.phase`（后端真正的阶段字段），恢复原意；
+- `ResearchStep['type']` 补 `researching`（后端 `ResearchPhase` 真实取值，`state.py:22`），并同步
+  补 `stepLabels` 的键 → 由此修掉 chat 页两处「不可能的比较」（死代码）；
+- `send(ctx.data.message, ctx.data.attachmentIds)`：新会话页选好的附件此前**被静默丢弃**
+  （transports 已传 `attachmentIds`，chat 页只读 `message`，而后端 `chat_router` 确会消费
+  `attachment_ids`）→ **真实数据丢失**。
+
+其余为边界窄化：`search_results` / `knowledge_graph` / `charts` 三处 `unknown` 在进入
+`ResearchDetailData` 时显式收窄；`chart/index.tsx` 用具名 `EChartsModule`（`typeof echarts.init`
+里 `echarts` 可空）；`rich-content` 的 `extensions` 两处对齐 marked 的
+`TokenizerAndRendererExtension[]`；`nav.tsx` 的 `cloneElement` 泛型显式化；`session.ts` 补
+`references?` / `subtitle?`；`shared.ts` 补 `attachmentIds?`。
+
+**第二步：把真实类型检查接进 CI**：`package.json` 增 `"typecheck": "tsc -p tsconfig.app.json
+--noEmit"`（显式指向 app 配置，不是空真的 `tsc --noEmit`）；`ci-frontend.yml` 在 lint 之后增
+`Typecheck (tsc)` step；新增 `src/typecheck-gate.test.ts` 钉住门禁。
+
+### 关键取舍
+
+- **不放宽任何严格性**：未关 `strict`、未加 `@ts-ignore`/`@ts-expect-error`、未新增抑制 —— 这正是
+  issue #182 明令禁止的「变绿」方式；
+- `typecheck-gate.test.ts` 是**配置串存在性护栏（meta）**，不执行类型检查本身；其价值是防「门禁被
+  静默移除」（即 P-19 的缺陷类型：门禁看似存在、实则空转）。真正的检查由 CI 的 `typecheck` step 承担。
+
+### 验收
+
+- `npx tsc -p tsconfig.app.json --noEmit` → **17 → 0 errors**；
+- 全量 `npx vitest run` → **46 passed / 8 files**（基线 44 → +2）；`npx eslint .` → 0 problems；
+- CI frontend job **pass 58s**，新 `Typecheck` step 确实执行；
+- **变异检验**：`typecheck` 换空真 → 1 failed；删 CI step → 1 failed；两步还原后逐字节一致。
+
+### 风险
+
+- `session.ts` 的 `ResearchStep` 与本组件（`research-detail`）的 `ResearchStep` 是**同名不同形**的
+  两个类型，本票未合并（属独立重构），仅在恢复链处按数组元素类型推断。
+
+> GitHub issue：#182　**状态**：DONE　（**已由 PR #189 关闭**，merge `94f1ddb`）
+
+---
+
+## T59 — docker compose 把宿主机导向的 DB/Milvus 主机名带进容器（P-13）
+
+### 背景（事实依据）
+
+`docker-compose.yml` 的 `backend` 服务用 `env_file: ./backend/.env` 注入环境，而该文件是**宿主机
+导向**的（`POSTGRES_HOST=localhost`、`MILVUS_HOST=localhost`）→ 容器内同样拿到 `localhost`，而容器里
+的 `localhost` 是容器自身、不是 compose 服务 → **任何走 DB / Milvus 的端点都 500**
+（`psycopg2.OperationalError ... "localhost", port 5432 ... Connection refused`）。`/hello` 不碰库，
+故 T30 验收 3 未暴露。P-13 为 TRACKER 独立项（无 GitHub issue），是批次 7-3 复核 T49 时实测命中。
+
+### 改什么
+
+`backend` 服务补 `environment:` 覆盖三个**主机名**：`POSTGRES_HOST=postgres` /
+`REDIS_HOST=redis` / `MILVUS_HOST=milvus`。`environment` 优先级高于 `env_file`，容器内将用 compose
+服务名解析；**密钥仍一律留在 `env_file`**（不复制进 `environment`）。
+
+### 验收
+
+- 新增 `backend/tests/core/test_compose_container_hosts.py` **5 例**：覆盖块存在且三值正确 / 三值确实是
+  已声明服务 / 键名与 `app/` 下 `os.getenv` 用法对齐 / `environment` 内不得出现
+  `PASSWORD|SECRET|TOKEN|CREDENTIAL|_KEY` / `env_file` 仍为 `./backend/.env`；
+- `pytest` → 5 passed；**变异检验**：删覆盖块 → 4 failed、主机名拼错 → 1、塞密钥 → 2、删 `env_file`
+  → 1；还原后逐字节一致；
+- 实测 `docker compose config` 确认容器内三主机名已改写、共 36 个 env 键、输出**不含密钥值**
+  （证据 `.runlogs/t59_compose_config.out`）。
+
+### 风险
+
+- `docker compose config` 会打印 env_file 中的真实密钥 → 证据文件**只**保留三主机名与键数。
+
+> GitHub issue：无（P-13 为 TRACKER 独立项，随 T60 回填关闭）　**状态**：DONE　（PR #188，merge `fcd1ba2`）
+
+---
+
+## T60 — §3 批量复核（T57/T58/T59）衍生：补 P-18 遗漏断言 + 台账回填
+
+### 背景
+
+§3 规定每 3 张 ticket 做一次批量复核。本批 = T57 / T58 / T59，fixed point `2bb9a3e`，终点
+`94f1ddb`，双轴（Standards / Spec）并行子代理。
+
+### 复核结论与处置
+
+- **Standards 轴：0 硬违规** —— 无密钥泄漏、未放松类型严格度、CRLF 与仓内一致；两个新增测试文件
+  均为有判别力的断言（非恒真写法）。判定项：`typecheck-gate.test.ts` 属**配置串存在性护栏**，已于
+  T58 票面明确其定位。
+- **Spec 轴：2 条 finding（均已处置）**
+  1. `issue #181` 验收明列「…**表格**、**代码块**…在消毒后仍正常渲染 —— **这一条必须有断言**」，而
+     T57 只覆盖标题/列表/链接/图片 → **本票补 2 例**（`markdown.test.tsx` 7 → 9）。补前先实测
+     （`node` + `marked`，`gfm:false`）：管道表语法渲染为段落、原始 HTML `<table>` 原样透传、围栏
+     代码块渲染 `<pre><code>` —— 故表格断言走「原始 HTML 透传」这条真实路径；
+  2. `issue #182` 解除条件②含「**修正台账里全部旧口径**」→ 本票完成（§4 实跑段落、`17 errors → 0`
+     口径、P-13/P-18/P-19 三行关闭、T57–T60 行与执行日志）。
+
+### 验收
+
+- `npx vitest run src/components/markdown/markdown.test.tsx` → **9 passed**；
+- TRACKER：`grep -cE "\| *BLOCKED *\|"` → **0**；T57–T60 行 / 执行日志 / P-13·P-18·P-19 关闭均落盘。
+
+### 风险
+
+- 无代码行为变更（仅新增断言与台账）。
+
+> 复核衍生 ticket（无 GitHub issue）　**状态**：DONE
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -2888,7 +3051,8 @@ C:/Users/王浩宇/.workbuddy/binaries/python/envs/deepsearch/Scripts/python.exe
 | 追加 · 安全（第 1 批审查衍生） | T41 | 1 |
 | 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
 | 追加 · 缺陷（§4 总门禁衍生） | T55–T56 | 2 |
-| **合计** | | **56** |
+| 追加 · 未闭合项收口（第二轮，2026-09-16） | T57–T60 | 4 |
+| **合计** | | **60** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。

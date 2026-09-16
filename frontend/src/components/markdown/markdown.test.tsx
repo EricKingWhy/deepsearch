@@ -83,6 +83,30 @@ describe('Markdown 输出消毒（P-18）', () => {
     expect(inline.root.querySelector('img')?.getAttribute('src')).toBe(dataUri)
   })
 
+  it('保留代码块（消毒不误删 <pre>/<code> 与语言标记）', () => {
+    const { html } = renderMarkdown('```js\nconst a = 1\n```')
+
+    expect(html).toContain('<pre')
+    expect(html).toContain('<code')
+    expect(html).toContain('const a = 1')
+    // language-* 类名是语法高亮的依据，不能被消毒抹掉
+    expect(html).toContain('language-js')
+  })
+
+  it('保留表格标记（消毒不剥 <table>/<tr>/<td>）', () => {
+    // 注意：本组件 `gfm: false`（既有设定，非本次引入），故 markdown 的 `| a | b |`
+    // 语法不会被解析成表格（实测渲染为段落）。表格真正可能以 HTML 形式进入正文，故这里
+    // 直接验证消毒不会剥掉表格标记 —— 即 issue #181 验收里「表格在消毒后仍正常渲染」那一条。
+    const { html } = renderMarkdown(
+      '<table><thead><tr><th>列</th></tr></thead><tbody><tr><td>值</td></tr></tbody></table>',
+    )
+
+    expect(html).toContain('<table')
+    expect(html).toContain('<tr')
+    expect(html).toContain('<td')
+    expect(html).toContain('值')
+  })
+
   it('无效图片 URL 仍被隐藏（保留原有行为）', () => {
     const { root } = renderMarkdown('![图](ftp://example.com/a.png)')
 
