@@ -3037,6 +3037,74 @@ JWT 存 `localStorage` → 一次成功注入 = 账号接管。
 
 ---
 
+## T61 — SSE 流被客户端断连后 agent 任务脱管，事件全量丢失（P-16）
+
+### 背景
+
+P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168** 条 vs
+`No queue available` **246** 条，`search_results` 丢得最集中，且只出现在
+`POST /research/outline/{session_id}/approve` 触发的**恢复运行**里。
+原记录判定「不能据现有日志定性，需专门起一个实时客户端复现」。
+
+### 定性（先建判别回路，再谈假设）
+
+按 `diagnosing-bugs` 的顺序，先用**不依赖基础设施**的判别回路把症状钉死，再谈假设。
+归档日志 `.runlogs/t49_backend8001c.log` 给出了完整证据链：
+
+1. `10:25:03.786`，在 `service.py:227  yield self._format_sse(event)` 处被抛入
+   **`GeneratorExit`** —— SSE 客户端断连后 Starlette 关闭了响应生成器；
+2. `GeneratorExit` 下传至 `graph.py::_run_simplified`，其 `finally` 把
+   `state["_message_queue"]` 置为 `None`；
+3. `run_agent_with_streaming` 中 `task = asyncio.create_task(execute_agent())` 产生的
+   agent 任务是**独立任务、无人取消**（它不在外层生成器的调用栈上，`finally` 只处理队列）；
+4. 该任务从 `10:25:04` 脱管跑到 `10:31:45`（**约 6 分钟**），期间每条 `add_message`
+   都落到 `agents/base.py:314` 的 `else: logger.warning("[SSE] No queue available …")`。
+
+**结论**：事件丢失是**断连 teardown 缺陷**的后果，不是「队列没接上」；
+`graph.py:434` 的接线本身正确。同期的 `Failed to detach context` /
+`ValueError: … created in a different Context`（contextvar token 跨 Context 重置）
+只是 `GeneratorExit` 展开期的次要噪声，与本症状无因果关系，**本票不动、另行跟踪**。
+
+### 改什么
+
+`graph.py::_run_simplified` 登记在飞的 agent 任务，并在 `finally` 中
+**先取消这些任务、再摘掉队列**：
+
+- 新增 `active_agent_tasks: set = set()`；创建任务后 `add`，并以
+  `add_done_callback(active_agent_tasks.discard)` 自动移除；
+- `finally` 中对未完成的任务 `cancel()`，然后才 `state["_message_queue"] = None`。
+
+顺序不能反：先摘队列再取消，脱管任务仍会在窗口内继续推事件。
+
+### 关键取舍
+
+- **不在本票做「断连后继续后台跑并持续落检查点」**：那要把运行搬进独立后台任务并
+  保证检查点持续写入，属模块边界变更（协议 §1 的「架构分叉」），需用户裁决。
+  而在现状下「继续跑」是**净损失**（不再写检查点 + 白耗 LLM/检索配额），
+  取消才是正确的最小行为，且与既有 `/research/cancel` 的语义一致。
+- **不动 observability 的 contextvar 重置异常**：仅 `GeneratorExit` 展开期噪声，
+  单独跟踪，避免把两个缺陷揉进同一票。
+
+### 验收
+
+- 新增 `backend/tests/service/deep_research_v2/test_graph_stream_teardown.py`
+  —— 用替身 agent 驱动 `_run_simplified`，在流式阶段 `aclose()` 模拟断连，
+  **不依赖任何基础设施**（不起 Postgres/Redis/Milvus、不调 LLM）：
+  - 修复前：`cancelled=False / dropped_events=5`（复现 P-16 的「无队列」丢事件）；
+  - 修复后：`cancelled=True / completed=False / dropped_events=0`；
+- 变异检验：摘掉取消块 → 用例变红；还原 → 逐字节一致且变绿；
+- 全量 `pytest -q` → **408 passed / 17 deselected**（前档 402 + T59 的 5，本票 +1）；
+- `ruff check app tests` → All checks passed。
+
+### 风险
+
+- 断连即取消 ⇒ 「网络抖动导致的中断」不再由后端续跑，用户需走
+  `/research/resume/{session_id}` 从最近检查点恢复。这与既有取消语义一致，
+  代价是多一次检查点回退，收益是消除脱管白跑。
+
+> issue [#191](https://github.com/EricKingWhy/deepsearch/issues/191)　**状态**：DONE
+
+---
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -3052,7 +3120,8 @@ JWT 存 `localStorage` → 一次成功注入 = 账号接管。
 | 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
 | 追加 · 缺陷（§4 总门禁衍生） | T55–T56 | 2 |
 | 追加 · 未闭合项收口（第二轮，2026-09-16） | T57–T60 | 4 |
-| **合计** | | **60** |
+| 追加 · 未闭合项收口（第三轮，2026-09-16） | T61 | 1 |
+| **合计** | | **61** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
