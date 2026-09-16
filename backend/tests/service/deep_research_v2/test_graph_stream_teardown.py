@@ -39,7 +39,6 @@ for agent_name in (
         setattr(agents_package, agent_name, type(agent_name, (), {}))
 
 
-import service.deep_research_v2.graph as graph_module
 from service.deep_research_v2.agents.base import BaseAgent
 from service.deep_research_v2.graph import DeepResearchGraph
 
@@ -98,7 +97,21 @@ def _researching_state():
     }
 
 
-def _graph_with_scout(scout, monkeypatch):
+class _NoCancellation:
+    """取消判定替身（T68）：恒「未取消」，把用例与 Redis 解耦。
+
+    迁出前本用例 monkeypatch `graph_module` 上的取消函数；T68 之后取消判定是构造器
+    里**显式注入的协作者**，故改为从这里注入 —— 走与生产代码同一个接缝。
+    """
+
+    def is_cancelled(self, session_id):
+        return False
+
+    def clear_cancel_flag(self, session_id):
+        pass
+
+
+def _graph_with_scout(scout):
     # 走真实构造器：六个角色全部注入同一个替身（与原 object.__new__ 写法等价）
     graph = DeepResearchGraph(
         agents={
@@ -113,18 +126,15 @@ def _graph_with_scout(scout, monkeypatch):
             )
         },
         checkpoint_service=None,
-    )
-    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
-    monkeypatch.setattr(
-        graph_module, "is_cancelled", lambda _session_id: False
+        cancellation=_NoCancellation(),
     )
     return graph
 
 
 @pytest.mark.asyncio
-async def test_closing_stream_cancels_inflight_agent(monkeypatch):
+async def test_closing_stream_cancels_inflight_agent():
     scout = StreamingScout()
-    graph = _graph_with_scout(scout, monkeypatch)
+    graph = _graph_with_scout(scout)
     state = _researching_state()
 
     recorder = NoQueueWarningRecorder()

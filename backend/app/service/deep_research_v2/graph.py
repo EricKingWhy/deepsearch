@@ -30,7 +30,8 @@ from observability.tracing import span
 # 流水线就会静默跑到天亮，而这个兜底同时把两模块间的循环依赖一并掩盖。现在协议归
 # core/research_cancel.py（与 router / service 都无关），并且**没有兜底**：该模块
 # 不可用 = 本模块导入失败（loud），不再伪装成「未取消」。
-from core.research_cancel import is_cancelled, clear_cancel_flag
+# 判定本身则作为**显式注入的协作者**使用 —— 见 __init__ 的 `cancellation`。
+from core import research_cancel
 
 # LangGraph 依赖为**可选安装**：缺失时 LANGGRAPH_AVAILABLE=False，LangGraph 执行路径
 # 不可用，但手写异步状态机不受影响。不要因为「当前主路径不使用 LangGraph」而把
@@ -97,6 +98,7 @@ class DeepResearchGraph:
         *,
         agents: Dict[str, Any] = None,
         checkpoint_service: Any = None,
+        cancellation: Any = None,
     ):
         """
         初始化工作流
@@ -108,6 +110,11 @@ class DeepResearchGraph:
           wizard / critic / writer。给了它就**不再读配置、不再自建 agent** ——
           测试因此可以直接走构造器，不必 `object.__new__` 绕过。
         - `checkpoint_service`：检查点服务；仅在注入 `agents` 时生效。
+        - `cancellation`：取消判定协作者（需提供 `is_cancelled(session_id) -> bool` 与
+          `clear_cancel_flag(session_id)`）。默认走中立模块 `core/research_cancel`
+          （Redis 实现）。T68 之前「取消」只有一个模块级 import ＋ `ImportError` 兜底，
+          没有任何接缝能让测试注入「已取消」—— 也就意味着「取消真的生效」当时
+          **不可判定**（全仓没有任何用例证明过它会让流水线停下）。
         """
         if agents is None:
             # 获取配置
@@ -166,6 +173,13 @@ class DeepResearchGraph:
             for role in ("architect", "scout", "data_analyst", "wizard", "critic", "writer"):
                 setattr(self, role, agents[role])
             self.checkpoint_service = checkpoint_service
+
+        # 取消判定协作者（T68）：默认走中立模块（Redis 实现），测试可注入替身。
+        # 调用点**不**吞掉协作者的异常 —— 取消不可用必须显式可见，不得静默降级为
+        # 「未取消」（那正是迁出前 ImportError 兜底的失败方式）。
+        self._cancellation = (
+            cancellation if cancellation is not None else research_cancel
+        )
 
         # 构建图
         # 注意：这里构建的 LangGraph 图对象当前**不被 run() 使用**（run() 固定走
@@ -459,11 +473,11 @@ class DeepResearchGraph:
 
         # 清除之前的取消标志
         if session_id:
-            clear_cancel_flag(session_id)
+            self._cancellation.clear_cancel_flag(session_id)
 
         async def check_cancelled():
             """检查是否已取消"""
-            if session_id and is_cancelled(session_id):
+            if session_id and self._cancellation.is_cancelled(session_id):
                 return True
             return False
 

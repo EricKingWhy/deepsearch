@@ -15,7 +15,6 @@ for agent_name in (
         setattr(agents_package, agent_name, type(agent_name, (), {}))
 
 
-import service.deep_research_v2.graph as graph_module
 from service.deep_research_v2.graph import DeepResearchGraph
 
 
@@ -78,23 +77,32 @@ class RecordingCheckpointService:
 _AGENT_ROLES = ("architect", "scout", "data_analyst", "wizard", "critic", "writer")
 
 
+class _NoCancellation:
+    """取消判定替身（T68）：恒「未取消」，把用例与 Redis 解耦。
+
+    迁出前这几条用例是 monkeypatch `graph_module` 上的取消函数；T68 之后取消判定
+    是构造器里**显式注入的协作者**，所以改为从这里注入 —— 走与生产代码同一个接缝。
+    """
+
+    def is_cancelled(self, session_id):
+        return False
+
+    def clear_cancel_flag(self, session_id):
+        pass
+
+
 def _graph(agent, checkpoint_service):
     """走真实构造器：六个角色全部注入同一个替身（该阶段用不到的不会被访问）。"""
     return DeepResearchGraph(
         agents={role: agent for role in _AGENT_ROLES},
         checkpoint_service=checkpoint_service,
+        cancellation=_NoCancellation(),
     )
 
 
 @pytest.mark.asyncio
-async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
+async def test_failed_checkpoint_never_emits_outline_approval():
     graph = _graph(FakeArchitect(), FailingCheckpointService())
-    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
-    monkeypatch.setattr(
-        graph_module,
-        "is_cancelled",
-        lambda _session_id: False,
-    )
     state = {
         "query": "产业研究",
         "session_id": "session-1",
@@ -116,14 +124,8 @@ async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_completion_saves_final_state_and_ui_before_emitting_report(monkeypatch):
+async def test_completion_saves_final_state_and_ui_before_emitting_report():
     graph = _graph(CompletingCritic(), RecordingCheckpointService())
-    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
-    monkeypatch.setattr(
-        graph_module,
-        "is_cancelled",
-        lambda _session_id: False,
-    )
     state = {
         "query": "industry research",
         "session_id": "session-1",
@@ -156,14 +158,8 @@ async def test_completion_saves_final_state_and_ui_before_emitting_report(monkey
 
 
 @pytest.mark.asyncio
-async def test_failed_final_checkpoint_never_emits_research_complete(monkeypatch):
+async def test_failed_final_checkpoint_never_emits_research_complete():
     graph = _graph(CompletingCritic(), FailingCheckpointService())
-    monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
-    monkeypatch.setattr(
-        graph_module,
-        "is_cancelled",
-        lambda _session_id: False,
-    )
     state = {
         "query": "industry research",
         "session_id": "session-1",
