@@ -433,6 +433,13 @@ class DeepResearchGraph:
         message_queue = asyncio.Queue()
         state["_message_queue"] = message_queue
 
+        # 在飞的 agent 任务（T61 / P-16）：SSE 客户端断连时 Starlette 会关掉本
+        # 生成器（在 yield 处抛 GeneratorExit），若不在此处取消这些任务，
+        # `asyncio.create_task` 出来的 agent 会**脱管继续跑**（实测继续 6 分钟），
+        # 而队列已被 finally 置空，于是它的每条事件都打到
+        # `[SSE] No queue available` 上，事件整体丢失。
+        active_agent_tasks: set = set()
+
         # 获取 session_id 用于取消检查
         session_id = state.get("session_id", "")
 
@@ -500,6 +507,8 @@ class DeepResearchGraph:
                     )
 
             task = asyncio.create_task(execute_agent())
+            active_agent_tasks.add(task)
+            task.add_done_callback(active_agent_tasks.discard)
 
             msg_count = 0
             # 在任务执行期间持续从队列获取消息
@@ -921,6 +930,11 @@ class DeepResearchGraph:
                 )
             yield {"type": "error", "content": str(e)}
         finally:
+            # 先取消在飞的 agent 任务，再摘掉队列：顺序反了会让脱管任务在队列置空
+            # 后继续推事件（T61 / P-16 观测到的 246 条 `[SSE] No queue available`）。
+            for pending in list(active_agent_tasks):
+                if not pending.done():
+                    pending.cancel()
             # 清理队列
             state["_message_queue"] = None
 
