@@ -8,7 +8,6 @@ DeepResearch V2.0 - 服务入口
 """
 
 import os
-import json
 import uuid
 import logging
 from contextlib import nullcontext
@@ -20,6 +19,7 @@ from observability.events import bind_event_recorder, bind_run_usage, record_res
 from observability.metrics import application_metrics
 from observability.tracing import span
 from service.research_observability_service import ResearchObservabilityService
+from core.serialization import SSE_DONE, sse_frame  # T67：SSE 帧只在这一处构造
 
 from .graph import DeepResearchGraph
 
@@ -175,7 +175,9 @@ class DeepResearchV2Service:
                         phase_name = None
                         phase_started_at = None
                         try:
-                            async for chunk in self._research_stream(
+                            # T67：`_research_stream` 现在直接产出结构化事件 —— 不再需要
+                            # 「序列化 → 回解」的往返，观测与发出消费的是同一个 dict。
+                            async for event in self._research_stream(
                                 query=query,
                                 session_id=session_id,
                                 kb_name=kb_name,
@@ -184,14 +186,6 @@ class DeepResearchV2Service:
                                 search_web=search_web,
                                 search_local=search_local,
                             ):
-                                if chunk == "data: [DONE]\n\n":
-                                    continue
-                                try:
-                                    event = json.loads(chunk.removeprefix("data: "))
-                                except (json.JSONDecodeError, TypeError):
-                                    yield chunk
-                                    continue
-
                                 event_type = str(event.get("type", "unknown"))
                                 event_phase = event.get("phase")
                                 record_research_event(
@@ -224,7 +218,7 @@ class DeepResearchV2Service:
                                         research_id=run["research_id"],
                                         trace_id=root_trace.trace_id,
                                     )
-                                yield self._format_sse(event)
+                                yield sse_frame(event)
                         finally:
                             if phase_name and phase_started_at is not None:
                                 outcome = "failure" if terminal_status == "failed" else "success"
@@ -258,7 +252,7 @@ class DeepResearchV2Service:
                                 }
                             )
 
-        yield "data: [DONE]\n\n"
+        yield SSE_DONE
 
     async def _research_stream(
         self,
@@ -269,9 +263,12 @@ class DeepResearchV2Service:
         user_id: Optional[str] = None,
         search_web: bool = True,
         search_local: bool = False
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        执行深度研究（SSE 流式输出）
+        执行深度研究（结构化事件流）
+
+        T67：本方法**不再序列化** —— 中间一律传递结构化事件 dict，SSE 帧只在最外层
+        `research()` 构造一次；`[DONE]` 哨兵因此也不在这里生产（外层统一生产一次）。
 
         Args:
             query: 用户问题
@@ -283,7 +280,7 @@ class DeepResearchV2Service:
             search_local: 是否启用本地知识库搜索（默认False）
 
         Yields:
-            SSE 格式的事件字符串
+            结构化事件 dict（尚未序列化）
         """
         if not session_id:
             session_id = str(uuid.uuid4())
@@ -303,22 +300,14 @@ class DeepResearchV2Service:
                 search_local=search_local,
                 kb_name=kb_name
             ):
-                # 转换为 SSE 格式
-                yield self._format_sse(event)
+                yield event
 
         except Exception as e:
             logger.error(f"Research error: {e}")
-            yield self._format_sse({
+            yield {
                 "type": "error",
                 "content": str(e)
-            })
-
-        # 发送结束标记
-        yield "data: [DONE]\n\n"
-
-    def _format_sse(self, event: Dict[str, Any]) -> str:
-        """格式化为 SSE 事件"""
-        return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            }
 
     async def research_sync(
         self,

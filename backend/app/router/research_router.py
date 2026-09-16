@@ -15,7 +15,7 @@ from starlette.status import (
 import logging
 
 from service import ResearchService, ServiceConfig
-from core.serialization import serialize_event  # 中立公共位置（T15）：不再反向依赖 V1 备选路线模块 dr_g
+from core.serialization import sse_frame  # 中立公共位置（T15）：不再反向依赖 V1 备选路线模块 dr_g
 from core.redis_client import cache  # 导入 Redis 缓存
 from models.user import User
 from router.auth_router import get_current_user_required
@@ -186,8 +186,7 @@ async def stream_research(
                     yield event
             except Exception as e:
                 logger.error(f"V2 Research error: {e}")
-                error_event = serialize_event({"type": "error", "content": str(e)})
-                yield f"data: {error_event}\n\n"
+                yield sse_frame({"type": "error", "content": str(e)})
 
         return StreamingResponse(
             generate_sse_v2(),
@@ -206,12 +205,11 @@ async def stream_research(
                 search_web=request.search_web,
                 search_local=request.search_local
             ):
-                # 将事件转换为 SSE 格式
-                yield f"data: {event}\n\n"
+                # V1 路线在 dr_g 内已序列化，这里只套信封（T67）
+                yield sse_frame(event)
         except Exception as e:
-            # 使用serialize_event进行错误处理，确保JSON格式正确
-            error_event = serialize_event({"type": "error", "content": str(e)})
-            yield f"data: {error_event}\n\n"
+            # 统一走中立公共信封，确保错误事件的 JSON 格式一致（T67）
+            yield sse_frame({"type": "error", "content": str(e)})
 
     return StreamingResponse(
         generate_sse(),
@@ -263,8 +261,7 @@ async def stream_research_get(
                     yield event
             except Exception as e:
                 logger.error(f"V2 Research error: {e}")
-                error_event = serialize_event({"type": "error", "content": str(e)})
-                yield f"data: {error_event}\n\n"
+                yield sse_frame({"type": "error", "content": str(e)})
 
         return StreamingResponse(
             generate_sse_v2(),
@@ -283,12 +280,11 @@ async def stream_research_get(
                 search_web=search_web,
                 search_local=search_local
             ):
-                # 将事件转换为 SSE 格式
-                yield f"data: {event}\n\n"
+                # V1 路线在 dr_g 内已序列化，这里只套信封（T67）
+                yield sse_frame(event)
         except Exception as e:
-            # 使用serialize_event进行错误处理，确保JSON格式正确
-            error_event = serialize_event({"type": "error", "content": str(e)})
-            yield f"data: {error_event}\n\n"
+            # 统一走中立公共信封，确保错误事件的 JSON 格式一致（T67）
+            yield sse_frame({"type": "error", "content": str(e)})
 
     return StreamingResponse(
         generate_sse(),
@@ -629,8 +625,7 @@ async def approve_research_outline(
                 yield event
         except Exception as exc:
             logger.error(f"Approved research continuation error: {exc}")
-            error_event = serialize_event({"type": "error", "content": str(exc)})
-            yield f"data: {error_event}\n\n"
+            yield sse_frame({"type": "error", "content": str(exc)})
 
     return StreamingResponse(generate_sse(), media_type="text/event-stream")
 
@@ -688,8 +683,7 @@ async def resume_research(
                     yield event
             except Exception as e:
                 logger.error(f"Resume research error: {e}")
-                error_event = serialize_event({"type": "error", "content": str(e)})
-                yield f"data: {error_event}\n\n"
+                yield sse_frame({"type": "error", "content": str(e)})
 
         return StreamingResponse(
             generate_sse(),

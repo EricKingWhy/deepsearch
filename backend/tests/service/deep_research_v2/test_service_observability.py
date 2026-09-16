@@ -147,3 +147,42 @@ async def test_resume_reuses_research_id_and_closes_outline_pause(monkeypatch):
 
     assert ledger.started[0]["research_id"] == ledger.previous_research_id
     assert ledger.finished[0]["status"] == "paused"
+
+
+async def test_wire_event_is_recorded_verbatim_and_done_emitted_once(monkeypatch):
+    """T67 回归锁：同一事件在「记观测」与「发出」两处内容一致；`[DONE]` 线上恰好一次。
+
+    先补断言、再重构 —— 这条断言在重构**前后**都必须为真，重构才不是「没有判据的改动」：
+
+    - 记观测用的 `payload` 与线上发出的 JSON **同源**（`record_research_event` 按引用透传，
+      `run_id` / `research_id` / `trace_id` 在记录之后才 `update` 进去），因此两处都带这三个
+      字段。一旦有人只改其中一侧（例如把序列化挪走却忘了同步记录），本断言立刻失败；
+    - `[DONE]` 哨兵在 `_research_stream` 内部与外层各生产一次，内层那次被外层过滤掉，
+      故**线上只出现一次**，且必在末尾。
+    """
+    ledger = FakeLedger()
+    service = make_service(monkeypatch, ledger)
+    done = "data: [DONE]\n\n"
+
+    chunks = [
+        chunk
+        async for chunk in service.research(
+            "private research question",
+            session_id=str(uuid4()),
+            user_id=str(uuid4()),
+        )
+    ]
+
+    # `[DONE]`：线上恰好一次，且在末尾
+    assert sum(chunk == done for chunk in chunks) == 1
+    assert chunks[-1] == done
+
+    # 除 `[DONE]` 外，每个 chunk 都是一条事件帧，且与记观测的 payload 逐字段一致
+    frames = [chunk for chunk in chunks if chunk != done]
+    assert len(frames) == len(ledger.recorded) == len(service.graph.events)
+    for frame, recorded in zip(frames, ledger.recorded):
+        assert frame.startswith("data: ") and frame.endswith("\n\n")
+        wire = json.loads(frame.removeprefix("data: "))
+        for key in ("run_id", "research_id", "trace_id"):
+            assert wire[key], f"{key} 必须出现在线上事件里"
+        assert wire == recorded["payload"]
