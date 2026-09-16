@@ -3547,7 +3547,9 @@ router 侧还有 6 个各自手写 try/except + `data:` 拼接的 `generate_sse*
 - 取消不可用时**显式可见**（不再假成功），处置写入票面；
 - `pytest tests -q` 全绿；`ruff check app tests` → All checks passed。
 
-> issue [#205](https://github.com/EricKingWhy/deepsearch/issues/205)　**状态**：TODO
+> issue [#205](https://github.com/EricKingWhy/deepsearch/issues/205)　**状态**：DONE（`8754ab2` + `093de2c` + `06a6311`，PR #212 / merge `4b8b173`）
+
+> **fail-open → fail-loud 的处置（票面显式记录）**：删掉 `graph.py` 的 `ImportError` 兜底后，「取消不可用」只有一种表现 —— `core/research_cancel` 导入失败即 `graph` 模块导入失败（**导入期硬失败，loud**），不再有任何路径会把「取消失效」静默伪装成「未取消」。**记录在案的边界（不在本票范围，已立项 P-22）**：Redis 不可达时 `RedisCache.get` 吞掉异常返回 None，判定仍表现为「未取消」—— 该类读/写/删四处同形，影响所有调用方，超出「只改协议归属与依赖方向」的本票边界。
 
 ---
 
