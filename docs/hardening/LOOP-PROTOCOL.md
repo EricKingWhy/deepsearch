@@ -29,7 +29,7 @@ ticket 4 ─┐
 ticket 5 ─┼─→ 批量审查(第2批) ─→ 修复 findings ─→ 推进 fixed point
 ticket 6 ─┘
 ...
-全部 ticket 完成 ─→ 最终全量审查(fixed point = main) ─→ 修复 ─→ 结束
+全部 ticket 完成 ─→ 最终全量审查(fixed point = 显式基线 SHA，见 §4.1) ─→ 修复 ─→ 结束
 ```
 
 全流程**自动执行，无需逐票向用户确认**。仅当出现以下情况才停下来问用户：

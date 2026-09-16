@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 单 ticket：`/implement` → **跳过自带 `/code-review`** → 测试全绿后自行 commit → 追加 TRACKER 记录
 - 每 3 个 ticket：对累计 diff 跑一次批量 `/code-review`，fixed point = 上一批审查结束时的 commit
-- 全部完成后：对整条分支跑最终全量 `/code-review`，fixed point = `main`
+- 全部完成后：对整条分支跑最终全量 `/code-review`，fixed point = 显式基线 SHA（本计划为 `9342913`，见 LOOP-PROTOCOL §4.1 —— **不得写 `main`**）
 - 每张 ticket 一条分支 + PR，不用 squash，保留 commit 粒度
 - **密钥红线**：严禁把真实密钥写入任何被 git 跟踪的文件
 
