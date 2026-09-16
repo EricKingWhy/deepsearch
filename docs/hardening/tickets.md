@@ -3249,6 +3249,97 @@ T53 修 `knowledge_router`、T56 修 `document_router`，两次的源码锁都�
 
 > —（无 issue，§4 门禁衍生；PR #197）　**状态**：DONE
 
+## T64 — 鉴权回归锁只覆盖 5/12 路由模块（硬编码清单）：改为目录级全覆盖并把 research_router 纳入
+
+- **类型**：test（+ 一处 fix）　**阶段**：追加（自主巡检「还有哪些需要优化的」候选 #1）　**依赖**：无　**标记**：无
+
+### 背景
+
+`backend/tests/router/test_router_auth.py` 是全仓唯一的鉴权回归锁，但它的模块清单是**硬编码**的 5 个
+（`document_router` / `chat_router` / `search_router` / `news_router` / `attachment_router`），
+而 `backend/app/router/` 下**实际有 12 个**路由模块。
+
+`attachment_router` 当年正是从这份清单的缝里漏掉的（直到 §4 第一轮总门禁才补进去）—— 这与
+`document_router` 的清理缺陷从**单文件源码锁**里漏出去是**同一类结构问题**：
+**判据的作用域小于缺陷家族的散布面**，于是每发现一个补一个，每次都能再从缝里漏掉下一个。
+T63 已把「清理缺陷家族」的源码锁提升为目录级；本票对**鉴权家族**做同一件事。
+
+### 定性：现状没有漏洞，缺的是覆盖
+
+实测基线（**12 模块 / 68 端点**）：
+
+| 分类 | 模块数 | 端点数 | 机制 |
+|------|--------|--------|------|
+| router 级鉴权 | 5 | 21（全部受保护） | `APIRouter(dependencies=[...])`，新增端点自动受保护 |
+| 端点级鉴权 | 7 | 47（44 受保护 + 3 匿名） | 每个端点签名里 `Depends(get_current_user_required)` |
+| 匿名 | 1（`auth_router`） | 3 | `register` / `login` / `token` |
+
+**65 / 68 个端点要求鉴权**；3 个匿名端点全部是「取凭据入口」（拿 token 不能要求先有 token），
+逐个登记并写明理由；`get_current_user`（**可选**认证 = T55 的缺陷形态）在依赖链上出现 **0 次**。
+结论：**现状没有漏洞，缺的是回归覆盖** —— 7 个模块、47 个端点此前零覆盖。
+
+### 改什么
+
+1. 目录级枚举 + **三分类穷尽**（新增模块不登记直接红）+ 端点数量护栏 + 白名单自锁 + 匿名反断断言；
+2. **覆盖完整性护栏**：12 个模块必须都在运行时**真正导入成功**。它当场抓到 `research_router`
+   是唯一导入失败的一个 —— conftest 的 `service` 占位包缺 `ResearchService`，
+   且 `deep_research_v2.agents` 占位包不执行 `__init__` 致 `service.deep_research_v2.service`
+   连带不可导入；于是它的 **10 个端点从来没有被任何鉴权回归覆盖过**，
+   失败方式还是「从参数化清单里静默消失」—— 比硬编码清单更隐蔽；
+3. 共享 `tests/conftest.py` 补两处占位（实测总代价 ~0.1s；替身一律抛 `NotImplementedError`）；
+4. `session_router` 移除随 T55 失效的 `get_current_user` 死导入。
+
+### 最大的意外收获：CI 揪出一处真实缺陷
+
+开 PR 后**第一次 CI 就红了 4 条** —— 「无 Token 应 401」在 CI 上成了 **500**：
+
+```
+RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g.py:49）
+```
+
+**根因**：`POST /research/stream` 与 `GET /research/stream` 把
+`services = Depends(get_research_service)` 写在 `current_user` **之前**。FastAPI 按签名顺序
+**逐个**解析依赖、任一个抛异常即短路 —— 于是**未登录请求也会真的构造 V1 研究服务**
+（`ResearchService(...)` 要读 `BOCHA_API_KEY`）。本地开发机 `.env` 配了该键，所以长期隐蔽：
+**「未登录一定被挡住」此前取决于部署配置，而不是由代码保证。**
+
+**修法**：把 `current_user` 挪到签名最前（两个兄弟端点一起改），并新增**顺序层锁**
+`test_auth_is_the_first_dependency_resolved`，把一个「环境相关的 500」变成确定性断言。
+全仓排查（运行时依赖图）确认**只此 2 个端点**有此问题，其余 63 个受保护端点鉴权本就在第一位。
+
+### 关键取舍
+
+- **覆盖完整性护栏，而不是靠人记清单**：导入失败的模块会「从参数化清单里静默消失」，
+  比硬编码清单更隐蔽 —— 所以导入循环**不吞异常**，失败原因逐条收集、由断言统一报出，
+  且其余判据一律经 `_loaded()` 过滤，好让「导入失败」只在**一处**报错并带上真实原因
+  （否则会以 `KeyError` 炸在参数化清单的**收集期**，把诊断信息盖掉 —— 实测踩过）。
+- **顺序层锁是必须的**：只把 `research_router` 的顺序改对还不够 —— 没有锁，后来者会按
+  「参数归类」的直觉把它挪回去，而**本地有 `.env` 时挪回去仍然全绿**，缺陷会再次隐形。
+- **共享 conftest 的替身会遮蔽真实模块**：`service.deep_research_v2.service` 替身一旦注册，
+  `tests/service/deep_research_v2/test_service_observability.py` 就拿不到真实模块了
+  （它要 monkeypatch 真实模块的 `get_config`）→ 该文件按 conftest 注释里**既有的做法**
+  （先 `sys.modules.pop(...)` 再导入）处置，并在全量测试中验证了两者共存。
+
+### 风险
+
+- `research_router` 在测试环境里拿到的是 V2 service **替身**。鉴权只发生在依赖解析阶段、
+  不触及 V2 编排，故对本次判据无影响；替身任何真实调用都抛 `NotImplementedError`，不会静默变绿。
+- 依赖顺序修复**不改变已登录请求的行为**（FastAPI 对同一请求内的依赖结果有缓存），
+  只是去掉了「未登录请求先构造服务」那一段。
+
+### 验收
+
+- **判别回路**：`BOCHA_API_KEY=` 复现 CI 的 `4 failed, 158 passed` → 修复后该文件 `163 passed`；
+- **变异检验 M1–M4 全部检出**（M1 新增未登记路由模块 → 5 failed；M2 摘掉端点鉴权依赖 → 3 failed；
+  M3 让 `research_router` 重新导入失败 → 1 failed；M4 把依赖顺序换回去 → 1 failed），
+  四个场景均先备份字节、破坏、跑用例、原样还原，还原后逐字节回到基线；
+- 全量 `pytest tests -q` → **519 passed / 17 deselected**（基线 414 → **+105**：鉴权锁 58 → 163 例），
+  **常规环境与 CI 环境（`BOCHA_API_KEY` / `DASHSCOPE_API_KEY` 置空）双跑结果一致**；
+- `ruff check app tests` → All checks passed；`git diff --check 99862de..a550f81` 干净；改动文件全 CRLF；
+- CI backend pass 1m4s / frontend pass 1m1s；`gh issue view 199` → **CLOSED**（核验而非声明）。
+
+> issue [#199](https://github.com/EricKingWhy/deepsearch/issues/199)　**状态**：DONE
+
 ---
 ---
 
@@ -3269,7 +3360,8 @@ T53 修 `knowledge_router`、T56 修 `document_router`，两次的源码锁都�
 | 追加 · 未闭合项收口（第二轮，2026-09-16） | T57–T60 | 4 |
 | 追加 · 未闭合项收口（第三轮，2026-09-16） | T61–T62 | 2 |
 | 追加 · §4 总门禁（第三轮）修复（2026-09-16） | T63 | 1 |
-| **合计** | | **63** |
+| 追加 · 鉴权锁目录级全覆盖 + CI 揪出的依赖顺序修复（2026-09-16） | T64 | 1 |
+| **合计** | | **64** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
