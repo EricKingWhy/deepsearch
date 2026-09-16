@@ -25,18 +25,12 @@ from datetime import datetime
 from observability.events import record_research_event
 from observability.tracing import span
 
-# 导入取消检查函数
-try:
-    from router.research_router import is_research_cancelled, clear_cancel_flag
-except ImportError:
-    try:
-        from app.router.research_router import is_research_cancelled, clear_cancel_flag
-    except ImportError:
-        # 兼容直接运行脚本的情况
-        def is_research_cancelled(session_id: str) -> bool:
-            return False
-        def clear_cancel_flag(session_id: str):
-            pass
+# 取消协议的中立位（T68）。此前这里是「反向依赖 router 拿取消函数」的 import，
+# 并用 `except ImportError` 把取消**静默降级为「永不取消」**（fail-open）—— 导入一失败，
+# 流水线就会静默跑到天亮，而这个兜底同时把两模块间的循环依赖一并掩盖。现在协议归
+# core/research_cancel.py（与 router / service 都无关），并且**没有兜底**：该模块
+# 不可用 = 本模块导入失败（loud），不再伪装成「未取消」。
+from core.research_cancel import is_cancelled, clear_cancel_flag
 
 # LangGraph 依赖为**可选安装**：缺失时 LANGGRAPH_AVAILABLE=False，LangGraph 执行路径
 # 不可用，但手写异步状态机不受影响。不要因为「当前主路径不使用 LangGraph」而把
@@ -469,7 +463,7 @@ class DeepResearchGraph:
 
         async def check_cancelled():
             """检查是否已取消"""
-            if session_id and is_research_cancelled(session_id):
+            if session_id and is_cancelled(session_id):
                 return True
             return False
 

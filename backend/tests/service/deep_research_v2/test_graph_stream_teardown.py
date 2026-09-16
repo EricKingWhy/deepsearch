@@ -116,7 +116,7 @@ def _graph_with_scout(scout, monkeypatch):
     )
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
-        graph_module, "is_research_cancelled", lambda _session_id: False
+        graph_module, "is_cancelled", lambda _session_id: False
     )
     return graph
 

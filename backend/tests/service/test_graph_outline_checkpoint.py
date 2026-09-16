@@ -92,7 +92,7 @@ async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,
-        "is_research_cancelled",
+        "is_cancelled",
         lambda _session_id: False,
     )
     state = {
@@ -121,7 +121,7 @@ async def test_completion_saves_final_state_and_ui_before_emitting_report(monkey
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,
-        "is_research_cancelled",
+        "is_cancelled",
         lambda _session_id: False,
     )
     state = {
@@ -161,7 +161,7 @@ async def test_failed_final_checkpoint_never_emits_research_complete(monkeypatch
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,
-        "is_research_cancelled",
+        "is_cancelled",
         lambda _session_id: False,
     )
     state = {
