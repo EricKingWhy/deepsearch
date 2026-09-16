@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 from typing import Callable, Iterator
 
+from .context import reset_context_var
 from .logging import REDACTED
 
 
@@ -87,7 +88,7 @@ def bind_event_recorder(recorder: EventRecorder) -> Iterator[None]:
     try:
         yield
     finally:
-        _EVENT_RECORDER.reset(token)
+        reset_context_var(_EVENT_RECORDER, token)
 
 
 def record_research_event(
@@ -125,7 +126,7 @@ def bind_run_usage() -> Iterator[RunUsage]:
     try:
         yield usage
     finally:
-        _RUN_USAGE.reset(token)
+        reset_context_var(_RUN_USAGE, token)
 
 
 def add_run_usage(*, input_tokens: int, output_tokens: int, cost: float = 0.0) -> None:
