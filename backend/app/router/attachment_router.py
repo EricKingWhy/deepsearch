@@ -2,6 +2,7 @@
 # 未经授权，禁止转售或仿制。
 
 """聊天附件路由"""
+import logging
 import os
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from core.upload_security import (
     ensure_supported_extension,
+    remove_quietly,
     sanitize_extension,
     save_upload,
 )
@@ -17,6 +19,8 @@ from models.chat import ChatAttachment, ChatSession
 from models.user import User
 from router.auth_router import get_current_user_required
 from schemas.chat import AttachmentResponse, AttachmentListResponse
+
+logger = logging.getLogger(__name__)
 
 # 全文件无匿名端点：上传 / 详情 / 列表 / 删除都作用在会话数据上，一律要求认证。
 # 与 `document_router.py`（T04）保持同一写法：依赖挂在 router 级，新增端点自动受保护。
@@ -299,12 +303,13 @@ async def delete_attachment(
             detail="附件不存在"
         )
 
-    # 删除文件
-    if att.file_path and os.path.exists(att.file_path):
-        try:
-            os.remove(att.file_path)
-        except Exception:
-            pass  # 忽略文件删除错误
+    # 删除落盘文件。清理失败只告警、**绝不上抛** —— 原先这里是裸 `os.remove`
+    # 加 `except Exception: pass`：删不掉既不留任何痕迹，`db.delete(att)` 又照跑，
+    # 于是记录没了、文件永久成孤儿；且与 document_router / knowledge_router 的
+    # 既定标准相反。本处是同一缺陷家族**漏掉的第三处**（终审 §4 中-1；
+    # 同族：T53 / P-17、T56 / 终审 §4 N3）。
+    if att.file_path:
+        remove_quietly(att.file_path, logger=logger)
 
     db.delete(att)
     db.commit()
