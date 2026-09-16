@@ -9,7 +9,8 @@ from starlette.status import HTTP_200_OK, HTTP_500_INTERNAL_SERVER_ERROR
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from models.chat import ChatAttachment
+from models.chat import ChatAttachment, ChatSession
+from models.user import User
 from router.auth_router import get_current_user_required
 from service import DocumentService, WebSearchService, ChatService, SessionService, ServiceConfig
 from service.retrieval_service import retrieve_content
@@ -219,6 +220,9 @@ async def chat_completion_v2(
 @router.post("/completion/v3", status_code=HTTP_200_OK)
 async def chat_completion_with_attachments(
     request: ChatWithAttachmentsRequest,
+    # 鉴权必须是**第一个**被解析的依赖（T64 的顺序层锁）：FastAPI 按签名顺序逐个解析并短路，
+    # 排在 `get_services` 之后会让未登录请求也真的构造服务、把配置状态泄漏给匿名调用方。
+    current_user: User = Depends(get_current_user_required),
     db: Session = Depends(get_db),
     services: Dict[str, Any] = Depends(get_services)
 ):
@@ -249,14 +253,28 @@ async def chat_completion_with_attachments(
         for att_id in request.attachment_ids:
             try:
                 att_uuid = UUID(att_id)
-                att = db.query(ChatAttachment).filter(ChatAttachment.id == att_uuid).first()
-                if att and att.content_text and att.status == "completed":
-                    attachment_contents.append({
-                        "filename": att.filename,
-                        "content": att.content_text[:10000],  # 限制每个附件内容长度
-                    })
             except ValueError:
                 continue
+            # 归属校验（§4 补审 / T72）：原实现只按 `id` 过滤，**无** join、**无** owner 判断
+            # —— 任意已登录用户凭一个 UUID 即可读出他人附件正文，而该正文会被注入模型上下文。
+            # 与 `attachment_router`（T55）同型，且同样是「T55 的源码锁只罩单个文件、结构性
+            # 照不到本文件」漏下的。以**会话归属**为准（`ChatSession.user_id`，NOT NULL）而非
+            # `ChatAttachment.user_id`（nullable，历史行可能为空）；非本人查不到即视为不存在，
+            # 与无效 UUID 走同一条静默跳过路径，不泄漏「该 UUID 存在」这一事实。
+            att = (
+                db.query(ChatAttachment)
+                .join(ChatSession, ChatAttachment.session_id == ChatSession.id)
+                .filter(
+                    ChatAttachment.id == att_uuid,
+                    ChatSession.user_id == current_user.id,
+                )
+                .first()
+            )
+            if att and att.content_text and att.status == "completed":
+                attachment_contents.append({
+                    "filename": att.filename,
+                    "content": att.content_text[:10000],  # 限制每个附件内容长度
+                })
 
     async def generate_response():
         try:

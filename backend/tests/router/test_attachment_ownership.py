@@ -10,33 +10,34 @@
 
 本文件**不依赖任何基础设施**（Postgres / Redis / Milvus）：
 
-- 用 `_FakeDB` 顶替 `get_db`，其查询引擎**真的执行** WHERE 约束，
+- 用共享替身 `FakeDB`（见 `_attachment_ownership_fakes.py`）顶替 `get_db`，其查询引擎**真的执行** WHERE 约束，
   并且**只认 `chat_sessions.user_id` 这一列**才能解析归属 —— 于是
   「去掉归属过滤」会真的导致非本人也能查到行（= 修复前的漏洞行为），
   从而让下面的 404 断言失败。这是本文件具备判别力的关键，
   而不是「断言某个滤条件字符串存在」那种恒真写法。
 - 用户身份用 `dependency_overrides` 注入，不签发真 JWT。
 """
-from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.sql.elements import BinaryExpression, BindParameter
-from sqlalchemy.sql.schema import Column
 
-# 注册 `User` 的关系目标（`User.knowledge_bases -> KnowledgeBase` 等）。conftest 为提速把
-# `models` 注册成**命名空间占位包**（不执行 `models/__init__.py`），所以必须显式导入子模块；
-# 否则上传路径构造 `ChatAttachment(...)` 触发 mapper 配置时会因解析不到 `KnowledgeBase`
-# 抛 `InvalidRequestError`。
-from models import chat as _chat_models  # noqa: F401
-from models import knowledge as _knowledge_models  # noqa: F401
 from core.database import get_db
-from models.chat import ChatAttachment, ChatSession
 from router import attachment_router as ar
 from router.auth_router import get_current_user_required
+
+# 归属校验用的最小 fake DB 已提升为**共享模块**（§4 补审 / T72）：`chat_router` 的
+# `/completion/v3` 后来发现同型缺陷时，这份带判别力的替身需要能被**第二个** router
+# 用例复用，否则每个新 router 都得重写一遍（正是「源码锁只罩单文件」的结构性原因）。
+# 判别力说明详见 `_attachment_ownership_fakes.py` 的模块 docstring。
+from _attachment_ownership_fakes import (
+    FakeDB,
+    Row,
+    make_attachment,
+    make_session,
+)
 
 OWNER_ID = uuid4()
 INTRUDER_ID = uuid4()
@@ -45,147 +46,27 @@ INTRUDER_SESSION_ID = uuid4()
 OWNER_ATTACHMENT_ID = uuid4()
 
 
-class _Row:
-    """最小行对象：只提供属性访问（不碰 SQLAlchemy 元类）。"""
-
-    def __init__(self, **fields):
-        self.__dict__.update(fields)
-
-
-def _attachment(**overrides):
-    base = dict(
-        id=OWNER_ATTACHMENT_ID,
-        session_id=OWNER_SESSION_ID,
-        message_id=None,
-        filename="note.txt",
-        file_type="txt",
-        file_size=12,
-        file_path=None,
-        status="completed",
-        error_message=None,
-        created_at=datetime(2026, 9, 16, 12, 0, 0),
-    )
-    base.update(overrides)
-    return _Row(**base)
-
-
-class _Query:
-    """极简查询对象：支持 `.join/.filter/.order_by/.first/.all`。
-
-    `_matches` 是判别力的来源 —— 它会**真的解析** `Column == 值` 形态的条件：
-    - `chat_sessions.user_id == <uid>` 会拿行所属会话的 user_id 去比；
-    - 条件里**没有**该列时，行永远通过（复现修复前「裸查」的行为）。
-    """
-
-    def __init__(self, db, model):
-        self._db = db
-        self._model = model
-        self._criteria = []
-        self._joined_session = False
-
-    def join(self, *_args, **_kwargs):
-        self._joined_session = True
-        return self
-
-    def filter(self, *criteria):
-        self._criteria.extend(criteria)
-        return self
-
-    def order_by(self, *_args, **_kwargs):
-        return self
-
-    # --- 求值 ---
-
-    def _owner_of(self, row):
-        for session in self._db.sessions:
-            if getattr(session, "id", None) == getattr(row, "session_id", None):
-                return session.user_id
-        return None
-
-    def _matches(self, row):
-        for criterion in self._criteria:
-            if not isinstance(criterion, BinaryExpression):
-                continue
-            left, right = criterion.left, criterion.right
-            if not isinstance(left, Column):
-                continue
-            value = right.value if isinstance(right, BindParameter) else getattr(right, "value", right)
-            table = left.table.name
-            value = right.value if isinstance(right, BindParameter) else getattr(right, "value", right)
-            if table == "chat_sessions" and left.key == "user_id":
-                # 归属约束：查会话时直接比 `row.user_id`；
-                # 查附件（join 过 sessions）时比「行所属会话的 user_id」。
-                actual = (
-                    getattr(row, "user_id", None)
-                    if self._model is ChatSession
-                    else self._owner_of(row)
-                )
-                if actual != value:
-                    return False
-            elif getattr(row, left.key, None) != value:
-                return False
-        return True
-
-    def _rows(self):
-        source = self._db.sessions if self._model is ChatSession else self._db.attachments
-        return [row for row in source if self._matches(row)]
-
-    def first(self):
-        rows = self._rows()
-        return rows[0] if rows else None
-
-    def all(self):
-        return list(self._rows())
-
-
-class _FakeDB:
-    def __init__(self, sessions=(), attachments=()):
-        self.sessions = list(sessions)
-        self.attachments = list(attachments)
-        self.deleted = []
-        self.added = []
-        self.commits = 0
-
-    def query(self, model):
-        return _Query(self, model)
-
-    def add(self, obj):
-        if getattr(obj, "id", None) is None:
-            obj.id = uuid4()
-        if getattr(obj, "created_at", None) is None:
-            obj.created_at = datetime(2026, 9, 16, 12, 0, 0)
-        self.added.append(obj)
-        if isinstance(obj, ChatAttachment):
-            self.attachments.append(obj)
-
-    def delete(self, obj):
-        self.deleted.append(obj)
-
-    def commit(self):
-        self.commits += 1
-
-    def refresh(self, _obj):
-        return None
-
-    def close(self):
-        return None
-
-
 def _make_db():
-    """构造数据：OWNER 的会话 + 一条附件，另有 INTRUDER 的会话。"""
+    """构造数据：OWNER 的会话 + 一条附件，另有 INTRUDER 的会话。
+
+    行工厂（`make_session` / `make_attachment`）与 fake DB 都来自共享模块
+    `_attachment_ownership_fakes.py`；本文件只保留**本文件特有的**数据形状。
+    """
     sessions = [
-        _Row(id=OWNER_SESSION_ID, user_id=OWNER_ID, title="owner session"),
-        _Row(id=INTRUDER_SESSION_ID, user_id=INTRUDER_ID, title="intruder session"),
+        make_session(id=OWNER_SESSION_ID, user_id=OWNER_ID, title="owner session"),
+        make_session(
+            id=INTRUDER_SESSION_ID, user_id=INTRUDER_ID, title="intruder session"
+        ),
     ]
-    attachments = [_attachment()]
-    return _FakeDB(sessions=sessions, attachments=attachments)
+    attachments = [make_attachment(id=OWNER_ATTACHMENT_ID, session_id=OWNER_SESSION_ID)]
+    return FakeDB(sessions=sessions, attachments=attachments)
 
 
 def _client(db, user_id) -> TestClient:
     app = FastAPI()
     app.include_router(ar.router)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user_required] = lambda: _Row(id=user_id)
+    app.dependency_overrides[get_current_user_required] = lambda: Row(id=user_id)
     return TestClient(app)
 
 

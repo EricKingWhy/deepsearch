@@ -19,7 +19,11 @@ from observability.events import bind_event_recorder, bind_run_usage, record_res
 from observability.metrics import application_metrics
 from observability.tracing import span
 from service.research_observability_service import ResearchObservabilityService
-from core.serialization import SSE_DONE, sse_frame  # T67：SSE 帧只在这一处构造
+# T67：SSE 帧的**构造点**全仓只有一处 —— `core/serialization.py::sse_frame`
+# （`grep -rn 'f"data: '` 仅命中那里的 return 行）。本文件与 `research_router`
+# 一律经 `sse_frame()` 拼帧，不手写（§4 补审 / T72：原注释紧贴 import 行，
+# 易被误读成「本文件是唯一构造点」，与本意相反）。
+from core.serialization import SSE_DONE, sse_frame
 
 from .graph import DeepResearchGraph
 
