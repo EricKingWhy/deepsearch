@@ -3128,9 +3128,15 @@ T61（P-16）定性后，§3 复核 finding 3 指出：被延后的
 
 机制：SSE 客户端断连 → Starlette 关闭响应生成器 → `GeneratorExit` 展开经过
 `service.py` 的 `with bind_context(...), bind_run_usage()` → 这些 token 是在**另一个**
-Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`；三层
-（`bind_run_usage` → `bind_context` → `span`）逐个抛错，最终以
+Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`，最终以
 `async_generator_athrow` 的未取回异常收尾。
+
+**分层（§3 复核 F2 修正）**：那两条 ERROR 分属**两层**，原稿写成「同一族三层逐个抛错」是错的 ——
+
+- **本仓层（本票靶子）**：`bind_run_usage` + `bind_context` 两处 token 重置；
+  `bind_event_recorder` **不在这条链上**（它不在 `service.py` 的那个 `with` 里）。
+- **第三方层（不归本票）**：OpenTelemetry 自己的 `current_context` ContextVar，
+  在 `span` 的 detach 时报 `Failed to detach context` —— 本票修复后**照样出现**（见 P-20）。
 
 **影响**：干净的关闭被 `ValueError` **顶替** —— 日志里读到的是「context 用错」而不是
 「客户端断连」，这正是 P-16 长期只能记「**不能据现有日志定性**」的直接原因。
@@ -3144,31 +3150,51 @@ Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`；三层
 
 ### 关键取舍
 
-- **不是「吞异常」**：`reset` 抛 `ValueError` 即表明当前 Context **从未执行过**对应的 `set`
+- **不是「吞异常」**：跨 Context 那种 `ValueError` 表明当前 Context **从未执行过**对应的 `set`
   （token 属于另一个 Context），所以**没有需要撤销的东西**，跳过在语义上正确。
-- **只捕获 `ValueError`**：另一种误用（拿错 var 去 reset）抛的是 `TypeError`，不在捕获范围内，
-  仍会正常暴露 —— 守卫不会把真正的编程错误一起吃掉。
+  ⚠️ 该论断**只对跨 Context 成立**，故守卫必须窄化（见下条）。
+- **只放行「跨 Context」那一种 `ValueError`**：`ContextVar.reset` 的两类误用**都抛 `ValueError`**，
+  仅措辞不同 —— 跨 Context 的是 `… was created in a different Context`（本票要忍的），
+  拿错 var 的是 `… was created by a different ContextVar`（**编程错误，必须原样抛出**）。
+  守卫按子串判别，取 `"in a different Context"` 而非 `"different Context"` ——
+  后者是前者的**前缀**，而 `"different ContextVar"` 里同样含 `"different Context"`，
+  用短串会把「拿错 var」一并吞掉。
+  （原稿写「拿错 var 抛 `TypeError`，不在捕获范围内」—— **§3 复核实测证伪**：
+  Python 3.11 / 3.13 均抛 `ValueError`，已按实情改写。）
 - **三个上下文管理器一起改**：同族同病灶，只修其一会在下一个调用点复发。
 - **不加入 `observability/__init__.py` 公开面**：与同族的 `bind_event_recorder` /
   `bind_run_usage`（二者同样未被导出）保持一致；它只是包内管道。
 
 ### 验收
 
-- 新增 `backend/tests/observability/test_context_teardown.py`，**不依赖任何基础设施**，5 条用例：
+- 新增 `backend/tests/observability/test_context_teardown.py`，**不依赖任何基础设施**，**7 条用例**：
   - 三个上下文管理器各一条「在别的 Context `__enter__`、在本 Context `__exit__`」
     （`contextvars.copy_context().run(...)`）；
   - 一条复现**生产机制**的异步生成器用例：本任务推进、由**另一个任务** `aclose()`
     （等价于 Starlette 的断连 teardown）；
   - 一条回归用例：同 Context 下仍照常复原（守卫不能把正常路径一起吞掉）；
-  - 修复前 **4 failed**（`ValueError: … created in a different Context`）→ 修复后 **5 passed**；
-- 变异检验：三处守卫换回裸 `reset(token)` → **4 failed**；还原 → 逐字节一致且变绿；
-- 全量 `pytest -q` → **413 passed / 17 deselected**（前档 408，本票 +5）；
+  - **【§3 复核补】** 一条「拿错 var 必须仍抛 `ValueError`」的回归 —— 钉住守卫的**窄化**，
+    防止有人把判别子串放宽成 `"different Context"` 从而静默吞掉编程错误；
+  - **【§3 复核补】** 一条覆盖 **debug 日志分支**的用例（跨 Context 跳过时须落
+    `observability.context_reset_skipped`），此前该分支无任何断言；
+  - 修复前 **4 failed**（`ValueError: … created in a different Context`）→ 修复后 **7 passed**；
+- 变异检验：三处守卫换回裸 `reset(token)` → **4 failed / 3 passed**；
+  **判别子串放宽成 `"different Context"` → 1 failed**（正是新补的 wrong-var 用例）；
+  还原 → sha256 与基线一致且变绿；
+- 全量 `pytest -q` → **415 passed / 17 deselected**（本票初版 413，§3 复核补 2 例）；
 - `ruff check app tests` → All checks passed。
 
 ### 风险
 
 - 守卫会让「跨 Context 的 reset 静默跳过」成为默认行为。这是刻意的：该场景下本来就无事可撤销；
-  真正写错（var 不匹配）仍由 `TypeError` 暴露。
+  真正写错（var 不匹配）仍抛 `ValueError`（`… by a different ContextVar`），守卫不放行。
+- **收口范围（§3 复核 F1）**：本票只收口**本仓**的 `reset` 调用点（共三处：`bind_context` /
+  `bind_event_recorder` / `bind_run_usage`；其中在**断连链上**的只有 `bind_context` 与
+  `bind_run_usage`）。归档日志 `10:25:03.786` 那条
+  `opentelemetry.context | Failed to detach context` 来自 **OTel 自身的** `current_context`
+  ContextVar（第三方层，`opentelemetry/context/__init__.py:135` **在库内自己 catch 后记出**），
+  本票修复后**照样出现** —— 故「断连 teardown 族整体收口」的口径**只在「本仓三处 `reset` 调用点」
+  范围内成立**；OTel 侧已记录为未闭合项 **P-20**（保留判定）。
 
 > issue [#193](https://github.com/EricKingWhy/deepsearch/issues/193)　**状态**：DONE
 

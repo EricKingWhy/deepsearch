@@ -51,20 +51,32 @@ def reset_context_var(var: ContextVar, token: Token) -> None:
 
     当前 Context 从未执行过对应的 ``set``，因此这里**没有需要撤销的东西** ——
     跳过重置在语义上是正确的，不是「吞掉真实错误」。
+
+    **只放行「跨 Context」这一种 `ValueError`**：`ContextVar.reset` 的
+    `ValueError` 有两类成因，措辞不同 ——
+
+    * ``… was created in a different Context`` —— 本函数要容忍的场景，跳过；
+    * ``… was created by a different ContextVar`` —— **拿错 var 的编程错误**，
+      必须原样抛出，不能被守卫吞掉。
+
+    判别子串取 ``"in a different Context"`` 而非 ``"different Context"``：
+    后者是前者的**前缀**，而 ``"different ContextVar"`` 里同样含
+    ``"different Context"``（Python 3.11 / 3.13 实测均如此），用短串会把
+    「拿错 var」一并吞掉。
     """
 
     try:
         var.reset(token)
-    except ValueError:
+    except ValueError as exc:
+        if "in a different Context" not in str(exc):
+            raise
         logger.debug(
-            "Skipped ContextVar reset from a different Context",
+            "Skipped ContextVar reset: token belongs to a different Context",
             extra={
                 "event": "observability.context_reset_skipped",
                 "details": {"var": var.name},
             },
         )
-
-
 
 
 def normalize_correlation_id(value: str | None, *, prefix: str = "req") -> str:
