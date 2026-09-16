@@ -2,7 +2,8 @@
 
 复现依据：`.runlogs/t49_backend8001c.log`
 
-  - `10:25:03.786` 在 `service.py:227  yield self._format_sse(event)` 处被抛入
+  - `10:25:03.786` 在 `service.py` 的 SSE 产出点被抛入（当时写作 `yield self._format_sse(event)`；
+    T67 之后该处为 `yield sse_frame(event)` —— 符号名改了，位置语义不变）
     `GeneratorExit` —— Starlette 检测到 SSE 客户端断连后关闭了响应生成器；
   - 此后 DeepScout 的 `asyncio.create_task(execute_agent())` 任务**脱管继续运行**
     （`e9e2b878` 续跑 6m42s：`10:25:04` → `10:31:45`），期间每条事件都因

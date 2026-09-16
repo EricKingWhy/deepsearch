@@ -8,7 +8,6 @@ DeepResearch V2.0 - 服务入口
 """
 
 import os
-import json
 import uuid
 import logging
 from contextlib import nullcontext
@@ -20,6 +19,7 @@ from observability.events import bind_event_recorder, bind_run_usage, record_res
 from observability.metrics import application_metrics
 from observability.tracing import span
 from service.research_observability_service import ResearchObservabilityService
+from core.serialization import SSE_DONE, sse_frame  # T67：SSE 帧只在这一处构造
 
 from .graph import DeepResearchGraph
 
@@ -218,7 +218,7 @@ class DeepResearchV2Service:
                                         research_id=run["research_id"],
                                         trace_id=root_trace.trace_id,
                                     )
-                                yield self._format_sse(event)
+                                yield sse_frame(event)
                         finally:
                             if phase_name and phase_started_at is not None:
                                 outcome = "failure" if terminal_status == "failed" else "success"
@@ -252,7 +252,7 @@ class DeepResearchV2Service:
                                 }
                             )
 
-        yield "data: [DONE]\n\n"
+        yield SSE_DONE
 
     async def _research_stream(
         self,
@@ -308,10 +308,6 @@ class DeepResearchV2Service:
                 "type": "error",
                 "content": str(e)
             }
-
-    def _format_sse(self, event: Dict[str, Any]) -> str:
-        """格式化为 SSE 事件"""
-        return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     async def research_sync(
         self,

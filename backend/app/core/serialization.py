@@ -9,7 +9,7 @@ V1 备选路线模块 dr_g，模糊了模块边界。本模块为中立公共位
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 
 def serialize_event(event_data: Dict[str, Any]) -> str:
@@ -26,3 +26,24 @@ def serialize_event(event_data: Dict[str, Any]) -> str:
     except Exception as e:
         logging.error(f"Failed to serialize event: {e}")
         return json.dumps({"type": "error", "content": f"Serialization error: {e}"})
+
+
+#: SSE 结束哨兵 —— 全仓只在这里定义，且只在最外层发射一次（T67）。
+SSE_DONE = "data: [DONE]\n\n"
+
+
+def sse_frame(event_data: Union[Dict[str, Any], str]) -> str:
+    """把事件编成一条 SSE 帧 —— 全仓唯一的「信封」实现（T67）。
+
+    在此之前，帧的拼装有三种写法：`deep_research_v2/service.py` 的私有 `_format_sse`、
+    router 里 6 处 `serialize_event(...)` + 手写 `f"data: …\n\n"`、以及 router 给
+    V1 已序列化字符串套壳的 `f"data: {event}\n\n"`。现在产出 SSE 帧的地方都走本函数。
+
+    入参两态：
+    - `dict`：结构化事件 —— 在这里序列化**一次**（V2 链路即此形态，见 T67）；
+    - `str`：已经序列化好的 JSON 字符串 —— 仅 V1 备选路线用。`dr_g.research_stream`
+      是 PRD NG-3 的有意保留实现，其「产出 JSON 字符串」的既有契约不在本票范围内，
+      故信封对这一态做透传，而不是二次编码（否则会把字符串再 JSON 转义一遍）。
+    """
+    payload = event_data if isinstance(event_data, str) else serialize_event(event_data)
+    return f"data: {payload}\n\n"
