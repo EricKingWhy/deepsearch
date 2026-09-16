@@ -182,7 +182,11 @@ class ToolExecutor:
             "page": 1
         })
         headers = {
-            'Authorization': self.search_api_key,
+            # Bocha 要求 `Bearer ` 前缀（§4 补审 / T72）：原值缺少前缀 → 401，
+            # 使 V1 研究路线的联网检索静默失效。同一端点
+            # (`api.bochaai.com/v1/web-search`) 的另外 3 处调用都带前缀 ——
+            # `dr_g.py`、`news_collection_service.py`、`scout.py`。
+            'Authorization': f'Bearer {self.search_api_key}',
             'Content-Type': 'application/json'
         }
 
