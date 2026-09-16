@@ -102,7 +102,7 @@ ticket 6 ─┘
   **⚠️ 分支名必须扁平，禁止使用 `/`**（不要写 `ticket/T13-xxx`）。原因见 §9：带斜杠的分支需要
   `refs/heads/<目录>/` 子目录，而该子目录会被环境清扫，分支引用随即消失、`HEAD` 悬空。
 - 分支上提交完成后**开 PR 并合并到 `main`**（`gh pr create` + `gh pr merge --merge`）。
-- **禁止直接 push 到 `main`**（基线整理 commit 除外）。
+- **禁止直接 push 到 `main`**（**基线整理 commit** 与**纯台账回填 commit** 除外 —— 后者指只改动 `docs/hardening/TRACKER.md` 等台账文件、不触及任何代码/测试的**合并后回填**；回填存在自指问题：回填自身的 SHA 无法写进被回填的字段，若强制走 PR 会形成「回填 PR 又前移 tip」的无限回归，故与实践对齐成文。**触代码的提交不在豁免之列** —— 历史上 `19547b0`（第 1 批 findings 修复）与 `96fadb4`（7-1 findings 修复）曾直推 `main`，属规范未成文时期的偏差，已记账（终审 §4 第三轮 #3），不再重演）。
 - 合并方式用 merge commit，**不要 squash** —— 保留 commit 粒度是本项目的明确目标。
 - commit message 使用中文正文 + 英文类型前缀，例如：
   `fix(scout): 本地检索按 kb 集合名检索，修复 DeepResearch 搜不到用户文档`
@@ -416,7 +416,3 @@ mv .venv "../.runlogs/venv-broken-$(date +%H%M%S)"   # 挪开，不要删
 - **Docker Desktop 默认未运行**（`docker ps` 连不上）。需要基础设施的验收必须先执行 `./start-services.sh start`，否则该步骤记 `BLOCKED`。
 - 独立加载单个模块做验证时，用 `importlib.util.spec_from_file_location` 直接加载文件路径，
   可绕过 `app/service/__init__.py` 的重依赖链，在没有完整依赖时也能跑行为断言。
-
-
-
-
