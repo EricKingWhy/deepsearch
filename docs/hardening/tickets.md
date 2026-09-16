@@ -3057,8 +3057,11 @@ P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168**
    `state["_message_queue"]` 置为 `None`；
 3. `run_agent_with_streaming` 中 `task = asyncio.create_task(execute_agent())` 产生的
    agent 任务是**独立任务、无人取消**（它不在外层生成器的调用栈上，`finally` 只处理队列）；
-4. 该任务从 `10:25:04` 脱管跑到 `10:31:45`（**约 6 分钟**），期间每条 `add_message`
+4. 该任务从 `10:25:04` 脱管跑到 `10:31:45`（**6m42s**），期间每条 `add_message`
    都落到 `agents/base.py:314` 的 `else: logger.warning("[SSE] No queue available …")`。
+   同一日志里还有**第二个同类实例** `50c3dde7`（`10:39:36` → `10:48:34`，**8m58s**），
+   但它**没有**留下 `GeneratorExit` 记录 —— 说明**断连并不总会打印 contextvar 异常**，
+   因此不能靠该异常是否存在来判断是否发生了脱管。
 
 **结论**：事件丢失是**断连 teardown 缺陷**的后果，不是「队列没接上」；
 `graph.py:434` 的接线本身正确。同期的 `Failed to detach context` /
@@ -3074,7 +3077,7 @@ P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168**
   `add_done_callback(active_agent_tasks.discard)` 自动移除；
 - `finally` 中对未完成的任务 `cancel()`，然后才 `state["_message_queue"] = None`。
 
-顺序不能反：先摘队列再取消，脱管任务仍会在窗口内继续推事件。
+顺序按「先停生产者、再拆通道」书写；注意这两条语句之间**没有 await**，因此并不存在「先摘队列导致窗口内仍推事件」的竞态 —— 该顺序只关乎意图清晰（§3 复核已纠正原注释中的过度断言）。
 
 ### 关键取舍
 
@@ -3088,10 +3091,10 @@ P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168**
 ### 验收
 
 - 新增 `backend/tests/service/deep_research_v2/test_graph_stream_teardown.py`
-  —— 用替身 agent 驱动 `_run_simplified`，在流式阶段 `aclose()` 模拟断连，
-  **不依赖任何基础设施**（不起 Postgres/Redis/Milvus、不调 LLM）：
-  - 修复前：`cancelled=False / dropped_events=5`（复现 P-16 的「无队列」丢事件）；
-  - 修复后：`cancelled=True / completed=False / dropped_events=0`；
+  —— 替身 agent 绑定**真实** `BaseAgent.add_message`（不在测试里重实现被测逻辑），
+  在流式阶段 `aclose()` 模拟断连，**不依赖任何基础设施**（不起 Postgres/Redis/Milvus、不调 LLM）：
+  - 修复前：`cancelled=False`，且捕获到多条 `[SSE] No queue available`（P-16 原始症状）；
+  - 修复后：`cancelled=True / completed=False`，且该告警 **0 条**；
 - 变异检验：摘掉取消块 → 用例变红；还原 → 逐字节一致且变绿；
 - 全量 `pytest -q` → **408 passed / 17 deselected**（前档 402 + T59 的 5，本票 +1）；
 - `ruff check app tests` → All checks passed。

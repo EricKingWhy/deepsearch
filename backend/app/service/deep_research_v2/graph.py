@@ -435,8 +435,8 @@ class DeepResearchGraph:
 
         # 在飞的 agent 任务（T61 / P-16）：SSE 客户端断连时 Starlette 会关掉本
         # 生成器（在 yield 处抛 GeneratorExit），若不在此处取消这些任务，
-        # `asyncio.create_task` 出来的 agent 会**脱管继续跑**（实测继续 6 分钟），
-        # 而队列已被 finally 置空，于是它的每条事件都打到
+        # `asyncio.create_task` 出来的 agent 会**脱管继续跑** —— 归档日志中两处实例
+        # 分别续跑 6m42s / 8m58s，而队列已被 finally 置空，于是它的每条事件都打到
         # `[SSE] No queue available` 上，事件整体丢失。
         active_agent_tasks: set = set()
 
@@ -930,8 +930,10 @@ class DeepResearchGraph:
                 )
             yield {"type": "error", "content": str(e)}
         finally:
-            # 先取消在飞的 agent 任务，再摘掉队列：顺序反了会让脱管任务在队列置空
-            # 后继续推事件（T61 / P-16 观测到的 246 条 `[SSE] No queue available`）。
+            # 先取消在飞的 agent 任务，再摘掉队列（T61 / P-16）。取消之后脱管任务
+            # 不会再推事件。注意这两条语句之间没有 await，事件循环无从插入，
+            # 因此**不存在**「先摘队列导致窗口内仍推事件」的竞态 —— 顺序在这里
+            # 只关乎意图（先停生产者、再拆通道），不是用来堵一个真实的窗口。
             for pending in list(active_agent_tasks):
                 if not pending.done():
                     pending.cancel()
