@@ -14,14 +14,15 @@
 
 本文件按三层验证，**都不依赖基础设施**（无 Docker / 无 LLM / 无网络）：
 
-1. **清理守卫层** —— `_remove_file_quietly` 正常删、抛 OSError 时只告警不外抛、文件不存在时无操作；
+1. **清理守卫层** —— 走公共守卫 `core.upload_security.remove_quietly`：抛 OSError 时只告警、绝不外抛
+   （正常删 / 缺失无操作 / 不传 logger 静默这三种情形由 `test_document_cleanup_guard.py` 的守卫层覆盖）；
 2. **处理过程层** —— 清理抛异常时 `process_document` 仍正常返回、文档状态仍为 `completed`
    （即「清理失败不污染处理结果」），且保留文件而非假装成功；
 3. **调度边界层** —— `run_document_processing` 吞掉任意未预期异常、成功路径原样透传；
 4. **源码锁** —— 上传路由必须把 `run_document_processing` 交给 `background_tasks`，
-   且全文件只剩唯一的 `os.remove(`（在守卫内部、被 `except OSError` 包住）。
+   且本文件**不再出现任何 `os.remove(`**（清理一律委派公共守卫；T63 把此前的私有实现并入守卫）。
 
-变异检查见 PR 描述：① 撤掉 `_remove_file_quietly` 的 try/except → 用例失败；
+变异检查见 PR 描述：① 把 finally 里的守卫调用换回裸 `os.remove` → 用例失败（目录级锁）；
 ② 把 `add_task` 目标改回 `process_document` → 用例失败。
 """
 
@@ -93,25 +94,12 @@ def _stub_docmind(monkeypatch, result):
 # 1) 清理守卫层
 # --------------------------------------------------------------------------
 
-def test_remove_file_quietly_deletes_existing_file(tmp_path):
-    """正常路径必须仍然真的删掉文件 —— 守卫不是「不再清理」的借口。"""
-    target = tmp_path / "upload.pdf"
-    target.write_bytes(b"%PDF-1.7")
-
-    kr._remove_file_quietly(str(target))
-
-    assert not target.exists()
-
-
-def test_remove_file_quietly_is_noop_when_missing(tmp_path):
-    """文件不存在时静默通过（并发/重试场景：别人已删）。"""
-    kr._remove_file_quietly(str(tmp_path / "never-existed.pdf"))
-
-
-def test_remove_file_quietly_swallows_oserror(tmp_path, monkeypatch, caplog):
+def test_cleanup_guard_swallows_oserror_and_warns(tmp_path, monkeypatch, caplog):
     """🔒 P-17 直接修复点：`os.remove` 抛 OSError 时**只告警、绝不外抛**。
 
-    修复前 `os.remove` 直接写在 finally 里，PermissionError 会一路逸出后台任务。
+    修复前裸 `os.remove` 直接写在 finally 里，PermissionError 会一路逸出后台任务。
+    T63 起本文件改走公共守卫（原先是一份同语义的私有实现，已并入 `remove_quietly`），
+    故这里按**路由实际调用守卫的方式**（带 logger）验证告警通道，而非调用私有名。
     """
     target = tmp_path / "locked.pdf"
     target.write_bytes(b"%PDF-1.7")
@@ -122,10 +110,12 @@ def test_remove_file_quietly_swallows_oserror(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(os, "remove", _boom)
 
     with caplog.at_level(logging.WARNING, logger=kr.__name__):
-        kr._remove_file_quietly(str(target))  # 修复前这里会抛 PermissionError
+        kr.remove_quietly(str(target), logger=kr.logger)  # 修复前这里会抛 PermissionError
 
     assert target.exists(), "清理失败时应保留文件，而不是假装成功"
-    assert any("临时文件清理失败" in r.message for r in caplog.records), "清理失败必须留下 warning"
+    assert any("临时文件清理失败" in r.getMessage() for r in caplog.records), (
+        "清理失败必须留下 warning"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -251,28 +241,28 @@ def test_upload_route_schedules_the_boundary_wrapper():
     )
 
 
-def test_the_only_os_remove_lives_inside_the_guard():
-    """🔒 全文件只剩唯一一处 `os.remove(`，且必须被 try/except OSError 包住。
+def test_knowledge_router_has_no_bare_os_remove():
+    """🔒 本文件不得再出现任何 `os.remove(` —— 清理一律委派公共守卫。
 
-    这一处即守卫的唯一实现；任何新增的裸 `os.remove` 都会让本用例失败 ——
-    该文件里已经出现过两处（后台 finally + 删除文档端点），两次都属于同一族缺陷。
+    该文件里出现过三次同族缺陷：后台 `finally`、删除文档端点、以及一份与
+    `core.upload_security.remove_quietly` 同语义的**私有实现**。T63 把私有实现并入
+    守卫后，本文件对 `os.remove` 的使用归零；且由**目录级**锁
+    （`test_document_cleanup_guard.py::test_no_router_module_has_a_bare_os_remove`）兜底。
     """
     src = _source()
 
-    assert src.count("os.remove(") == 1, f"仍存在 {src.count('os.remove(')} 处裸 os.remove"
-
-    helper = _region(src, "def _remove_file_quietly", "async def process_document")
-    assert "os.remove(" in helper, "唯一一处 os.remove 不在守卫函数内"
-    assert "except OSError" in helper, "os.remove 未被 except OSError 包住"
+    assert src.count("os.remove(") == 0, f"仍存在 {src.count('os.remove(')} 处 os.remove"
+    assert "from core.upload_security import (" in src, "未从公共守卫模块导入"
+    assert "remove_quietly," in src, "未导入公共守卫 remove_quietly"
 
 
 def test_finally_delegates_cleanup_to_the_guard():
     """🔒 finally 里必须调用守卫，而不是内联删除逻辑。"""
     src = _source()
-    assert "_remove_file_quietly(file_path)" in src, "finally 未委派给守卫函数"
+    assert "remove_quietly(file_path, logger=logger)" in src, "finally 未委派给公共守卫"
 
     body = _region(src, "async def process_document", "async def run_document_processing")
-    assert "_remove_file_quietly(file_path)" in body, "守卫调用不在 process_document 内"
+    assert "remove_quietly(file_path, logger=logger)" in body, "守卫调用不在 process_document 内"
 
 
 def test_delete_document_delegates_file_removal_to_the_guard():
@@ -280,7 +270,7 @@ def test_delete_document_delegates_file_removal_to_the_guard():
     src = _source()
     region = _region(src, "async def delete_document")
 
-    assert "_remove_file_quietly(doc.file_path)" in region, "delete_document 未委派给守卫"
+    assert "remove_quietly(doc.file_path, logger=logger)" in region, "delete_document 未委派给守卫"
     assert "os.remove(" not in region, "delete_document 仍有裸 os.remove"
 
 

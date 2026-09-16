@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from core.upload_security import (
     ensure_supported_extension,
+    remove_quietly,
     save_upload,
 )
 from models.knowledge import KnowledgeBase, Document
@@ -77,27 +78,6 @@ def doc_to_response(doc: Document) -> DocumentResponse:
     )
 
 
-def _remove_file_quietly(file_path: str) -> None:
-    """删除一个文件；失败只告警，绝不外抛。
-
-    调用方有两处：后台处理的 `finally`、以及删除文档端点。两处的共同要求是
-    「删不掉也不能出事」——
-
-    - 后台路径：此前这里是裸的 `os.remove`，一旦抛异常（Windows 下句柄仍被占用 →
-      `PermissionError`；并发上传/重试 → `FileNotFoundError`），异常会逸出整个后台任务
-      并穿透 ASGI —— 实测会**直接终止 uvicorn 进程**（T53 / P-17）。
-    - 删除文档端点：裸 `os.remove` 抛异常会让请求 500，且**记录也删不掉** ——
-      用户点了删除却什么都没发生。
-
-    故统一收敛到这里：清理失败留一个残留文件是可接受的代价，绝不该让服务或记录删除被拖住。
-    """
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    except OSError as exc:
-        logger.warning(f"临时文件清理失败，已保留 {file_path}：{exc}")
-
-
 async def process_document(document_id: str, file_path: str, kb_name: str, db_session_factory):
     """后台处理文档（使用 DocMind 解析、向量化、存储到 Milvus 集合 kb_{知识库名}；历史上曾计划写 ES，已弃用）
 
@@ -145,8 +125,9 @@ async def process_document(document_id: str, file_path: str, kb_name: str, db_se
 
     finally:
         db.close()
-        # 清理临时文件（内部自兜底，清理失败绝不外抛）
-        _remove_file_quietly(file_path)
+        # 清理临时文件。走公共守卫（`core.upload_security.remove_quietly`），
+        # 清理失败只告警、绝不上抛（T53 / P-17；T63 / 终审 §4 中-2 去重）。
+        remove_quietly(file_path, logger=logger)
 
 
 async def run_document_processing(document_id: str, file_path: str, kb_name: str, db_session_factory) -> None:
@@ -560,9 +541,10 @@ async def delete_document(
 
     # 删除文件（如果存在）。
     # 文件删不掉（Windows 句柄占用等）不得拦住记录删除 —— 否则用户点了删除却什么都没发生、
-    # 只拿到一个 500。清理本身改为静默告警（见 _remove_file_quietly）。
+    # 只拿到一个 500。清理走公共守卫（`core.upload_security.remove_quietly`），
+    # 只告警、不上抛（T63 / 终审 §4 中-2：本文件原有一份同语义的私有实现，已并入守卫）。
     if doc.file_path:
-        _remove_file_quietly(doc.file_path)
+        remove_quietly(doc.file_path, logger=logger)
 
     # 更新知识库文档计数
     kb.document_count = max((kb.document_count or 0) - 1, 0)
