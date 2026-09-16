@@ -70,7 +70,7 @@ describe('request client 契约（T70）', () => {
   // 即便把 `unwrap` 重新声明回来也不会变红 —— 属「装饰性锁」，只会制造虚假覆盖。
   // `_data` 的去留是**类型级**事实，运行时无从断言，由 `tsc` 与上面那条
   // 「响应体「碰巧带 data 字段」时不被改写」用例（负向对照 M1 实测咬人）共同看守。
-  it('readBody 是唯一的取体出口：直接给到后端返回体', async () => {
+  it('readBody 是 api 模块层的取体出口：直接给到后端返回体', async () => {
     const body = { value: 42 }
 
     await expect(readBody(clientReturning(body).get<typeof body>('/demo'))).resolves.toEqual(body)

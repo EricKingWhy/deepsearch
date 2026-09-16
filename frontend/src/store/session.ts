@@ -35,7 +35,10 @@ export const sessionActions = {
     try {
       const response = await getSessions({ limit: 50 })
       // 本 client 不解包（T70 起为显式契约，见 api/request/request.ts）：response 是
-      // AxiosResponse，后端返回体在 response.data。要取体请用 api/request/read-body。
+      // AxiosResponse，后端返回体在 response.data。
+      // 注：`api/request/read-body` 的 `readBody()` 是 **api 模块层**的取体出口；本 store
+      // 属**尚未迁移**的存量调用方（§4 补审 / T72 实测口径，见 read-body.ts 的口径边界）。
+      // 故此处直接取 `.data` —— 与 `readBody(getSessions(...))` 行为等价，勿据此认为全仓已收拢。
       const sessions = response.data
       sessionState.sessions = Array.isArray(sessions) ? sessions : []
     } catch (err) {
