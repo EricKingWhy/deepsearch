@@ -3343,6 +3343,317 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 ---
 ---
 
+# 架构评审深化（2026-09-16）
+
+> 来源：用户执行 `/improve-codebase-architecture` 后产出的架构评审报告（8 个候选，
+> 写于系统临时目录，未落仓库）。用户裁决：**6 个 `Strong` 候选全部执行**（2 个
+> `Worth exploring` 暂不开票）。
+>
+> 报告用语遵循 `codebase-design` 的术语表（module / interface / implementation / depth /
+> seam / adapter / leverage / locality）—— 票面沿用同一套词，不写「组件 / 服务 / 边界」。
+>
+> **不做重复建议**：报告已排除用户明确保留的 V1 路线（`dr_g.py` / `react_controller.py` /
+> `tool_executor.py`，NG-3）与 `docs/hardening` 已完成的硬化工作。
+
+## T65 — 给 DeepResearchGraph 一个构造缝：协作者从构造参数进入
+
+- **类型**：refactor　**阶段**：架构评审（候选 1 / 报告 **Top 推荐**）　**依赖**：无　**标记**：无
+
+### 背景
+
+`DeepResearchGraph.__init__`（`backend/app/service/deep_research_v2/graph.py:96-163`）在构造函数体内
+直接 new 出 6 个 agent + config + checkpoint，**没有任何构造缝**。后果三连：
+
+1. **4 处测试无法使用构造器，只能绕过接口** ——
+   `backend/tests/service/deep_research_v2/test_graph_stream_teardown.py:100-116`、
+   `backend/tests/service/test_graph_outline_checkpoint.py:80-88, 111-119, 153-161`、
+   `backend/tests/service/deep_research_v2/test_scout_local_search.py:168`。
+   做法是 `object.__new__(DeepResearchGraph)` + 手动 `setattr` 6 个属性 + monkeypatch 模块级全局，
+   再直接调私有方法 `_run_simplified`。**「测试必须破坏构造器才能测」= 缝在错误的位置。**
+2. `backend/app/service/deep_research_v2/service.py:74-90` 又把同样的配置解析抄了一遍；
+3. `run_sync`（`graph.py:943-978`）重写了一遍同样的阶段序列，却不带取消 / 检查点 / 观测 / UI 投影
+   —— 同一条流水线有两份真相。
+
+### 改什么
+
+让 pipeline 的协作者（agent 集、config、checkpoint）**从构造参数进入**，`__init__` 不再自建；
+生产调用点传入真实协作者。
+
+**边界**：不改公开行为、不改 API 契约、不改数据模型。
+
+### 关键取舍
+
+- **只加一条缝，不引入 DI 容器**：`tickets.md` 通用约定里「最小改法是硬约束」——
+  构造参数就够，上框架属过度设计。
+- **4 处测试的改写必须保持断言不变**：否则等于把「测试绕过接口」换成「测试变弱」，
+  那不是深化，是掩饰。判据是 `grep -rn "object.__new__(DeepResearchGraph)"` 归零**且**原断言仍在。
+- **`run_sync` 是否并入本票**：若并入会改变外部行为，则**不并入**、另开一票 —— 一票一件事。
+
+### 风险
+
+- 触及 deep_research_v2 核心编排，是本批**最需谨慎**的一票。若无法保持行为不变，
+  应把范围缩到「只加缝 + 只改测试」。
+- 本票**不改变**任何对外的取消 / 检查点语义。
+
+### 验收
+
+- `grep -rn "object.__new__(DeepResearchGraph)" backend/tests` → **0 命中**；
+- 上述 4 处测试改为**构造器注入替身**后仍全绿，且断言不变；
+- 全量 `pytest tests -q` → 不低于基线 **519 passed / 17 deselected**；
+- `pytest tests/service/deep_research_v2 -q` 全绿（生产路径行为不变）；
+- `ruff check app tests` → All checks passed。
+
+> issue [#202](https://github.com/EricKingWhy/deepsearch/issues/202)　**状态**：TODO
+
+---
+
+## T66 — 深研事件归约器从 chat 页面抽出：线事件到 UI 状态的纯映射
+
+- **类型**：refactor　**阶段**：架构评审（候选 2）　**依赖**：无　**标记**：无
+
+### 背景
+
+`frontend/src/pages/chat/index.tsx:383-1143` 的 `parseData` 约 **760 行**、**30 个** `json.type` 分支，
+长在 React 组件体内，直接读/写 **12 个** `useState` / `useRef` / valtio setter（`:106-109, 343-374`）。
+`frontend/src/features/deep-research/types.ts:57-61` 的 union 只声明了 **4 种**事件，
+真正的事件在 `index.tsx:386-387` 被强转 `any` 并加 `eslint-disable`。
+
+**最强的形状证据**：`frontend/src/pages/chat/deep-research-integration.test.tsx:22-87` 为驱动**一条**
+事件分支，mock 了 **14 个** module（`@/api`、`@/utils`、`@/store/device`、`page-layout`、`sender`、
+`chat-message` …）。测试必须穿透接口 → 模块形状不对。
+
+### 改什么
+
+把「线事件 → UI 状态」的映射抽成一个**纯 module**：`(state, event) → state`，页面只订阅其结果；
+事件 union 补齐到真实事件集合。
+
+**边界**：页面渲染与交互行为不变。
+
+### 关键取舍
+
+- **抽纯函数，而不是引入状态管理库**：现有 valtio 够用 —— 问题在「归约逻辑长在组件体内」，
+  不在状态库；换库会把 `locality` 问题原地保留。
+- **事件 union 必须补齐到真实集合**：否则 `any` 强转只是被搬到另一个地方，
+  类型层面的 `leverage` 一点没涨。
+- **分步落地**：先抽纯函数 + 补测（可回滚），页面再逐步改为调用。
+
+### 风险
+
+chat 是核心交互页，改动面大。分步走，保持每步可回滚。
+
+### 验收
+
+- 新增的归约器单测**不 mock 任何业务 module**（只喂事件、断言状态），覆盖全部 30 个分支；
+- `npx vitest run` → 全绿（基线 **48 passed / 8 files** 或更多）；
+- `npx eslint .` → **0 problems**；`index.tsx` 的 `eslint-disable` 与 `any` 强转 → **0**；
+- `wc -l frontend/src/pages/chat/index.tsx` 前后对比写入票面（应显著下降）。
+
+> issue [#203](https://github.com/EricKingWhy/deepsearch/issues/203)　**状态**：TODO
+
+---
+
+## T67 — 消除 SSE 事件信封往返：只在最外层序列化一次
+
+- **类型**：refactor　**阶段**：架构评审（候选 3）　**依赖**：无　**标记**：无
+
+### 背景
+
+事件在 graph 里是 dict，被 `_format_sse` 序列化成字符串（`backend/app/service/deep_research_v2/service.py:307`），
+紧接着 `research()` 又用 `json.loads(chunk.removeprefix("data: "))` 把它**解析回 dict**（`:190`）
+**只为记观测**，然后再序列化一次（`:227`）。
+
+同一文件里还有**三种**信封写法（`serialize_event`、`_format_sse`、`f"data: {event}\n\n"`），
+`[DONE]` 哨兵被**生产两次**（`:317`、`:261`）再被**过滤一次**（`:187`）。
+router 侧还有 6 个各自手写 try/except + `data:` 拼接的 `generate_sse*`
+（`backend/app/router/research_router.py:176-190, 200-214, 256-267, 277-291, 621-633, 680-692`）；
+`backend/app/core/serialization.py:15-28` 是第三种信封实现的又一入口。
+
+**删除测试**：删掉这组往返，复杂度**直接消失** —— `_research_stream` 的唯一调用点就是 `research()`。
+
+### 改什么
+
+整条链**只在最外层序列化一次**，中间一律传递结构化事件；信封实现收敛为**一处**。
+
+**边界**：SSE 对前端的字节契约不变（除 `[DONE]` 由生产两次变为一次）。
+
+### 关键取舍
+
+- **先补断言再重构**：SSE 是前端消费的契约，先加一条「同一事件在记观测与发出两处内容一致」
+  的回归断言，重构才可被测试兜住；否则是「没有判据的重构」。
+- **`[DONE]` 生产次数由 2 变 1 属对外可见变化**：必须显式记录在票面，并确认前端容忍
+  （前端本就按 `[DONE]` 终止，重复一次无意义，但需实测确认而非假设）。
+
+### 风险
+
+改动落在 SSE 主链路上。以「先加断言、再重构、后全量回归」的顺序推进。
+
+### 验收
+
+- 「为记观测而回解」这一模式从 `service.py` 消失（`grep` 证明 0 命中）；
+- 信封写法由 3 种收敛为 1 种（`grep` 给出前后命中数）；
+- 新增回归断言：同一事件在「记观测」与「发出」两处内容一致；
+- `pytest tests -q` 全绿（重点 `tests/router`、`tests/service/deep_research_v2`）；
+- `ruff check app tests` → All checks passed。
+
+> issue [#204](https://github.com/EricKingWhy/deepsearch/issues/204)　**状态**：TODO
+
+---
+
+## T68 — 「研究取消」协议迁出 router：切断服务层对 router 的反向依赖
+
+- **类型**：refactor　**阶段**：架构评审（候选 4）　**依赖**：无　**标记**：无（**架构分叉**，2026-09-16 已获用户批准）
+
+### 背景
+
+一个带 Redis key 前缀与 300s TTL 的取消协议归 `research_router` 所有
+（`backend/app/router/research_router.py:34-35, 413-414, 424-447`），而**服务层反向 import router**
+才能用它（`backend/app/service/deep_research_v2/graph.py:28-39`）。
+
+`graph.py:36-39` 的 `ImportError` 兜底把「取消」**静默降级为永不取消**（fail-open），
+而这个兜底同时掩盖了两模块之间的循环依赖 —— 导入失败时流水线会静默跑到天亮。
+
+仓库已有先例：`backend/app/core/serialization.py:4-8` 正是为切断同类「router ⇄ 业务模块」
+反向依赖而设的**中立位**。
+
+> **性质：架构分叉**（§1 第 2 类，改变模块边界）—— 已于 2026-09-16 呈报用户并获批准执行。
+
+### 改什么
+
+把取消协议搬到与两侧都无关的**中立 module**；取消判定作为**显式注入的协作者**，
+不再是模块级 import + `ImportError` 兜底。
+
+**边界**：只改协议归属与依赖方向，**不改**取消时机与语义。
+
+### 关键取舍
+
+- **中立位选址复刻 `core/serialization.py` 先例**：不新造概念、不新增抽象层。
+- **fail-open → fail-loud 是本票唯一可能改变运行行为的点**：必须显式设计
+  （抛错或明确返回），**不可静默**；否则只是把「静默降级」换了个位置。
+- **不越界**：「断连后是否后台续跑并持续落检查点」属 **R-04**（待用户裁决），不在本票范围。
+
+### 风险
+
+取消语义直接影响「断连后是否继续跑」。本票只动归属与依赖方向，取消时机/语义保持不变。
+
+### 验收
+
+- 反向依赖消失：`grep -n "from router" backend/app/service/deep_research_v2/graph.py` → **0 命中**；
+- **取消真的生效**（两条可判定断言）：注入「已取消」判定 → 在下一个检查点停止；注入「未取消」→ 继续；
+- 取消不可用时**显式可见**（不再假成功），处置写入票面；
+- `pytest tests -q` 全绿；`ruff check app tests` → All checks passed。
+
+> issue [#205](https://github.com/EricKingWhy/deepsearch/issues/205)　**状态**：TODO
+
+---
+
+## T69 — 收拢事实写入边界：一条 fact 只有一个构造口
+
+- **类型**：refactor　**阶段**：架构评审（候选 5）　**依赖**：无（与 P-14/T51 同族但不冲突）　**标记**：无
+
+### 背景
+
+`normalize_source_url` 被单测得很干净，但真正的缺陷在**怎么被调用**：同一段 `fact_entry` 构造在
+`backend/app/service/deep_research_v2/agents/scout.py:57, 355-372, 682-705, 906-923` 里抄了 **3 份**
+（键集各不相同：`is_supplementary` / `extracted_at,verified` / `search_depth,search_type`），
+`data_point` 又抄 **2 份**。
+
+「`facts[].source_url` 是单个非空字符串」这条不变量**没有归属地** —— 测试只能用
+`src.count(...) == 3` **数源码里的出现次数**来守
+（`backend/tests/service/deep_research_v2/test_scout_source_url_shape.py:183, 190`），
+即测试被迫穿透接口。
+
+这是 **P-14（T51）的结构性根因**：`source_url` 为数组时抛 `TypeError: unhashable type: 'list'`，
+异常逸出后被 `graph.py` 记为 `Task exception was never retrieved` → **检索阶段静默死亡**，
+UI 恒 `charts=0`。边界归一写在 3 个调用点上，所以每加一条写入路径就可能漏一处。
+
+### 改什么
+
+只保留**一处**「LLM 结果 → state fact」的转换，不变量落在那里；
+删除 3 份手抄的 `fact_entry` 与 2 份 `data_point`。
+
+**边界**：形状容忍度**只增不减**（宁可多容忍，不可漏归一）。
+
+### 关键取舍
+
+- **只收拢、不放宽**：归一化必须保持对既有输入形态的容忍度不变（T51 的教训是「容忍不足」，
+  不是「容忍过多」）。
+- **测试从「数源码次数」改为「断言单一构造口」**是本票的**核心收益** —— 判据从
+  穿透实现回到接口上，这才是 `locality` 的兑现。
+- **与 T51 的分工**：T51 修的是**症状**（四种输入形态各加归一），本票修的是**根因**
+  （边界没有归属地）；两者不冲突，本票通过后 T51 的回归应仍全绿。
+
+### 风险
+
+scout 是检索阶段核心。归一化路径对既有输入形态的容忍度必须保持不变。
+
+### 验收
+
+- 该构造模式的源码出现次数由 **3 降到 1**（`grep -c` 前后对比入票面）；
+- 测试里「数源码出现次数」的断言删除或改为「断言单一构造口存在」（不再穿透接口）；
+- 原 P-14 回归 `test_scout_source_url_shape.py` **仍全绿**，且改为通过公共接口验证形状容忍度；
+- 新增一条测试：`数组 / 字符串 / None / 混合` 四种输入都产出**同一形状**的 fact；
+- `pytest tests -q` 全绿；`ruff check app tests` → All checks passed。
+
+> issue [#206](https://github.com/EricKingWhy/deepsearch/issues/206)　**状态**：TODO
+
+---
+
+## T70 — 让 API client 的 unwrap 契约成真（或删除它）
+
+- **类型**：refactor　**阶段**：架构评审（候选 6）　**依赖**：无　**标记**：无（**架构分叉**，2026-09-16 已获用户批准）
+
+### 背景
+
+`frontend/src/api/request/index.ts:13` 开启 `unwrap: true`，类型声明也承诺它
+（`frontend/src/api/request/axios-extend.d.ts:29-35, 39-49`），
+但实现 `frontend/src/api/request/plugins/service.ts:16-52` **从不读取 `unwrap`**
+（它判的是 `status`，不是业务 `code`）。
+
+于是 interface 承诺「`response.data.data` 提升到 `response.data`」，implementation 完全忽略 ——
+**每个调用方必须自己知道该 client 的私有约定**：
+
+- `frontend/src/api/news.ts:81-83, 94-95, 105, 123, 136, 151, 163, 177` 手工写 **8 次** `return res.data`；
+- `frontend/src/api/session.ts:95, 109, 114` / `knowledge.ts:48` 直接返回 `AxiosResponse`，
+  页面再 `.data`（`frontend/src/pages/chat/index.tsx:140-141, 356-374`）；
+- `frontend/src/store/session.ts:37` 还留了句注释「request 实例不解包」。
+
+**删除测试**：删掉 `unwrap` 选项与 `_data` 类型，**运行时零变化** —— 纯 pass-through，
+复杂度直接消失、无人接管。
+
+> **性质：架构分叉**（改变 client 的接口契约）—— 已于 2026-09-16 呈报用户并获批准执行。
+
+### 改什么
+
+**执行时二选一并把理由写入票面**：
+
+- **A（推荐）**：实现 `unwrap` —— client 在一个地方解包，interface 明确「调用方拿到的是响应体」；
+- **B**：删除 `unwrap` 与 `_data` 类型，interface 明确「调用方拿到 `AxiosResponse`」。
+
+无论 A/B：**8 处 `res.data` 手工解包必须收敛到一处**。
+
+### 关键取舍
+
+- **A/B 都是正解，选哪个在执行时定夺**：本票的**目的**是让 interface 与实现一致；
+  只要不再「声明一个不存在的契约」即可，方向允许两选（避免把手段当目的）。
+- **先统一 client 行为，再逐 module 收点**：一次性横跨 api module + 页面消费点风险过高。
+- **`store/session.ts:37` 的注释必须同步**：否则注释会再次变成「事实上的契约」。
+
+### 风险
+
+改动横跨多个 api module 与页面消费点。分步落地，保持每步可回滚。
+
+### 验收
+
+- `grep -c "return res.data" frontend/src/api/news.ts` → **0**（或改为经统一解包后的直接 return）；
+- interface 与实际行为一致：新增一条 client 单测，断言「开启 `unwrap` 时调用方拿到的是响应体本身」；
+- `npx vitest run` 全绿；`npx tsc --noEmit` 相关工程 **0 错**；`npx eslint .` → **0 problems**；
+- 全局 toast 的错误分支不回归（`plugins/error-toast.ts` 仍能取到业务 `msg`）。
+
+> issue [#207](https://github.com/EricKingWhy/deepsearch/issues/207)　**状态**：TODO
+
+---
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -3361,7 +3672,8 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 | 追加 · 未闭合项收口（第三轮，2026-09-16） | T61–T62 | 2 |
 | 追加 · §4 总门禁（第三轮）修复（2026-09-16） | T63 | 1 |
 | 追加 · 鉴权锁目录级全覆盖 + CI 揪出的依赖顺序修复（2026-09-16） | T64 | 1 |
-| **合计** | | **64** |
+| 架构评审深化（2026-09-16，8 候选取 6 `Strong`） | T65–T70 | 6 |
+| **合计** | | **70** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
