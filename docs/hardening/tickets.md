@@ -3839,6 +3839,37 @@ F1 删测试有「降低覆盖率」的外观风险 —— 但删掉的是**恒�
 ---
 ---
 
+## T72 — §4 补审（全量重审）findings 修复
+
+- **类型**：fix / test / docs　**阶段**：§4 补审（全量重审）　**依赖**：T71　**标记**：无
+
+### 背景
+
+T71 收口后自核发现 §4 总门禁只做了「重点区间（`e370735..HEAD`）+ 跨批次抽检」，
+**未逐 commit 重读** `9342913..75b2dfb` 的 329 个 commit。本票对该缺口执行全量重审
+（按子系统切 6 片、并行子代理独立取证，主执行者逐条原样复跑），并对 findings 逐条处置。
+GitHub issue：**#219**。
+
+### 范围与结论
+
+- **fixed point**：`9342913`（显式基线 SHA）→ **审查终点**：`3d3c6dd`（补审开工前的 main tip）
+- **10 条 findings（修 8 / 记录 1 / 撤回 1）+ 9 条保留判定**，明细见 `TRACKER.md` 的
+  「§4 补审（全量重审）findings 明细」
+
+### 验收（可执行）
+
+- B1（IDOR）回归：`backend/tests/router/test_chat_v3_attachment_ownership.py`（5 例，
+  含行为层正向/反向对照 + **目录级**结构锁 + 依赖层锁）；负向对照 M1 / M2 各红 2 例
+- A1（Bearer）回归：`backend/tests/service/test_tool_executor_search_auth.py`（3 例）；
+  负向对照 M1 红 2 例
+- 变异均逐字节还原（sha256 一致）；行锚定 marker 审计 23/23 OK
+- 全量 `pytest tests -q` → **536 passed / 17 deselected**（基线 528 → +8）
+- `ruff check app tests` → All checks passed
+- `npx vitest run` → **95 passed / 11 files**；`npx tsc -p tsconfig.app.json --noEmit` → 0 errors；
+  `npx eslint .` → 0 problems
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -3859,7 +3890,8 @@ F1 删测试有「降低覆盖率」的外观风险 —— 但删掉的是**恒�
 | 追加 · 鉴权锁目录级全覆盖 + CI 揪出的依赖顺序修复（2026-09-16） | T64 | 1 |
 | 架构评审深化（2026-09-16，8 候选取 6 `Strong`） | T65–T70 | 6 |
 | §4 总门禁（追加-8 终审）修复（2026-09-16） | T71 | 1 |
-| **合计** | | **71** |
+| §4 补审（全量重审）修复（2026-09-16） | T72 | 1 |
+| **合计** | | **72** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
