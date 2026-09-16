@@ -24,6 +24,12 @@ for _agent_class in (
 ):
     setattr(_agents_package, _agent_class.__name__, _agent_class)
 
+# T64：`tests/conftest.py` 现在为 `service.deep_research_v2.service` 注册了一个**替身**
+# （目的是让 `router/research_router` 能导入，从而被鉴权的目录级回归锁覆盖）。本测试要的是
+# **真实**模块 —— 它 monkeypatch `get_config`、并断言 V2 编排的真实行为，拿到替身会直接
+# AttributeError。故按 conftest 注释里写明的做法，先清掉替身再导入真实模块。
+sys.modules.pop("service.deep_research_v2.service", None)
+
 service_module = importlib.import_module("service.deep_research_v2.service")
 
 
