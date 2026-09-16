@@ -69,7 +69,16 @@ export interface ResearchDetailData {
 
 export interface ResearchStep {
   id: string
-  type: 'planning' | 'searching' | 'analyzing' | 'generating' | 'writing' | 'reviewing' | 're_researching' | 'revising'
+  type:
+    | 'planning'
+    | 'searching'
+    | 'researching'
+    | 'analyzing'
+    | 'generating'
+    | 'writing'
+    | 'reviewing'
+    | 're_researching'
+    | 'revising'
   title: string
   subtitle: string
   status: 'pending' | 'running' | 'completed'
@@ -91,6 +100,7 @@ type TabKey = 'results' | 'graph' | 'charts' | 'report' | 'diagnostics'
 const stepLabels: Record<ResearchStep['type'], string> = {
   planning: '研究计划',
   searching: '信息检索',
+  researching: '深度研究',
   analyzing: '数据分析',
   generating: '内容生成',
   writing: '撰写报告',

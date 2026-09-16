@@ -129,7 +129,7 @@ export function Nav() {
                 padding: 4,
               }}
             >
-              {React.cloneElement(menu as React.ReactElement, {
+              {React.cloneElement(menu as React.ReactElement<{ style?: React.CSSProperties }>, {
                 style: {
                   backgroundColor: '#fff',
                   boxShadow: 'none',

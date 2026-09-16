@@ -7,6 +7,7 @@ import { PageTransportKey } from '@/utils'
 
 export type ChatEnterData = {
   message: string
+  attachmentIds?: string[]
 }
 
 export const transportToChatEnter = Symbol() as PageTransportKey<{

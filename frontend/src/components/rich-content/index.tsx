@@ -15,6 +15,7 @@
  * - ReAct 思考过程
  */
 
+import type { TokenizerAndRendererExtension } from 'marked'
 import Markdown from '@/components/markdown'
 import { Chart, DataInsights, type ChartConfig } from '@/components/chart'
 import classNames from 'classnames'
@@ -44,7 +45,7 @@ export interface ContentBlock {
 interface RichContentProps {
   blocks: ContentBlock[]
   className?: string
-  extensions?: unknown[]
+  extensions?: TokenizerAndRendererExtension[]
 }
 
 // 思考过程组件
@@ -134,7 +135,7 @@ function CodeBlock(props: { code: string; language?: string }) {
 function renderBlock(
   block: ContentBlock,
   index: number,
-  extensions?: unknown[]
+  extensions?: TokenizerAndRendererExtension[]
 ) {
   switch (block.type) {
     case 'text':
