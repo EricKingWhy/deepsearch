@@ -83,7 +83,13 @@ async def test_async_generator_closed_from_another_task_does_not_raise():
 
     await asyncio.create_task(teardown())
 
-    assert seen == ["req-stream"], "GeneratorExit 关闭时不应再推进生成器"
+    # 生成器确已被关闭：再推一次只应得到 StopAsyncIteration。
+    # （原先这里是 `assert seen == ["req-stream"]` —— Python 保证 `GeneratorExit` 之后
+    # 生成器不会恢复执行，该断言**在任何实现下都成立**，属恒真断言（终审 §4 小-6）。
+    # 现改为断言「已关闭」这一后置条件；本用例的**真正判别力**仍来自上面 `aclose()`
+    # 不抛异常 —— 三处守卫回退时它会 4 failed。此断言属文档级，不夸大其判别力。）
+    with pytest.raises(StopAsyncIteration):
+        await stream_gen.__anext__()
 
 
 def test_reset_with_a_token_from_another_var_still_raises():
