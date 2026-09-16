@@ -3689,7 +3689,54 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 - `npx vitest run` 全绿；`npx tsc --noEmit` 相关工程 **0 错**；`npx eslint .` → **0 problems**；
 - 全局 toast 的错误分支不回归（`plugins/error-toast.ts` 仍能取到业务 `msg`）。
 
-> issue [#207](https://github.com/EricKingWhy/deepsearch/issues/207)　**状态**：TODO
+> issue [#207](https://github.com/EricKingWhy/deepsearch/issues/207)　**状态**：DONE（`a328005` + `a2d1f4d`，PR #215 / merge `1bd3de4`）
+
+> **实施与验收（收口记录 / 执行时选 B）**
+>
+> 票面要求「执行时二选一并把理由写入票面」。**选 B（删除 `unwrap` 与 `_data` 类型）**，理由：
+>
+> 1. **该选项面向的信封在本仓库不存在** —— 全仓只有两处 `"status": "success"`
+>    （`app_main.py:145`、`document_router.py:105`），都不含 `data` 键；其余端点一律**直接返回响应体**
+>    （`/news/*` 返 `{success, data, total, stats}`、`/sessions` 与 `/knowledge-bases` 返裸数组、
+>    `/research/.../timeline` 返裸对象）。声明的 `{ code: number; msg: string; data: T }` 与任何后端返回体
+>    都不符 —— 实现它等于为无人遵守的契约写代码。
+> 2. **零消费点**：`unwrap` 全仓只有声明处两行、无读取点；`.data.data` 全仓唯一出现是
+>    `axios-extend.d.ts` 里解释 `unwrap` 的那句注释本身。
+> 3. 票面自带的**删除测试成立**：删除后运行时零变化（纯 pass-through）。
+> 4. 仓库内先例（**T36 YAGNI**）：`plugins/error-toast.ts` 那份「未按需补全」的 400–505 映射表
+>    就是删掉而不是补全的。
+> 5. **A 的两种可实现形态都有问题**：按声明语义最小实现（`response.data = data.data`）会顺手改写
+>    「碰巧带 `data` 字段」的响应体 —— `/news/list` 的 `{ success, data, total, stats }` 会丢
+>    `total` / `stats`，`pages/bidding` 立刻读到 `undefined`；彻底形态（client 直接 resolve 响应体）
+>    要动 ~55 个调用点 + ~23 处消费点，为一个后端不存在的信封付出回归风险 —— 违反票面
+>    「避免把手段当目的」。
+>
+> **契约落在哪**：`request.ts` 的 `createRequest` 文档 —— 返回原生 axios 实例、**不解包**、
+> 响应体在 `response.data`。取体一律走**唯一出口** `request/read-body.ts` 的 `readBody()`
+> （将来若改回 client 解包，只需改这一处）。
+>
+> **验收对照**：`grep -c "return res.data" frontend/src/api/news.ts` → **8 → 0**（8 处手工取体全部收敛为
+> `return readBody(...)`）；新增 `request/request.test.ts` 5 例（全部走注入的 axios `adapter`、不触网）+
+> `news.test.ts` 2 例；`npx vitest run` → **96 passed / 11 files**（基线 89，+7）；
+> `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**；`npx eslint .` → **0 problems**；
+> CI backend pass 1m12s / frontend pass 1m11s；`gh issue view 207` → **CLOSED**（核验而非声明）。
+>
+> **票面验收第 2 条的口径说明**：原文写「新增一条 client 单测，断言『开启 `unwrap` 时调用方拿到的是
+> 响应体本身』」。B 下 `unwrap` 已删除，故该条按**等价形态**落地为两条可判定断言：
+> 「不解包时调用方拿到 `AxiosResponse`、响应体在 `response.data`」+「`readBody` 给到响应体本身」。
+>
+> **负向对照（`.runlogs/t70_negative_control.py`，字节级定点变异 + 从 baseline 精确还原）**：
+> M1 在 `servicePlugin` 重新引入 unwrap（`data.data` 提升到 `response.data`）→ **1 failed**；
+> M2 `readBody` 返回整个 `AxiosResponse` → **3 failed**；逐字节还原后复跑全绿、harness 末尾断言字节一致。
+> **M1 首跑逃逸**：第一版变异插在 `servicePlugin` 的 `CODE_KEY` 早退**之后** —— `news` 形状的响应体没有
+> `status` 键、根本走不到那行，变异落在运行时不可达位置；挪到早退之前（忠实模拟「重新引入 unwrap」）后
+> 才咬人。教训：**变异位置本身也要忠实**，否则验的是空路径。
+>
+> **顺带观察（不立项、不越界）**：`src/api/type.d.ts` 的 `API.Result<T>`
+> （`T & { status: 'success' | 'error'; message: string }`）是同一家族里**第三处零引用**的信封声明，
+> 但它声明的是 `servicePlugin` 实际校验的 `status` / `message` 口径，不属本票「删 `unwrap` 与 `_data`」
+> 的范围 —— 记录在案，不顺手删。
+
 
 ---
 ---
