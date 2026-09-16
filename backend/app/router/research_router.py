@@ -143,8 +143,12 @@ def get_research_service_v2():
 @router.post("/stream", status_code=HTTP_200_OK)
 async def stream_research(
     request: ResearchRequest,
-    services: Dict[str, Any] = Depends(get_research_service),
+    # ⚠️ 顺序即语义：FastAPI 按签名顺序**逐个**解析依赖，任一个抛异常则后面的不再解析。
+    # `current_user` 必须排在 `services` 之前 —— 否则**未登录请求也会真的构造 V1 研究服务**
+    # （`ResearchService(...)` 会读 `BOCHA_API_KEY`，缺配置时抛 RuntimeError，于是
+    # 「无 Token 应 401」变成 500，且把服务端配置状态泄漏给匿名调用方）。
     current_user: User = Depends(get_current_user_required),
+    services: Dict[str, Any] = Depends(get_research_service),
 ):
     """
     深度研究接口 - 流式输出
@@ -222,8 +226,9 @@ async def stream_research_get(
     search_web: bool = Query(True, description="是否搜索网络"),
     search_local: bool = Query(True, description="是否搜索本地知识库"),
     version: str = Query("v1", description="版本: v1 或 v2"),
-    services: Dict[str, Any] = Depends(get_research_service),
+    # 同 `stream_research`：鉴权必须排在服务构造之前，未登录请求不得触达服务构造。
     current_user: User = Depends(get_current_user_required),
+    services: Dict[str, Any] = Depends(get_research_service),
 ):
     """
     深度研究接口 - GET方式流式输出
