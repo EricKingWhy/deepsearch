@@ -30,6 +30,7 @@ import core.upload_security as upload_security
 from router import document_router
 
 ROUTER_SRC = Path(document_router.__file__).read_text(encoding="utf-8")
+ROUTER_DIR = Path(document_router.__file__).parent
 SECURITY_SRC = Path(upload_security.__file__).read_text(encoding="utf-8")
 
 
@@ -218,6 +219,28 @@ def test_both_cleanup_sites_delegate_to_the_guard():
     """两处清理都必须委派给守卫（带 logger，以便失败可观测）。"""
     assert ROUTER_SRC.count("remove_quietly(temp_file_path, logger=logger)") == 2, (
         "清理点数量不是 2 —— 新增 / 删减清理点时应同步复核是否都走了守卫"
+    )
+
+
+def test_no_router_module_has_a_bare_os_remove():
+    """🔒 **目录级**锁：`app/router/*.py` 内一律不得再出现裸 `os.remove`。
+
+    T56 的锁 (`test_document_router_has_no_bare_os_remove`) 作用域是 `document_router.py`
+    **单文件**，于是同一家族的第三处（`knowledge_router` 的私有实现、
+    `attachment_router` 的裸调用）在结构上照不到 —— 终审 §4 中-1 正是这样复发的。
+    本锁改成目录级，把整个家族一次钉死；新增路由模块自动纳入。
+
+    作用域仅限 `app/router/`：其它层（`app/service/` 等）尚无同类清理点，
+    不在此锁内，避免过度约束。
+    """
+    offenders = sorted(
+        path.name
+        for path in ROUTER_DIR.glob("*.py")
+        if "os.remove(" in path.read_text(encoding="utf-8")
+    )
+    assert not offenders, (
+        f"以下路由模块又出现裸 os.remove：{offenders} —— "
+        "清理一律走 core.upload_security.remove_quietly"
     )
 
 

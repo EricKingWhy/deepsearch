@@ -111,10 +111,11 @@ def remove_quietly(path: str, *, logger: Optional[logging.Logger] = None) -> Non
 
     - `save_upload` 的失败清理：文件可能**从未创建**（例如 413 在读盘之前就失败），
       属正常情况，传 logger 只会制造噪声 → 不传，静默。
-    - 路由端点 / 后台任务的清理（`document_router` / `knowledge_router`）：文件本该
-      存在却删不掉，属异常（Windows 下句柄仍被占用 → `PermissionError`）→ 传 logger，
-      留下可观测痕迹。关键性质是二者都不让清理失败升级为请求失败乃至进程死亡
-      （T53 / P-17；T56 / 终审 §4 N3）。
+    - 路由端点 / 后台任务的清理（`document_router` / `knowledge_router` /
+      `attachment_router`）：文件本该存在却删不掉，属异常（Windows 下句柄仍被占用 →
+      `PermissionError`）→ 传 logger，留下可观测痕迹。关键性质是二者都不让清理失败
+      升级为请求失败乃至进程死亡（T53 / P-17；T56 / 终审 §4 N3；T63 / 终审 §4 中-1 ——
+      `attachment_router` 正是原先**漏掉**的第三处）。
     """
     try:
         os.remove(path)
