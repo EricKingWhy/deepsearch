@@ -304,6 +304,12 @@ describe('reduceResearchEvent —— 深研事件到 UI 状态', () => {
     expect(next.chatItem.reactMode).toBe(true)
   })
 
+  it('react_start 也会开启 reactMode（仅凭 type，不带 mode 字段）', () => {
+    const next = reduce(createState(), { type: 'react_start' })
+
+    expect(next.chatItem.reactMode).toBe(true)
+  })
+
   it('plan：写入研究计划并推入计划步骤', () => {
     const next = reduce(createState(), {
       type: 'plan',
