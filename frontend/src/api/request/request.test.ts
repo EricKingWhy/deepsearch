@@ -63,12 +63,13 @@ describe('request client 契约（T70）', () => {
     expect(response.data.stats).toEqual({ recent_24h: 1 })
   })
 
-  it('不再暴露 _data（该类型随 unwrap 契约一并删除）', async () => {
-    const response = await clientReturning({ a: 1 }).get('/demo')
-
-    expect(Reflect.get(response, '_data')).toBeUndefined()
-  })
-
+  // 注：此处原有 `it('不再暴露 _data（该类型随 unwrap 契约一并删除）')`，
+  // 断言 `Reflect.get(response, '_data') === undefined`。**§4 终审（T71 / F1）已删除该用例** ——
+  // 它是恒真断言：`_data` 从来只是 `axios-extend.d.ts` 里的**类型**声明，全仓不存在任何运行时赋值点
+  // （`grep -rn '_data' frontend/src` 当时只命中该用例自身），故它对任意 `AxiosResponse` 恒过，
+  // 即便把 `unwrap` 重新声明回来也不会变红 —— 属「装饰性锁」，只会制造虚假覆盖。
+  // `_data` 的去留是**类型级**事实，运行时无从断言，由 `tsc` 与上面那条
+  // 「响应体「碰巧带 data 字段」时不被改写」用例（负向对照 M1 实测咬人）共同看守。
   it('readBody 是唯一的取体出口：直接给到后端返回体', async () => {
     const body = { value: 42 }
 

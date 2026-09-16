@@ -134,13 +134,24 @@ def build_data_point(
     confidence: float = 0.5,
     search_depth: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """唯一的「大模型 data_point → state data_point」构造口（T69）。
+    """``scout.py`` 内唯一的「大模型 data_point → state data_point」构造口（T69）。
 
     与 :func:`build_fact_entry` 同族：``source`` / ``confidence`` 由调用方给出，
     因为两条路径的来源与置信口径不同 —— 主检索取所属 fact 的来源名与可信度，
     深度检索取 data_point 自身的 ``source`` / ``confidence`` 并附带 ``search_depth``。
 
     形状容忍度只增不减：``name`` / ``value`` 缺省补空串，下游不会拿到 ``None``。
+
+    **作用域限定（§4 终审 T71 / F2 收窄措辞）**：本口只覆盖 ``scout.py`` 的三条写入路径，
+    **不是全仓唯一**。``state["data_points"]`` 另有两处写入不经此口：
+    ① ``data_analyst.py:351-353`` 把 LLM 返回的 ``result["data_points"]`` 原样 append
+    （同样是大模型来源，但没有 ``id`` / ``search_depth`` 归一）；
+    ② ``scout.py`` 的聚合数据股票 API 块（``state["data_points"].extend([...])``，非 LLM 来源，
+    键集为 ``{name, value, unit, source, source_type}``）。
+    二者均为**存量**，且下游消费者一律以 ``.get(...)`` 带缺省读取
+    （``critic.py:306`` / ``wizard.py:394`` / ``writer.py:301``），故不构成运行时缺陷；
+    把它俩也收拢会改动其它 agent 的行为、超出 T69 票面「删除 scout.py 手抄的 2 份 ``data_point``」
+    的声明范围，故只记录在案（未闭合项 P-24），不在本票顺手改。
     """
     return {
         "id": f"dp_{uuid.uuid4().hex[:8]}",
