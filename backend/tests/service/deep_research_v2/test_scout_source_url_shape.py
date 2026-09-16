@@ -239,6 +239,47 @@ async def test_process_does_not_raise_when_source_url_is_list():
 # ------------------------------------------------- 边界层：extracted_facts 写入
 
 
+async def test_supplementary_aggregate_tolerates_legacy_array_and_is_guarded():
+    """补充搜索的 `sources_count` 聚合：本轮无新增事实时不得把整个列表当分母。
+
+    这条替代了收拢前那条 `src.count('set(normalize_source_url(...)') == 2` 的源码计数断言
+    （第 3 批审查 finding：该断言被删除后，这个聚合点在接口层失去了覆盖）。
+
+    本用例以**公共接口**同时钉住该点的两个事实：
+
+    1. 检查点旧数据里的数组 `source_url` 不会被当作可哈希值使用（旧写法会抛
+       `TypeError: unhashable type: 'list'`）；
+    2. 本轮 `new_facts_count == 0` 时 `sources_count` 必须是 **0** —— 该点的条件是
+       `facts[-new_facts_count:] if new_facts_count > 0`，而 `[-0:]` 等于整个列表；
+       守卫一旦被删/改写，这里会变成 1（旧数组被归一后计入），用例即红。
+    """
+    state = _make_state()
+    state["facts"] = [{
+        "id": "legacy",
+        "content": "检查点旧事实",
+        "source_url": ["https://a.example/1", "https://b.example/2"],
+    }]
+    state["pending_search_queries"] = ["补充问题"]
+    scout = _make_scout()
+
+    async def _no_results(_query, count=8):
+        return []
+
+    scout._execute_search = _no_results
+
+    await asyncio.wait_for(scout._supplementary_research(state), timeout=10)
+
+    completed = [
+        m for m in state["messages"]
+        if m["type"] == "research_step"
+        and isinstance(m["content"], dict)
+        and m["content"].get("status") == "completed"
+    ]
+    assert completed, "补充搜索未发出完成事件"
+    assert completed[-1]["content"]["stats"]["sources_count"] == 0, \
+        "本轮无新增事实时 sources_count 应为 0（旧数组不得被计入）"
+
+
 async def test_fact_written_from_extracted_facts_has_string_source_url():
     """边界层：数组 source_url 经 _research_section 的真实事实循环后落成字符串。"""
     state = _make_state()
