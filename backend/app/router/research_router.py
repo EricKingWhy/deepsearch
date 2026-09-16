@@ -16,7 +16,7 @@ import logging
 
 from service import ResearchService, ServiceConfig
 from core.serialization import sse_frame  # 中立公共位置（T15）：不再反向依赖 V1 备选路线模块 dr_g
-from core.redis_client import cache  # 导入 Redis 缓存
+from core.research_cancel import request_cancel  # 取消协议的中立位（T68）：本模块不再自己拥有它
 from models.user import User
 from router.auth_router import get_current_user_required
 from service.checkpoint_service import (
@@ -30,9 +30,6 @@ from service.deep_research_v2.service import DeepResearchV2Service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ResearchRouter")
-
-# 取消标志 key 前缀
-CANCEL_KEY_PREFIX = "research:cancel:"
 
 # 创建路由实例
 router = APIRouter(prefix="/research", tags=["research"])
@@ -405,9 +402,8 @@ async def cancel_research(
                 detail="Checkpoint not found",
             )
 
-        # 设置取消标志到 Redis，有效期 5 分钟
-        cancel_key = f"{CANCEL_KEY_PREFIX}{session_id}"
-        cache.set(cancel_key, {"cancelled": True}, expire=300)
+        # 写取消标志（Redis，300s TTL）—— 协议本身已迁到中立模块（T68）
+        request_cancel(session_id)
         logger.info(f"Research cancelled for session: {session_id}")
         return {"success": True, "message": "Research cancellation requested"}
     except HTTPException:
@@ -415,32 +411,6 @@ async def cancel_research(
     except Exception as e:
         logger.error(f"Failed to cancel research: {e}")
         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-def is_research_cancelled(session_id: str) -> bool:
-    """
-    检查研究任务是否已被取消
-
-    Args:
-        session_id: 会话ID
-
-    Returns:
-        是否已取消
-    """
-    cancel_key = f"{CANCEL_KEY_PREFIX}{session_id}"
-    result = cache.get(cancel_key)
-    return result is not None and result.get("cancelled", False)
-
-
-def clear_cancel_flag(session_id: str):
-    """
-    清除取消标志（研究开始时调用）
-
-    Args:
-        session_id: 会话ID
-    """
-    cancel_key = f"{CANCEL_KEY_PREFIX}{session_id}"
-    cache.delete(cancel_key)
 
 
 # ============ 检查点 API ============
