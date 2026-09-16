@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import asdict, dataclass, replace
 from typing import Iterator
 from uuid import uuid4
+
+
+logger = logging.getLogger(__name__)
 
 
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -34,6 +38,33 @@ _CURRENT_CONTEXT: ContextVar[ObservabilityContext | None] = ContextVar(
     "observability_context",
     default=None,
 )
+
+
+def reset_context_var(var: ContextVar, token: Token) -> None:
+    """Reset ``var`` only when ``token`` belongs to the current Context.
+
+    Async generators may be closed from a task whose Context differs from the one
+    that entered the context manager —— SSE 客户端断连时 Starlette 正是这样把响应
+    生成器 teardown 掉的。此时 ``ContextVar.reset`` 抛
+    ``ValueError("… was created in a different Context")``，把干净的 ``GeneratorExit``
+    掩盖成一个 context 错误（T62）。
+
+    当前 Context 从未执行过对应的 ``set``，因此这里**没有需要撤销的东西** ——
+    跳过重置在语义上是正确的，不是「吞掉真实错误」。
+    """
+
+    try:
+        var.reset(token)
+    except ValueError:
+        logger.debug(
+            "Skipped ContextVar reset from a different Context",
+            extra={
+                "event": "observability.context_reset_skipped",
+                "details": {"var": var.name},
+            },
+        )
+
+
 
 
 def normalize_correlation_id(value: str | None, *, prefix: str = "req") -> str:
@@ -85,5 +116,5 @@ def bind_context(
     try:
         yield context
     finally:
-        _CURRENT_CONTEXT.reset(token)
+        reset_context_var(_CURRENT_CONTEXT, token)
 
