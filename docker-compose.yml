@@ -150,6 +150,17 @@ services:
     # 密钥经 env_file 注入，不得写进本文件（票面约束）；backend/.env 已 gitignore
     env_file:
       - ./backend/.env
+    # P-13：env_file 把宿主机导向的 backend/.env **原样**注入容器，于是容器内的
+    # POSTGRES_HOST/REDIS_HOST/MILVUS_HOST 仍是 localhost —— 在容器里那是容器自身，
+    # 而非 compose 服务名，连接必被拒（psycopg2: connection to server at "localhost",
+    # port 5432 failed: Connection refused）。
+    # 这里只覆盖**非密钥的连接目标**；所有密钥（POSTGRES_PASSWORD / JWT_SECRET_KEY /
+    # MILVUS/MINIO 凭据等）仍全部走上面的 env_file，不落进本文件。
+    # compose 的取值优先级为 environment > env_file，故以下三项稳定胜出。
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MILVUS_HOST: milvus
     ports:
       - "8000:8000"
     depends_on:
