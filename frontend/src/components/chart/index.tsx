@@ -20,7 +20,9 @@ import styles from './chart.module.scss'
 import type { ChartConfig, ChartType } from './types'
 
 // 动态加载 ECharts
-let echarts: typeof import('echarts') | null = null
+type EChartsModule = typeof import('echarts')
+
+let echarts: EChartsModule | null = null
 
 async function loadECharts() {
   if (!echarts) {
@@ -44,7 +46,7 @@ function EChartsRenderer(props: {
 }) {
   const { config, width = '100%', height = 400 } = props
   const chartRef = useRef<HTMLDivElement>(null)
-  const chartInstance = useRef<ReturnType<typeof echarts.init> | null>(null)
+  const chartInstance = useRef<ReturnType<EChartsModule['init']> | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -65,7 +67,10 @@ function EChartsRenderer(props: {
 
         // 设置配置
         const option = config.echarts_option || buildDefaultOption(config)
-        chartInstance.current.setOption(option)
+        // 项目自带的 EChartsOption（./types）是后端 JSON 的子集描述，与 echarts 库的
+        // EChartsOption 结构兼容但类型不等价，在此边界显式窄化一次。
+        const instance = chartInstance.current
+        instance.setOption(option as Parameters<typeof instance.setOption>[0])
 
         setLoading(false)
       } catch (error) {

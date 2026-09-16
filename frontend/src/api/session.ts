@@ -327,6 +327,7 @@ export function cancelResearch(sessionId: string) {
 
 export interface ResearchStep {
   type: string
+  subtitle?: string
   status: 'pending' | 'running' | 'completed'
   stats?: Record<string, number>
 }
@@ -336,6 +337,9 @@ export interface ResearchUIState {
   search_results: unknown[]
   charts: unknown[]
   knowledge_graph: unknown | null
+  // 后端 graph.py 会写入该键（元素形如 {id,title,link,content,source}）；历史数据可能
+  // 缺失，故声明为可选 —— chat 页的恢复链会回退到 stateJson.references。
+  references?: unknown[]
   streaming_report: string
 }
 

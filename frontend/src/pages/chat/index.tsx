@@ -1264,7 +1264,7 @@ export default function Index() {
       hasLoadedMessages.current = false
       hasLoadedCheckpoint.current = false
       hasSentInitialMessage.current = false
-      let resolveMessagesLoaded = () => undefined
+      let resolveMessagesLoaded: (value?: void) => void = () => undefined
       const messagesLoadedPromise = new Promise<void>((resolve) => {
         resolveMessagesLoaded = resolve
       })
@@ -1472,7 +1472,7 @@ export default function Index() {
             // 恢复研究步骤 - 如果没有步骤数据，创建默认步骤
             let steps: ResearchStep[] = []
             if (uiState?.research_steps && uiState.research_steps.length > 0) {
-              steps = uiState.research_steps.map((s: Record<string, unknown>) => ({
+              steps = uiState.research_steps.map((s) => ({
                 id: (s.type as string) || `step_${Date.now()}`,
                 type: s.type as ResearchStep['type'],
                 title: (s.type as string) || '',
@@ -1483,11 +1483,12 @@ export default function Index() {
             } else {
               // 创建默认研究步骤（基于可用数据推断）
               const defaultSteps: ResearchStep['type'][] = ['planning', 'researching', 'analyzing', 'writing']
-              if (checkpoint.status === 'reviewing') defaultSteps.push('reviewing')
+              if (checkpoint.phase === 'reviewing') defaultSteps.push('reviewing')
               steps = defaultSteps.map(type => ({
                 id: type,
                 type,
                 title: type,
+                subtitle: '',
                 status: 'completed' as const,
               }))
             }
@@ -1514,7 +1515,7 @@ export default function Index() {
                 const searchingType = researchDetailsRef.current.has('searching') ? 'searching' : 'researching'
                 const detail = researchDetailsRef.current.get(searchingType)
                 if (detail) {
-                  detail.searchResults = uiState.search_results.map((r: Record<string, unknown>, i: number) => ({
+                  detail.searchResults = (uiState.search_results as Record<string, unknown>[]).map((r, i) => ({
                     id: (r.id as string) || `sr_${i}`,
                     title: (r.title as string) || (r.source_name as string) || '',
                     source: (r.source as string) || 'web',
@@ -1526,12 +1527,13 @@ export default function Index() {
               }
 
               // 恢复知识图谱 - 使用 stepType 作为 key
-              if (uiState.knowledge_graph && (uiState.knowledge_graph.nodes?.length > 0 || uiState.knowledge_graph.edges?.length > 0)) {
+              const knowledgeGraph = uiState.knowledge_graph as ResearchDetailData['knowledgeGraph']
+              if (knowledgeGraph && (knowledgeGraph.nodes?.length > 0 || knowledgeGraph.edges?.length > 0)) {
                 const targetType = researchDetailsRef.current.has('analyzing') ? 'analyzing'
                   : researchDetailsRef.current.has('researching') ? 'researching' : 'searching'
                 const detail = researchDetailsRef.current.get(targetType)
                 if (detail) {
-                  detail.knowledgeGraph = uiState.knowledge_graph
+                  detail.knowledgeGraph = knowledgeGraph
                 }
               }
 
@@ -1539,7 +1541,7 @@ export default function Index() {
               if (uiState.charts && uiState.charts.length > 0) {
                 const detail = researchDetailsRef.current.get('analyzing')
                 if (detail) {
-                  detail.charts = uiState.charts
+                  detail.charts = uiState.charts as ResearchDetailData['charts']
                 }
               }
 
@@ -1665,7 +1667,7 @@ export default function Index() {
   useEffect(() => {
     if (ctx?.data?.message && !hasSentInitialMessage.current) {
       hasSentInitialMessage.current = true
-      send(ctx.data.message)
+      send(ctx.data.message, ctx.data.attachmentIds)
     }
   }, [ctx, send])
 
