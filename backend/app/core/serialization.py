@@ -33,11 +33,16 @@ SSE_DONE = "data: [DONE]\n\n"
 
 
 def sse_frame(event_data: Union[Dict[str, Any], str]) -> str:
-    """把事件编成一条 SSE 帧 —— 全仓唯一的「信封」实现（T67）。
+    """把事件编成一条 SSE 帧 —— **深度研究链路**上唯一的「信封」实现（T67）。
 
-    在此之前，帧的拼装有三种写法：`deep_research_v2/service.py` 的私有 `_format_sse`、
-    router 里 6 处 `serialize_event(...)` + 手写 `f"data: …\n\n"`、以及 router 给
-    V1 已序列化字符串套壳的 `f"data: {event}\n\n"`。现在产出 SSE 帧的地方都走本函数。
+    T67 之前，这根链路上帧的拼装有三种写法：`deep_research_v2/service.py` 的私有
+    `_format_sse`、router 里 6 处 `serialize_event(...)` 再手写 `data: …` 前后缀、
+    以及 router 给 V1 已序列化字符串套壳。现在这条链路上产出帧的地方都走本函数。
+
+    **范围**（T67 批次审查 F2 的更正）：本函数只收拢**深度研究**链路。chat 链路的
+    `chat_service.py` 自有一套**具名事件**帧（`event: end` + `data: [DONE]`），形状与
+    本函数不同、且属另一条路由，刻意不在此收拢 —— 见 TRACKER 未闭合项 **P-23**。
+    故本函数**不是**「全仓唯一」的信封实现。
 
     入参两态：
     - `dict`：结构化事件 —— 在这里序列化**一次**（V2 链路即此形态，见 T67）；
