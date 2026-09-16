@@ -3498,7 +3498,9 @@ router 侧还有 6 个各自手写 try/except + `data:` 拼接的 `generate_sse*
 - `pytest tests -q` 全绿（重点 `tests/router`、`tests/service/deep_research_v2`）；
 - `ruff check app tests` → All checks passed。
 
-> issue [#204](https://github.com/EricKingWhy/deepsearch/issues/204)　**状态**：TODO
+> issue [#204](https://github.com/EricKingWhy/deepsearch/issues/204)　**状态**：DONE（`41ed5b9` + `7cea73b` + `81f9800`，PR #211 / merge `e43b9e5`）
+
+> **对外可见变化（票面显式记录）**：`[DONE]` 哨兵的**生产次数**由 2 次变为 1 次；但**线上一直是 1 次**（内层那次原就被外层 `continue` 过滤，从未到达客户端），故前端字节契约不变。两条实测证据：① 新增的回归锁在**重构前**就断言 `[DONE]` 线上恰好一次并通过；② 前端 `research-stream.ts` 的 `while (!doneReceived)` 遇 `[DONE]` 即 `break`，`research-stream.test.ts:70` 显式断言 `[DONE]` 之后的内容被忽略 —— 即便真出现两次也天然容忍。
 
 ---
 
