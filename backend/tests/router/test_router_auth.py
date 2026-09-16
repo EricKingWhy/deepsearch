@@ -46,13 +46,18 @@ T64 施工时这条锁立刻起作用：`research_router` 是 12 个模块里**�
 10 个端点因此从来没有被任何鉴权回归覆盖过。修法是给共享 conftest 补两处占位
 （见 `tests/conftest.py` 的 T64 注释，实测总代价 ~0.1s），本文件因此覆盖到 **12/12**。
 
-## 判据的两层
+## 判据的三层
 
 1. **静态层**（结构化对象，不做源码字符串匹配）：直接读 `APIRouter.dependencies` 与
    `route.dependant.dependencies`。源码匹配会被格式化（换行 / 尾逗号）打翻，且与真实依赖图不一致。
 2. **行为层**：除三个匿名端点外，**每个端点**都实发一次不带 Token 的请求，断言 401 且
    detail 为鉴权依赖的固定文案 —— 确保 401 来自鉴权，而不是恰好某个环节也返回 401。
    反向亦钉住：三个匿名端点**不得**返回 401（否则登录链路被掐断，而所有 401 断言依然全绿）。
+3. **顺序层**：鉴权必须是**第一个**被解析的依赖（`test_auth_is_the_first_dependency_resolved`）。
+   这一层是 CI 逼出来的、也是本文件最有价值的一处收获：`research_router` 的两个 `/research/stream`
+   把服务构造依赖写在了鉴权**之前**，于是**未登录请求也会真的构造服务** ——
+   在有 `.env` 的开发机上侥幸仍是 401，在 CI 上直接 500。**「有没有挂鉴权」不等于
+   「未登录一定被挡住」**，只有顺序也对了才是。
 """
 
 import importlib
@@ -279,6 +284,45 @@ def test_no_unauthenticated_endpoint_outside_the_allowlist() -> None:
     assert not offenders, (
         f"以下端点未要求鉴权、且不在 ANONYMOUS_ENDPOINTS 白名单里：{offenders}。"
         "要么补 Depends(get_current_user_required)，要么登记为匿名并写明理由"
+    )
+
+
+def test_auth_is_the_first_dependency_resolved() -> None:
+    """🔒 鉴权必须是**第一个**被解析的依赖 —— 任何其它依赖都不得排在它前面。
+
+    这条锁来自 CI 实测（本票开 PR 后第一次跑就红了）：`research_router` 的
+    `POST /research/stream` 与 `GET /research/stream` 原先把
+    `services = Depends(get_research_service)` 写在 `current_user` **之前**。
+    FastAPI 按签名顺序**逐个**解析依赖、任一个抛异常就短路，于是
+    **未登录请求也会真的构造 V1 研究服务**（`ResearchService(...)` 要读 `BOCHA_API_KEY`）。
+    后果有二：
+
+    1. 「无 Token 应 401」在有 `.env` 的开发机上侥幸成立，在 CI（无 `.env`）上变成 **500** ——
+       也就是说「未登录一定被挡住」这件事**依赖于部署配置**，不再由代码保证；
+    2. 把服务端配置状态泄漏给匿名调用方，并让匿名请求付出本不该发生的构造开销。
+
+    修复方式是把鉴权参数挪到签名最前；本仓 65 个受保护端点现已全部满足该性质。
+    新增端点若把别的依赖写在鉴权之前，这里会直接挡下。
+    """
+    offenders: List[str] = []
+
+    for module_name in _loaded(sorted(ALL_ROUTER_MODULES)):
+        for route in _MODULES[module_name].router.routes:
+            calls = [dependency.call for dependency in route.dependant.dependencies]
+            if get_current_user_required not in calls:
+                continue  # 匿名端点由 ANONYMOUS_ENDPOINTS 与其自锁用例负责
+            index = calls.index(get_current_user_required)
+            if index != 0:
+                earlier = [getattr(call, "__name__", repr(call)) for call in calls[:index]]
+                methods = sorted(route.methods - {"HEAD", "OPTIONS"})
+                offenders.append(f"{module_name}: {methods} {route.path} -> 先解析 {earlier}")
+
+    assert not offenders, (
+        f"以下端点的鉴权依赖不是第一个被解析的：{offenders}。"
+        "FastAPI 按签名顺序逐个解析依赖且短路 —— 非鉴权依赖排在鉴权之前，"
+        "意味着**未登录请求也会执行它**（可能抛 500、泄漏配置状态、白白付出构造开销），"
+        "于是「有没有鉴权」不再等于「未登录一定被挡住」。"
+        "请把 `current_user: User = Depends(get_current_user_required)` 挪到其它依赖之前"
     )
 
 

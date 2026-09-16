@@ -115,9 +115,12 @@ async def test_stream_passes_current_user_id_to_v2(research_router, monkeypatch)
         lambda: FakeV2Service(),
     )
     response = await research_router.stream_research(
-        research_router.ResearchRequest(query="industry research", version="v2"),
-        {"research_service": object()},
-        _user(),
+        # 一律用关键字：T64 把 `current_user` 挪到了 `services` **之前**（见
+        # `test_router_auth.py::test_auth_is_the_first_dependency_resolved`），
+        # 位置参数会随签名顺序变动而静默错位。关键字参数与顺序解耦。
+        request=research_router.ResearchRequest(query="industry research", version="v2"),
+        services={"research_service": object()},
+        current_user=_user(),
     )
     _ = [chunk async for chunk in response.body_iterator]
 
