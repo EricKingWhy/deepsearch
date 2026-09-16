@@ -3198,6 +3198,58 @@ Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`，最终以
 
 > issue [#193](https://github.com/EricKingWhy/deepsearch/issues/193)　**状态**：DONE
 
+## T63 — §4 终审（第三轮）findings 修复：清理守卫家族第三处 + 目录级锁 + 台账勘误
+
+### 背景
+
+§4 总门禁（第三轮，fixed point `9342913` → 终点 `d128d83`）双轴并行复核整条分支，
+去重 **17 条 findings**（修复 12 / 保留判定 5）。本票是其修复载体，无独立 issue
+（§3/§4 衍生票先例：T60）。明细见 `TRACKER.md`「§4 总门禁（第三轮）findings 明细」。
+
+### 定性（最有价值的一条）
+
+**清理缺陷家族的第三处**（finding #1，与当年 N3 完全同型）：
+`attachment_router.delete_attachment` 的落盘清理仍是裸 `os.remove` + `except Exception: pass`
+—— 删失败不留痕、`db.delete(att)` 照跑，记录没了、文件永久成孤儿。**成因是结构性的**：
+T53 修 `knowledge_router`、T56 修 `document_router`，两次的源码锁都是**单文件**作用域，
+谁也照不到第三个兄弟文件。
+
+### 改什么
+
+1. `attachment_router.delete_attachment` 改走公共守卫
+   `core.upload_security.remove_quietly(att.file_path, logger=logger)`（守卫 docstring 调用方清单同步补全）；
+2. `knowledge_router` 的同语义私有 `_remove_file_quietly` 删除并入守卫（T56 提升公共名正是为同族复用），
+   T53 的 3 条测试改锚（删 2 条只测私有名的用例，其行为已由守卫层覆盖）；
+3. 源码锁**提升为目录级**：`test_no_router_module_has_a_bare_os_remove` 扫 `app/router/*.py` 全部，
+   新增模块自动纳入；
+4. `test_context_teardown.py` 收尾的恒真断言（`GeneratorExit` 后生成器不会恢复执行，任何实现下都成立）
+   改为真实后置条件（再推一次只应得 `StopAsyncIteration`）；
+5. 协议 §5 补「纯台账回填」豁免条款（21 个直推 commit 的规范与事实脱节成文化；
+   触代码的 `19547b0` / `96fadb4` 如实记账为历史偏差）；
+6. 空白清理 5 处（全量 `git diff --check` 归零）、`tracing.py` 注释圈定 OTel detach ERROR 作用域
+   （异常在 OTel 库内即被吞掉，本仓包裹照不到 —— P-20）、台账勘误一批
+   （T57 vitest 数字、审查终点、表格竖线、已完成枚举补 T49/T63、P-20「实测」标签改真实复现）。
+
+### 关键取舍
+
+- **目录级锁而非第三张单文件锁**：同类缺陷已两度从单文件锁的缝里漏出（N3、#1），
+  锁的作用域必须 ≥ 缺陷家族的散布面。代价是注释里出现带括号的 `os.remove(` 也会命中
+  （有意从严；现有注释均已写成不带括号的 `os.remove` 规避自触发）。
+- **变异检验 M1–M3**：M1 / M2 分别换回裸 `os.remove` → 各 **1 failed**（由目录级锁抓住）；
+  M3 三处守卫换回裸 `reset` → **4 failed**；还原后 sha256 与基线逐字节一致。
+- 全量 `pytest -q` → **414 passed / 17 deselected**（415 + 1 条目录级锁 − 2 条只测已删私有名的用例）；
+  `ruff check app tests` → All checks passed。
+
+### 风险
+
+- `attachment_router` 无行为级删除端点测试，锁的失败只来自源码锁 —— 「router 层禁用 `os.remove`、
+  一律委派守卫」正是锁的设计语义，守卫行为本身已由守卫层测试覆盖。
+- `remove_quietly` 直接 `os.remove(path)`，传 `None` 会 `TypeError`（不被 `except OSError` 捕获）
+  —— 调用点一律先判空，已核对三处调用点自洽。
+
+> —（无 issue，§4 门禁衍生；PR #197）　**状态**：DONE
+
+---
 ---
 
 ## 附：ticket 统计
@@ -3216,7 +3268,8 @@ Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`，最终以
 | 追加 · 缺陷（§4 总门禁衍生） | T55–T56 | 2 |
 | 追加 · 未闭合项收口（第二轮，2026-09-16） | T57–T60 | 4 |
 | 追加 · 未闭合项收口（第三轮，2026-09-16） | T61–T62 | 2 |
-| **合计** | | **62** |
+| 追加 · §4 总门禁（第三轮）修复（2026-09-16） | T63 | 1 |
+| **合计** | | **63** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
