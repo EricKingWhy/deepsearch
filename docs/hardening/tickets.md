@@ -3364,7 +3364,8 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 `DeepResearchGraph.__init__`（`backend/app/service/deep_research_v2/graph.py:96-163`）在构造函数体内
 直接 new 出 6 个 agent + config + checkpoint，**没有任何构造缝**。后果三连：
 
-1. **4 处测试无法使用构造器，只能绕过接口** ——
+1. **5 处构造无法使用构造器，只能绕过接口**（分布在 3 个测试文件；实测
+   `grep -rn "object\.__new__(DeepResearchGraph)" backend/tests` → **5 命中**）——
    `backend/tests/service/deep_research_v2/test_graph_stream_teardown.py:100-116`、
    `backend/tests/service/test_graph_outline_checkpoint.py:80-88, 111-119, 153-161`、
    `backend/tests/service/deep_research_v2/test_scout_local_search.py:168`。
@@ -3385,7 +3386,7 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 
 - **只加一条缝，不引入 DI 容器**：`tickets.md` 通用约定里「最小改法是硬约束」——
   构造参数就够，上框架属过度设计。
-- **4 处测试的改写必须保持断言不变**：否则等于把「测试绕过接口」换成「测试变弱」，
+- **5 处构造的改写必须保持断言不变**：否则等于把「测试绕过接口」换成「测试变弱」，
   那不是深化，是掩饰。判据是 `grep -rn "object.__new__(DeepResearchGraph)"` 归零**且**原断言仍在。
 - **`run_sync` 是否并入本票**：若并入会改变外部行为，则**不并入**、另开一票 —— 一票一件事。
 
@@ -3398,7 +3399,7 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 ### 验收
 
 - `grep -rn "object.__new__(DeepResearchGraph)" backend/tests` → **0 命中**；
-- 上述 4 处测试改为**构造器注入替身**后仍全绿，且断言不变；
+- 上述 5 处构造改为**构造器注入替身**后仍全绿，且断言不变；
 - 全量 `pytest tests -q` → 不低于基线 **519 passed / 17 deselected**；
 - `pytest tests/service/deep_research_v2 -q` 全绿（生产路径行为不变）；
 - `ruff check app tests` → All checks passed。
