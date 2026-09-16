@@ -12,7 +12,8 @@
     "postinstall": "chmod +x node_modules/.bin/* 2>/dev/null || true",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit"
   },
   "dependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
