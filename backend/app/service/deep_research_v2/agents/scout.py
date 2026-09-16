@@ -80,6 +80,80 @@ def normalize_source_url(value: Any) -> str:
     return str(value).strip()
 
 
+def build_fact_entry(
+    fact: Dict[str, Any],
+    *,
+    section_id: Optional[str] = None,
+    is_supplementary: bool = False,
+    search_depth: Optional[int] = None,
+    search_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """唯一的「大模型结果 → state fact」构造口（T69）。
+
+    背景：同一段 ``fact_entry`` 构造曾在 ``process()`` / ``_supplementary_research()``
+    / ``_execute_deep_search()`` 三条写入路径里各抄一份，键集互不相同
+    （``is_supplementary`` / ``extracted_at,verified`` / ``search_depth,search_type``）。
+    于是「``facts[].source_url`` 是单个非空字符串」这条不变量**没有归属地** —— 每新增
+    一条写入路径就可能漏一次归一，这正是 P-14（T51）的结构性根因。
+
+    现在不变量只落在这里：``source_url`` 经 :func:`normalize_source_url` 归一
+    （数组 / 字符串 / ``None`` / 混合四种输入都落成同一个可哈希字符串），
+    ``state["facts"]`` 因此天然一致。
+
+    **形状容忍度只增不减**（T69 边界，只收拢不放宽）：输出键集是三条路径的**并集**，
+    路径专属字段由关键字参数注入 —— 宁可多带字段，也不可漏归一。
+    参数：
+        fact: 大模型返回的单条事实（``extracted_facts`` 的一项）。
+        section_id: 所属章节；为空时 ``related_sections`` 为 ``[]``。
+        is_supplementary: 是否来自补充搜索路径。
+        search_depth / search_type: 深度搜索路径专属。
+    """
+    return {
+        "id": f"fact_{uuid.uuid4().hex[:8]}",
+        "content": fact.get("content", ""),
+        "source_url": normalize_source_url(fact.get("source_url")),
+        "source_name": fact.get("source_name", ""),
+        "source_type": fact.get("source_type", "news"),
+        "credibility_score": fact.get("credibility_score", 0.5),
+        "is_supplementary": is_supplementary,
+        "extracted_at": datetime.now().isoformat(),
+        "related_sections": [section_id] if section_id else [],
+        "verified": False,
+        "related_hypothesis": fact.get("related_hypothesis"),
+        "hypothesis_support": fact.get("hypothesis_support"),
+        "metadata": {},
+        "search_depth": search_depth,
+        "search_type": search_type,
+    }
+
+
+def build_data_point(
+    dp: Dict[str, Any],
+    *,
+    source: str = "",
+    confidence: float = 0.5,
+    search_depth: Optional[int] = None,
+) -> Dict[str, Any]:
+    """唯一的「大模型 data_point → state data_point」构造口（T69）。
+
+    与 :func:`build_fact_entry` 同族：``source`` / ``confidence`` 由调用方给出，
+    因为两条路径的来源与置信口径不同 —— 主检索取所属 fact 的来源名与可信度，
+    深度检索取 data_point 自身的 ``source`` / ``confidence`` 并附带 ``search_depth``。
+
+    形状容忍度只增不减：``name`` / ``value`` 缺省补空串，下游不会拿到 ``None``。
+    """
+    return {
+        "id": f"dp_{uuid.uuid4().hex[:8]}",
+        "name": dp.get("name", ""),
+        "value": dp.get("value", ""),
+        "unit": dp.get("unit", ""),
+        "year": dp.get("year"),
+        "source": source,
+        "confidence": confidence,
+        "search_depth": search_depth,
+    }
+
+
 class DeepScout(BaseAgent):
     """
     深度侦探 - 信息收集专家
@@ -355,21 +429,10 @@ URL: {url}
                 if analysis:
                     # 添加新事实
                     for fact in analysis.get("extracted_facts", []):
-                        content = fact.get("content", "")
-                        source_url = normalize_source_url(fact.get("source_url"))
+                        entry = build_fact_entry(fact, is_supplementary=True)
 
-                        if not self._is_duplicate_fact(content, source_url):
-                            fact_entry = {
-                                "id": f"fact_{uuid.uuid4().hex[:8]}",
-                                "content": content,
-                                "source_url": source_url,
-                                "source_name": fact.get("source_name", ""),
-                                "source_type": fact.get("source_type", "news"),
-                                "credibility_score": fact.get("credibility_score", 0.5),
-                                "is_supplementary": True,  # 标记为补充搜索获得
-                                "related_sections": []
-                            }
-                            state["facts"].append(fact_entry)
+                        if not self._is_duplicate_fact(entry["content"], entry["source_url"]):
+                            state["facts"].append(entry)
 
         # 清空待搜索列表
         state["pending_search_queries"] = []
@@ -680,43 +743,23 @@ URL: {url}
             added_facts = 0
             duplicate_facts = 0
             for fact in analysis.get("extracted_facts", []):
-                content = fact.get("content", "")
-                source_url = normalize_source_url(fact.get("source_url"))
+                entry = build_fact_entry(fact, section_id=section_id)
 
                 # 去重检查
-                if self._is_duplicate_fact(content, source_url):
+                if self._is_duplicate_fact(entry["content"], entry["source_url"]):
                     duplicate_facts += 1
                     continue
 
-                fact_entry = {
-                    "id": f"fact_{uuid.uuid4().hex[:8]}",
-                    "content": content,
-                    "source_url": source_url,
-                    "source_name": fact.get("source_name", ""),
-                    "source_type": fact.get("source_type", "news"),
-                    "credibility_score": fact.get("credibility_score", 0.5),
-                    "extracted_at": datetime.now().isoformat(),
-                    "related_sections": [section_id],
-                    "verified": False,
-                    "related_hypothesis": fact.get("related_hypothesis"),
-                    "hypothesis_support": fact.get("hypothesis_support"),
-                    "metadata": {}
-                }
-                state["facts"].append(fact_entry)
+                state["facts"].append(entry)
                 added_facts += 1
 
                 # 提取数据点
                 for dp in fact.get("data_points", []):
-                    data_point = {
-                        "id": f"dp_{uuid.uuid4().hex[:8]}",
-                        "name": dp.get("name", ""),
-                        "value": dp.get("value", ""),
-                        "unit": dp.get("unit", ""),
-                        "year": dp.get("year"),
-                        "source": fact.get("source_name", ""),
-                        "confidence": fact.get("credibility_score", 0.5)
-                    }
-                    state["data_points"].append(data_point)
+                    state["data_points"].append(build_data_point(
+                        dp,
+                        source=entry["source_name"],
+                        confidence=entry["credibility_score"],
+                    ))
 
             if duplicate_facts > 0:
                 self.logger.info(f"Deduplicated {duplicate_facts} facts, added {added_facts}")
@@ -904,47 +947,36 @@ URL: {url}
             # 提取并添加事实
             added_facts = 0
             for fact in analysis.get("extracted_facts", []):
-                content = fact.get("content", "")
-                source_url = normalize_source_url(fact.get("source_url"))
+                entry = build_fact_entry(
+                    fact,
+                    section_id=section_id,
+                    search_depth=depth,
+                    search_type=search_type,
+                )
 
-                if not self._is_duplicate_fact(content, source_url):
-                    fact_entry = {
-                        "id": f"fact_{uuid.uuid4().hex[:8]}",
-                        "content": content,
-                        "source_url": source_url,
-                        "source_name": fact.get("source_name", ""),
-                        "source_type": fact.get("source_type", "news"),
-                        "credibility_score": fact.get("credibility_score", 0.5),
-                        "related_sections": [section_id],
-                        "search_depth": depth,
-                        "search_type": search_type
-                    }
-                    state["facts"].append(fact_entry)
+                if not self._is_duplicate_fact(entry["content"], entry["source_url"]):
+                    state["facts"].append(entry)
                     added_facts += 1
 
                     # 更新假设证据（如果有）
-                    hypothesis_support = fact.get("hypothesis_support")
-                    if hypothesis_support and fact.get("related_hypothesis"):
-                        h_id = fact["related_hypothesis"]
+                    hypothesis_support = entry["hypothesis_support"]
+                    if hypothesis_support and entry["related_hypothesis"]:
+                        h_id = entry["related_hypothesis"]
                         for h in state.get("hypotheses", []):
                             if h.get("id") == h_id:
                                 if hypothesis_support == "supports":
-                                    h.setdefault("evidence_for", []).append(content[:100])
+                                    h.setdefault("evidence_for", []).append(entry["content"][:100])
                                 elif hypothesis_support == "refutes":
-                                    h.setdefault("evidence_against", []).append(content[:100])
+                                    h.setdefault("evidence_against", []).append(entry["content"][:100])
 
             # 提取数据点
             for dp in analysis.get("data_points", []):
-                state["data_points"].append({
-                    "id": f"dp_{uuid.uuid4().hex[:8]}",
-                    "name": dp.get("name"),
-                    "value": dp.get("value"),
-                    "unit": dp.get("unit", ""),
-                    "year": dp.get("year"),
-                    "source": dp.get("source", query),
-                    "confidence": dp.get("confidence", 0.7),
-                    "search_depth": depth
-                })
+                state["data_points"].append(build_data_point(
+                    dp,
+                    source=dp.get("source", query),
+                    confidence=dp.get("confidence", 0.7),
+                    search_depth=depth,
+                ))
 
             self.logger.info(f"Deep search ({search_type}, depth={depth}): +{added_facts} facts for query '{query[:30]}...'")
 

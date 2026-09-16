@@ -19,13 +19,27 @@ T51 回归测试：DeepScout 的 `source_url` 边界归一（缺陷 P-14）。
 （三处 `extracted_facts` 循环）归一为单个字符串；`sources_count` 聚合处再包一层，
 以兼容检查点里可能存在的旧数据。多值取**第一个非空项**（该字段被当链接使用）。
 
+T69 追加（本票的核心收益）：三处写入边界已收拢为**唯一构造口**
+`build_fact_entry` / `build_data_point`，不变量落在那里。因此本文件的判据从
+「数源码里的调用点出现次数」（穿透实现）回到**接口**上：
+
+- 行为层：数组 / 字符串 / None / 混合四种输入 → **同一形状**的 fact；
+- 行为层：三条写入路径（主检索 / 补充搜索 / 深度搜索）产出的 fact **键集一致**
+  —— 这是「一条 fact 只有一个构造口」在接口上的可判定形态；
+- 结构层：只断言构造口**唯一且公共可导入**，不再按调用点数量守。
+
 所有用例均不触网、不依赖 Milvus / LLM。
 """
 
 import asyncio
 from pathlib import Path
 
-from service.deep_research_v2.agents.scout import DeepScout, normalize_source_url
+from service.deep_research_v2.agents.scout import (
+    DeepScout,
+    build_data_point,
+    build_fact_entry,
+    normalize_source_url,
+)
 from service.deep_research_v2.state import create_initial_state
 
 SCOUT_SOURCE_PATH = (
@@ -51,6 +65,27 @@ def _make_state(**kwargs):
     state["phase"] = "researching"
     state["outline"] = [{"id": "s1", "title": "章节一", "status": "pending"}]
     return state
+
+
+async def _noop_local_search(_query, top_k=10, kb_name=None):
+    """本地检索桩：返回一条不触网的结果。"""
+    return [{
+        "url": "local://kb/demo/d1",
+        "title": "示例文档",
+        "summary": "摘要",
+        "site_name": "本地知识库",
+        "is_local": True,
+    }]
+
+
+async def _fake_web_search(_query, count=6):
+    """Web 检索桩：返回一条不触网的结果。"""
+    return [{
+        "url": "https://a.example/1",
+        "title": "示例网页",
+        "summary": "摘要",
+        "site_name": "某站",
+    }]
 
 
 # ---------------------------------------------------------------- 纯函数行为层
@@ -85,6 +120,71 @@ def test_result_is_always_hashable():
         assert isinstance(normalize_source_url(value), str)
 
 
+# ------------------------------------------------- 接口层：单一构造口的形状契约
+
+
+def test_four_source_url_shapes_yield_identical_fact_shape():
+    """T69 核心验收：数组 / 字符串 / None / 混合 四种输入产出**同一形状**的 fact。
+
+    判据落在构造口上：不变量（`source_url` 是可哈希字符串）与键集由
+    `build_fact_entry` 单点决定，因此四种输入只在字段值上不同、键集完全一致。
+    """
+    inputs = [
+        ["https://a.example/1", "https://b.example/2"],  # 数组：大模型多来源
+        "https://a.example/1",                            # 字符串
+        None,                                             # 缺失
+        ["", None, "   ", "https://c.example/3"],         # 混合：跳空后取首个非空
+    ]
+    entries = [build_fact_entry({"content": "某条事实", "source_url": v}) for v in inputs]
+
+    shapes = {tuple(sorted(e.keys())) for e in entries}
+    assert len(shapes) == 1, f"四种输入产出的 fact 键集不一致：{shapes}"
+    assert all(isinstance(e["source_url"], str) for e in entries)
+    assert [e["source_url"] for e in entries] == [
+        "https://a.example/1",
+        "https://a.example/1",
+        "",
+        "https://c.example/3",
+    ]
+
+
+def test_data_point_construction_is_uniform_across_paths():
+    """`data_point` 同族构造口：缺省字段补全后键集一致，不会给下游 None 名称。
+
+    用**空 dict** 触发缺省分支 —— 否则缺省值根本不会生效，锁就成了装饰
+    （负向对照 M3 实测：只传已有键的 dict 时，把 `dp.get("name", "")` 改回
+    `dp.get("name")` 不会让任何用例变红）。
+    """
+    bare = build_data_point({})
+    full = build_data_point(
+        {"name": "指标", "value": "1", "unit": "吨", "year": 2024, "source": "某站"},
+        source="某站",
+        confidence=0.7,
+        search_depth=2,
+    )
+    assert sorted(bare.keys()) == sorted(full.keys())
+    assert bare["name"] == "" and bare["value"] == ""
+    assert isinstance(bare["name"], str) and isinstance(bare["value"], str)
+    assert full["name"] == "指标" and full["value"] == "1"
+    assert full["search_depth"] == 2 and bare["search_depth"] is None
+
+
+def test_construction_port_is_single_and_public():
+    """结构层：构造口**唯一**（3 → 1 / 2 → 1）且公共可导入。
+
+    这与「不再穿透接口」不矛盾 —— 断言的是**构造口只有一个**（主键铸造点唯一），
+    而不是「调用点有几个」；调用点数量已由上面的行为层判据覆盖（键集一致性）。
+    """
+    assert callable(build_fact_entry)
+    assert callable(build_data_point)
+
+    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
+    assert src.count('"id": f"fact_{uuid.uuid4().hex[:8]}"') == 1, \
+        "fact 主键铸造点应唯一（收拢前的三处手抄构造）"
+    assert src.count('"id": f"dp_{uuid.uuid4().hex[:8]}"') == 1, \
+        "data_point 主键铸造点应唯一（收拢前的两处手抄构造）"
+
+
 # ---------------------------------------------------- 行为层：真实 process() 路径
 
 
@@ -94,6 +194,10 @@ async def test_process_does_not_raise_when_source_url_is_list():
     修复前：`scout.py` 的 `sources_count` 抛 `TypeError: unhashable type: 'list'`，
     即"检索阶段静默死亡"路径 —— 既拿不到 research_step 完成事件，也拿不到
     search_results 事件，故本用例同时断言这两件事都发生了。
+
+    本用例同时是**聚合侧**的接口级判据：这里直接往 `state["facts"]` 塞入
+    数组形态的 fact（模拟检查点旧数据，绕过写入边界），`process()` 的全量
+    `sources_count` 聚合必须仍能归一 —— 替代了原先「数源码里聚合表达式出现次数」的断言。
     """
     state = _make_state()
     scout = _make_scout()
@@ -139,17 +243,7 @@ async def test_fact_written_from_extracted_facts_has_string_source_url():
     """边界层：数组 source_url 经 _research_section 的真实事实循环后落成字符串。"""
     state = _make_state()
     scout = _make_scout()
-
-    async def _fake_local_search(_query, top_k=10, kb_name=None):
-        return [{
-            "url": "local://kb/demo/d1",
-            "title": "示例文档",
-            "summary": "摘要",
-            "site_name": "本地知识库",
-            "is_local": True,
-        }]
-
-    scout._execute_local_search = _fake_local_search
+    scout._execute_local_search = _noop_local_search
 
     async def _fake_analyze(*_args, **_kwargs):
         return {"extracted_facts": [{
@@ -170,22 +264,56 @@ async def test_fact_written_from_extracted_facts_has_string_source_url():
     assert isinstance(state["facts"][0]["source_url"], str)
 
 
-# ------------------------------------------------------------ 源码锁（防回归）
+async def test_all_three_write_paths_share_one_fact_shape():
+    """单一构造口的接口级判据：三条写入路径产出的 fact 键集必须完全一致。
 
-
-def test_all_fact_boundaries_call_normalizer():
-    """三处 extracted_facts 事实循环都必须经归一，且不残留未归一的赋值。
-
-    只锁「赋值」形式（`source_url = ...`）—— 引用构造处的**读取**
-    （`"url": fact.get("source_url", "")`）消费的是已归一的字符串，属既有读路径，不在此票范围。
+    收拢前三条路径各抄一份构造、键集互不相同
+    （`is_supplementary` / `extracted_at,verified` / `search_depth,search_type`），
+    所以本断言在收拢前必红；收拢到唯一构造口后三处键集相同。
     """
-    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
-    assert src.count('source_url = normalize_source_url(fact.get("source_url"))') == 3
-    assert 'source_url = fact.get("source_url"' not in src
+    state = _make_state()
+    scout = _make_scout()
+    scout._execute_local_search = _noop_local_search
+    scout._execute_search = _fake_web_search
 
+    def _entry(content, url):
+        return {"content": content, "source_url": url, "source_name": "某来源"}
 
-def test_both_aggregate_sites_normalize_before_set():
-    """两处 sources_count 聚合都必须先归一（检查点旧数据可能仍是数组）。"""
-    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
-    assert src.count('set(normalize_source_url(f.get("source_url")) for f in') == 2
-    assert 'set(f.get("source_url"' not in src
+    # 路径 1：主检索（_research_section 的 extracted_facts 循环）
+    async def _analyze_main(*_args, **_kwargs):
+        return {"extracted_facts": [_entry("主检索事实", ["https://m.example/1"])]}
+
+    scout._analyze_search_results = _analyze_main
+    await asyncio.wait_for(
+        scout._research_section(state, {"id": "s1", "title": "章节一", "search_queries": ["q1"]}),
+        timeout=10,
+    )
+
+    # 路径 2：补充搜索（_supplementary_research 的 extracted_facts 循环）
+    async def _analyze_supplementary(*_args, **_kwargs):
+        return {"extracted_facts": [_entry("补充搜索事实", "https://s.example/1")]}
+
+    scout._analyze_supplementary_results = _analyze_supplementary
+    state["pending_search_queries"] = ["补充问题"]
+    await asyncio.wait_for(scout._supplementary_research(state), timeout=10)
+
+    # 路径 3：深度搜索（_execute_deep_search 的 extracted_facts 循环）
+    async def _analyze_deep(*_args, **_kwargs):
+        return {"extracted_facts": [_entry("深度搜索事实", None)]}
+
+    scout._analyze_deep_search_results = _analyze_deep
+    await asyncio.wait_for(
+        scout._execute_deep_search(state, "s1", ["深挖问题"], "source_tracing", []),
+        timeout=10,
+    )
+
+    assert len(state["facts"]) == 3, \
+        f"三条写入路径应各落一条事实，实际 {len(state['facts'])} 条"
+    shapes = {tuple(sorted(f.keys())) for f in state["facts"]}
+    assert len(shapes) == 1, f"三条路径产出的 fact 键集不一致（说明构造口未收拢）：{shapes}"
+    assert [f["source_url"] for f in state["facts"]] == [
+        "https://m.example/1",
+        "https://s.example/1",
+        "",
+    ]
+    assert all(isinstance(f["source_url"], str) for f in state["facts"])
