@@ -1,18 +1,15 @@
 """回归测试：**全部 12 个路由模块**的端点都不得匿名可达（T64 起为目录级全覆盖）。
 
-## 沿革
+## 沿革：三次都漏在「判据作用域 < 缺陷散布面」
 
-- 事实 F-03：`document_router` / `chat_router` / `search_router` / `news_router` 原先
-  **没有任何鉴权依赖** —— 未登录即可上传与检索文档、创建会话、发起补全、消耗第三方搜索配额。
-  T04 修前者，T05 修后三者。
-- `attachment_router` 由 §4 总门禁（第一轮）补入：它是全仓最后一个用 `get_current_user`
-  （**可选**认证）的路由 —— 未登录即可读取任意会话的附件清单、按 ID 取详情、删除任意附件
-  及其落盘文件。T55 把四个入口全部改成归属校验 + `get_current_user_required`。
-- **T64（本版）**：上面两次都是「发现一个补一个」，而这个文件的 `ROUTER_MODULES` 一直是
-  **硬编码清单** —— 所以每次都能从清单的缝里漏掉一个（`attachment_router` 就是这么漏的，
-  与当年 `document_router` 的清理缺陷从单文件源码锁里漏出去同型）。
-  本版改为**目录级枚举 + 三分类穷尽**：`app/router/*.py` 里出现的每个模块都必须被显式
-  归类，新增模块会让 `test_every_router_module_is_classified` 直接失败。
+- 事实 F-03：`document_router` / `chat_router` / `search_router` / `news_router` 原先**没有任何
+  鉴权依赖**（未登录即可上传检索文档、创建会话、发起补全、消耗第三方搜索配额），T04 / T05 修复；
+  `attachment_router` 是全仓最后一个用 `get_current_user`（**可选**认证）的路由（未登录即可读取
+  任意会话的附件清单、取详情、删附件及其落盘文件），由 §4 第一轮总门禁补入、T55 修掉。
+- **T64（本版）**：前两次都是「发现一个补一个」，因为本文件的 `ROUTER_MODULES` 一直是**硬编码清单**
+  —— 所以每次都能再从缝里漏掉一个（`attachment_router` 就是这么漏的，与 `document_router` 的
+  清理缺陷从单文件源码锁里漏出去同型）。本版改为**目录级枚举 + 三分类穷尽**：
+  `app/router/*.py` 即真相源，新增模块不登记就会让 `test_every_router_module_is_classified` 直接失败。
 
 ## 被钉住的事实基线（T64 实测，68 个端点）
 
@@ -34,17 +31,14 @@
 
 ## 「全覆盖」是靠什么保证的
 
-目录级枚举只是把模块**列全**；真正致命的是「某个模块**导入失败**，于是它的端点从判据里
-静默消失」—— 那等于回到了硬编码清单的老路，只是失败得更隐蔽。所以：
+目录级枚举只是把模块**列全**；真正致命的是「某个模块**导入失败**，于是它的端点从判据里静默消失」
+—— 那等于回到硬编码清单的老路，只是失败得更隐蔽。所以导入循环**不吞异常**，失败原因逐条收进
+`_IMPORT_ERRORS`，由 `test_every_router_module_is_runtime_importable` 断言为空。
 
-- `_MODULES` 的导入循环**不吞异常**，失败原因逐条收进 `_IMPORT_ERRORS`；
-- `test_every_router_module_is_runtime_importable` 断言它为空。
-
-T64 施工时这条锁立刻起作用：`research_router` 是 12 个模块里**唯一**导入不进来的
-（`tests/conftest.py` 的 `service` 占位包缺 `ResearchService`、`deep_research_v2.agents`
-占位包不执行 `__init__` 导致 `service.deep_research_v2.service` 连带不可导入），
-10 个端点因此从来没有被任何鉴权回归覆盖过。修法是给共享 conftest 补两处占位
-（见 `tests/conftest.py` 的 T64 注释，实测总代价 ~0.1s），本文件因此覆盖到 **12/12**。
+T64 施工时这条锁立刻起作用：`research_router` 是 12 个模块里**唯一**导入不进来的（conftest 的
+`service` 占位包缺 `ResearchService`、`deep_research_v2.agents` 占位包不执行 `__init__` 致
+`service.deep_research_v2.service` 连带不可导入），其 10 个端点**从来没有被任何鉴权回归覆盖过**。
+修法是给共享 conftest 补两处占位（见该文件的 T64 注释，实测总代价 ~0.1s），本文件因此覆盖到 **12/12**。
 
 ## 判据的三层
 
@@ -102,11 +96,13 @@ ENDPOINT_LEVEL_AUTH_MODULES: Set[str] = {
     "session_router",
 }
 
-# 唯一允许匿名的端点（每个都要写明理由；无理由的匿名端点一律视为缺陷）。
-ANONYMOUS_ENDPOINTS: Dict[Tuple[str, str], str] = {
-    ("auth_router", "POST /auth/register"): "注册入口：此时尚无凭据可带，匿名是设计要求",
-    ("auth_router", "POST /auth/login"): "登录入口：同上",
-    ("auth_router", "POST /auth/token"): "OAuth2 取 token 入口：同上",
+# 唯一允许匿名的端点：(模块, 方法, 路径) -> 匿名理由。每个都要写明理由；无理由的匿名端点一律视为缺陷。
+# 键用三元组而不是「模块 + "METHOD /path"」拼串 —— 后者要在断言里再 split 回来，
+# 等于把三个字段硬塞进一个字符串（多一个空格就静默失配），而且读起来还要心算。
+ANONYMOUS_ENDPOINTS: Dict[Tuple[str, str, str], str] = {
+    ("auth_router", "POST", "/auth/register"): "注册入口：此时尚无凭据可带，匿名是设计要求",
+    ("auth_router", "POST", "/auth/login"): "登录入口：同上",
+    ("auth_router", "POST", "/auth/token"): "OAuth2 取 token 入口：同上",
 }
 
 # 端点数量护栏（全部 12 个模块）：数量变化时强制复核新增/删除的端点是否也应鉴权。
@@ -163,6 +159,16 @@ def _endpoints_of(module_name: str) -> List[Tuple[str, str]]:
         for route in _MODULES[module_name].router.routes
         for method in sorted(route.methods - {"HEAD", "OPTIONS"})
     ]
+
+
+def _all_endpoints() -> Iterable[Tuple[str, str, str]]:
+    """产出全部已载入模块的 (模块名, 方法, 路径)。
+
+    穷尽性扫描类用例一律走这里：省得每个用例各抄一遍两层循环，抄漏一层就是一条假绿。
+    """
+    for module_name in _loaded(sorted(ALL_ROUTER_MODULES)):
+        for method, path in _endpoints_of(module_name):
+            yield module_name, method, path
 
 
 def _dependency_calls(module_name: str, method: str, path: str) -> List[object]:
@@ -273,13 +279,12 @@ def test_no_unauthenticated_endpoint_outside_the_allowlist() -> None:
     """
     offenders: List[str] = []
 
-    for module_name in _loaded(sorted(ALL_ROUTER_MODULES)):
-        for method, path in _endpoints_of(module_name):
-            if (module_name, f"{method} {path}") in ANONYMOUS_ENDPOINTS:
-                continue
-            calls = _dependency_calls(module_name, method, path)
-            if get_current_user_required not in calls:
-                offenders.append(f"{module_name}: {method} {path}")
+    for module_name, method, path in _all_endpoints():
+        if (module_name, method, path) in ANONYMOUS_ENDPOINTS:
+            continue
+        calls = _dependency_calls(module_name, method, path)
+        if get_current_user_required not in calls:
+            offenders.append(f"{module_name}: {method} {path}")
 
     assert not offenders, (
         f"以下端点未要求鉴权、且不在 ANONYMOUS_ENDPOINTS 白名单里：{offenders}。"
@@ -334,10 +339,9 @@ def test_no_endpoint_uses_optional_auth() -> None:
     """
     offenders: List[str] = []
 
-    for module_name in _loaded(sorted(ALL_ROUTER_MODULES)):
-        for method, path in _endpoints_of(module_name):
-            if get_current_user in _dependency_calls(module_name, method, path):
-                offenders.append(f"{module_name}: {method} {path}")
+    for module_name, method, path in _all_endpoints():
+        if get_current_user in _dependency_calls(module_name, method, path):
+            offenders.append(f"{module_name}: {method} {path}")
 
     assert not offenders, (
         f"以下端点使用了可选鉴权 get_current_user：{offenders} —— "
@@ -351,25 +355,24 @@ def test_anonymous_allowlist_has_no_stale_entries() -> None:
     防两种腐烂：① 端点被删/改名，白名单里留着一条永不命中的僵尸条目；
     ② 端点后来被加上了鉴权，而白名单仍声称它匿名（掩盖了真实状态）。
     """
-    for (module_name, endpoint), reason in ANONYMOUS_ENDPOINTS.items():
-        assert reason.strip(), f"{module_name} {endpoint} 的匿名理由不得为空"
+    for (module_name, method, path), reason in ANONYMOUS_ENDPOINTS.items():
+        assert reason.strip(), f"{module_name} {method} {path} 的匿名理由不得为空"
 
         if module_name not in _MODULES:
             # 该模块未能导入 —— 这时「端点是否存在」无从判断，交给完整性护栏
             # （test_every_router_module_is_runtime_importable）统一报错，避免重复噪声。
             continue
 
-        method, path = endpoint.split(" ", 1)
         actual = _endpoints_of(module_name)
 
         assert (method, path) in actual, (
-            f"ANONYMOUS_ENDPOINTS 里的 {module_name} {endpoint} 不存在（端点数 {len(actual)}）——"
+            f"ANONYMOUS_ENDPOINTS 里的 {module_name} {method} {path} 不存在（端点数 {len(actual)}）——"
             "端点已删除或改名，请同步白名单"
         )
 
         for call in _dependency_calls(module_name, method, path):
             assert call is not get_current_user_required, (
-                f"{module_name} {endpoint} 现已要求鉴权，不应再留在匿名白名单里"
+                f"{module_name} {method} {path} 现已要求鉴权，不应再留在匿名白名单里"
             )
 
 
@@ -428,9 +431,8 @@ def test_endpoint_count_is_expected(module_name: str, expected: int) -> None:
 # --------------------------------------------------------------------------- 行为层（真实请求）
 PROTECTED_ENDPOINTS = [
     pytest.param(module_name, method, path, id=f"{module_name}-{method}-{path}")
-    for module_name in _loaded(sorted(ALL_ROUTER_MODULES))
-    for method, path in _endpoints_of(module_name)
-    if (module_name, f"{method} {path}") not in ANONYMOUS_ENDPOINTS
+    for module_name, method, path in _all_endpoints()
+    if (module_name, method, path) not in ANONYMOUS_ENDPOINTS
 ]
 
 
@@ -460,20 +462,21 @@ def test_endpoint_with_invalid_token_returns_401(module_name: str, method: str, 
 
 
 @pytest.mark.parametrize(
-    "module_name,endpoint",
+    "module_name,method,path",
     [
-        pytest.param(module_name, endpoint, id=f"{module_name}-{endpoint.replace(' ', '_')}")
-        for module_name, endpoint in sorted(ANONYMOUS_ENDPOINTS)
+        pytest.param(module_name, method, path, id=f"{module_name}-{method}-{path}")
+        for module_name, method, path in sorted(ANONYMOUS_ENDPOINTS)
         if module_name in _MODULES
     ],
 )
-def test_anonymous_endpoint_is_reachable_without_token(module_name: str, endpoint: str) -> None:
+def test_anonymous_endpoint_is_reachable_without_token(
+    module_name: str, method: str, path: str
+) -> None:
     """反向断言：三个匿名端点**不得**因为鉴权依赖而 401。
 
     只测「该拒的拒了」会漏掉另一类回归 —— 有人给 `auth_router` 挂上 router 级鉴权，
     于是整条登录链路 401，而所有 401 断言依然全绿。这里把「该放的」也钉住。
     """
-    method, path = endpoint.split(" ", 1)
     response = _client(module_name).request(method, path, **_request_kwargs(method, path))
 
     assert response.status_code != 401, (
