@@ -34,7 +34,8 @@ export const sessionActions = {
     sessionState.error = null
     try {
       const response = await getSessions({ limit: 50 })
-      // request 实例不解包：response.data 即后端返回体
+      // 本 client 不解包（T70 起为显式契约，见 api/request/request.ts）：response 是
+      // AxiosResponse，后端返回体在 response.data。要取体请用 api/request/read-body。
       const sessions = response.data
       sessionState.sessions = Array.isArray(sessions) ? sessions : []
     } catch (err) {

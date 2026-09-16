@@ -4,6 +4,7 @@
  */
 
 import { request } from './request'
+import { readBody } from './request/read-body'
 
 // 资讯类型定义
 export interface NewsItem {
@@ -78,8 +79,7 @@ export const getNewsList = async (params?: {
   offset?: number
 }): Promise<NewsListResponse> => {
   // loading: false 禁用全局 loading，使用页面的骨架屏
-  const res = await request.get<NewsListResponse>('/news/list', { params, loading: false })
-  return res.data
+  return readBody(request.get<NewsListResponse>('/news/list', { params, loading: false }))
 }
 
 // 获取招投标列表
@@ -91,18 +91,16 @@ export const getBiddingList = async (params?: {
   offset?: number
 }): Promise<BiddingListResponse> => {
   // loading: false 禁用全局 loading，使用页面的骨架屏
-  const res = await request.get<BiddingListResponse>('/news/bidding/list', { params, loading: false })
-  return res.data
+  return readBody(request.get<BiddingListResponse>('/news/bidding/list', { params, loading: false }))
 }
 
 // 获取所有统计
 export const getStats = async () => {
-  const res = await request.get<{
+  return readBody(request.get<{
     success: boolean
     news: NewsStats
     bidding: BiddingStats
-  }>('/news/stats')
-  return res.data
+  }>('/news/stats'))
 }
 
 // 手动触发采集
@@ -114,31 +112,29 @@ export const triggerCollection = async (params?: {
   // loading: false 禁用全局 loading，按钮已有自己的 loading 状态
   // cancelRepeat: false 禁用取消重复请求（采集是长时间操作）
   // timeout: 120000 设置2分钟超时（采集需要较长时间）
-  const res = await request.post<CollectionResponse>('/news/collect', null, {
+  return readBody(request.post<CollectionResponse>('/news/collect', null, {
     params,
     loading: false,
     cancelRepeat: false,
     timeout: 120000,
-  })
-  return res.data
+  }))
 }
 
 // 获取行业列表
 export const getIndustries = async () => {
-  const res = await request.get<{
+  return readBody(request.get<{
     success: boolean
     industries: Array<{
       id: string
       name: string
       description: string
     }>
-  }>('/news/industries')
-  return res.data
+  }>('/news/industries'))
 }
 
 // 获取单个行业配置
 export const getIndustry = async (industryId: string) => {
-  const res = await request.get<{
+  return readBody(request.get<{
     success: boolean
     industry: {
       id: string
@@ -147,25 +143,23 @@ export const getIndustry = async (industryId: string) => {
       news_keywords: string[]
       bidding_keywords: string[]
     }
-  }>(`/news/industries/${industryId}`)
-  return res.data
+  }>(`/news/industries/${industryId}`))
 }
 
 // 检查数据状态
 export const checkDataStatus = async () => {
-  const res = await request.get<{
+  return readBody(request.get<{
     success: boolean
     has_data: boolean
     news_count: number
     bidding_count: number
     news_recent_24h: number
-  }>('/news/check')
-  return res.data
+  }>('/news/check'))
 }
 
 // 获取定时任务状态
 export const getSchedulerStatus = async () => {
-  const res = await request.get<{
+  return readBody(request.get<{
     success: boolean
     jobs: Array<{
       id: string
@@ -173,6 +167,5 @@ export const getSchedulerStatus = async () => {
       next_run_time: string
       trigger: string
     }>
-  }>('/news/scheduler/status')
-  return res.data
+  }>('/news/scheduler/status'))
 }
