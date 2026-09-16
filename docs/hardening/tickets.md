@@ -3406,6 +3406,8 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 
 > issue [#202](https://github.com/EricKingWhy/deepsearch/issues/202)　**状态**：DONE（`334d66c`，PR #208 / merge `88ec506`）
 
+> **§风险 收缩已激活（追加-8 第 1 批审查 F1 记，2026-09-16）**：本票「改什么」的后两项 —— 「生产调用点传入真实协作者」与「`run_sync` 的重复阶段序列并入同一条路径」—— 以及症状 2 的「`service.py:74-90` 配置解析重复」，实施时**均未落地**：两个生产调用点（`service.py:84` / `graph.py:1021`）仍走 `graph.py:117` 的 `if agents is None:` 回退自建；`run_sync`（`graph.py:963`）逐字未动；`service.py` 不在本票改动清单内。**理由**：§风险 第 1 条允许把范围缩到「只加缝 + 只改测试」—— ①③ 的迁移会改变外部行为（`service.py` 自建 config 与注入值语义不同），② 的并入会改变阶段序列语义，而本票的硬约束是「行为保持不变」。**据实补记**（原票面未显式声明收缩），并立项未闭合项 **P-21**（见 `TRACKER.md`）跟踪，待单独开票。
+
 ---
 
 ## T66 — 深研事件归约器从 chat 页面抽出：线事件到 UI 状态的纯映射
