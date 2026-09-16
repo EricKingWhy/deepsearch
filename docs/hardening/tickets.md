@@ -3404,7 +3404,7 @@ RuntimeError: 缺少必需的环境变量 BOCHA_API_KEY      （app/service/dr_g
 - `pytest tests/service/deep_research_v2 -q` 全绿（生产路径行为不变）；
 - `ruff check app tests` → All checks passed。
 
-> issue [#202](https://github.com/EricKingWhy/deepsearch/issues/202)　**状态**：TODO
+> issue [#202](https://github.com/EricKingWhy/deepsearch/issues/202)　**状态**：DONE（`334d66c`，PR #208 / merge `88ec506`）
 
 ---
 
@@ -3449,7 +3449,7 @@ chat 是核心交互页，改动面大。分步走，保持每步可回滚。
 - `npx eslint .` → **0 problems**；`index.tsx` 的 `eslint-disable` 与 `any` 强转 → **0**；
 - `wc -l frontend/src/pages/chat/index.tsx` 前后对比写入票面（应显著下降）。
 
-> issue [#203](https://github.com/EricKingWhy/deepsearch/issues/203)　**状态**：TODO
+> issue [#203](https://github.com/EricKingWhy/deepsearch/issues/203)　**状态**：DONE（`649f8d8`，PR #209 / merge `0bf15ab`）
 
 ---
 
