@@ -19,13 +19,23 @@ T51 回归测试：DeepScout 的 `source_url` 边界归一（缺陷 P-14）。
 （三处 `extracted_facts` 循环）归一为单个字符串；`sources_count` 聚合处再包一层，
 以兼容检查点里可能存在的旧数据。多值取**第一个非空项**（该字段被当链接使用）。
 
+T69 追加（第一步）：事实写入边界已收拢为**唯一构造口** `build_fact_entry` /
+`build_data_point`，不变量落在那里。因此原先「数源码里赋值/聚合表达式出现次数」的
+两条穿透实现断言（`src.count(...) == 3` / `== 2`）被删除，判据改为
+**断言构造口唯一且公共可导入**，不再按调用点数量守。
+
 所有用例均不触网、不依赖 Milvus / LLM。
 """
 
 import asyncio
 from pathlib import Path
 
-from service.deep_research_v2.agents.scout import DeepScout, normalize_source_url
+from service.deep_research_v2.agents.scout import (
+    DeepScout,
+    build_data_point,
+    build_fact_entry,
+    normalize_source_url,
+)
 from service.deep_research_v2.state import create_initial_state
 
 SCOUT_SOURCE_PATH = (
@@ -51,6 +61,17 @@ def _make_state(**kwargs):
     state["phase"] = "researching"
     state["outline"] = [{"id": "s1", "title": "章节一", "status": "pending"}]
     return state
+
+
+async def _noop_local_search(_query, top_k=10, kb_name=None):
+    """本地检索桩：返回一条不触网的结果。"""
+    return [{
+        "url": "local://kb/demo/d1",
+        "title": "示例文档",
+        "summary": "摘要",
+        "site_name": "本地知识库",
+        "is_local": True,
+    }]
 
 
 # ---------------------------------------------------------------- 纯函数行为层
@@ -85,6 +106,25 @@ def test_result_is_always_hashable():
         assert isinstance(normalize_source_url(value), str)
 
 
+# ---------------------------------------------------------- 接口层：单一构造口
+
+
+def test_construction_port_is_single_and_public():
+    """结构层：构造口**唯一**（3 → 1 / 2 → 1）且公共可导入。
+
+    这与「不再穿透接口」不矛盾 —— 断言的是**构造口只有一个**（主键铸造点唯一），
+    而不是「调用点有几个」；调用点数量已由上面的行为层判据覆盖（键集一致性）。
+    """
+    assert callable(build_fact_entry)
+    assert callable(build_data_point)
+
+    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
+    assert src.count('"id": f"fact_{uuid.uuid4().hex[:8]}"') == 1, \
+        "fact 主键铸造点应唯一（收拢前的三处手抄构造）"
+    assert src.count('"id": f"dp_{uuid.uuid4().hex[:8]}"') == 1, \
+        "data_point 主键铸造点应唯一（收拢前的两处手抄构造）"
+
+
 # ---------------------------------------------------- 行为层：真实 process() 路径
 
 
@@ -94,6 +134,10 @@ async def test_process_does_not_raise_when_source_url_is_list():
     修复前：`scout.py` 的 `sources_count` 抛 `TypeError: unhashable type: 'list'`，
     即"检索阶段静默死亡"路径 —— 既拿不到 research_step 完成事件，也拿不到
     search_results 事件，故本用例同时断言这两件事都发生了。
+
+    本用例同时是**聚合侧**的接口级判据：这里直接往 `state["facts"]` 塞入
+    数组形态的 fact（模拟检查点旧数据，绕过写入边界），`process()` 的全量
+    `sources_count` 聚合必须仍能归一 —— 替代了原先「数源码里聚合表达式出现次数」的断言。
     """
     state = _make_state()
     scout = _make_scout()
@@ -139,17 +183,7 @@ async def test_fact_written_from_extracted_facts_has_string_source_url():
     """边界层：数组 source_url 经 _research_section 的真实事实循环后落成字符串。"""
     state = _make_state()
     scout = _make_scout()
-
-    async def _fake_local_search(_query, top_k=10, kb_name=None):
-        return [{
-            "url": "local://kb/demo/d1",
-            "title": "示例文档",
-            "summary": "摘要",
-            "site_name": "本地知识库",
-            "is_local": True,
-        }]
-
-    scout._execute_local_search = _fake_local_search
+    scout._execute_local_search = _noop_local_search
 
     async def _fake_analyze(*_args, **_kwargs):
         return {"extracted_facts": [{
@@ -168,24 +202,3 @@ async def test_fact_written_from_extracted_facts_has_string_source_url():
     assert state["facts"], "未写入任何事实"
     assert state["facts"][0]["source_url"] == "https://a.example/1"
     assert isinstance(state["facts"][0]["source_url"], str)
-
-
-# ------------------------------------------------------------ 源码锁（防回归）
-
-
-def test_all_fact_boundaries_call_normalizer():
-    """三处 extracted_facts 事实循环都必须经归一，且不残留未归一的赋值。
-
-    只锁「赋值」形式（`source_url = ...`）—— 引用构造处的**读取**
-    （`"url": fact.get("source_url", "")`）消费的是已归一的字符串，属既有读路径，不在此票范围。
-    """
-    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
-    assert src.count('source_url = normalize_source_url(fact.get("source_url"))') == 3
-    assert 'source_url = fact.get("source_url"' not in src
-
-
-def test_both_aggregate_sites_normalize_before_set():
-    """两处 sources_count 聚合都必须先归一（检查点旧数据可能仍是数组）。"""
-    src = SCOUT_SOURCE_PATH.read_text(encoding="utf-8")
-    assert src.count('set(normalize_source_url(f.get("source_url")) for f in') == 2
-    assert 'set(f.get("source_url"' not in src
