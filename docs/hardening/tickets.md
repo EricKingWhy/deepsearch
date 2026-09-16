@@ -3686,7 +3686,7 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 
 - `grep -c "return res.data" frontend/src/api/news.ts` → **0**（或改为经统一解包后的直接 return）；
 - interface 与实际行为一致：新增一条 client 单测，断言「开启 `unwrap` 时调用方拿到的是响应体本身」；
-- `npx vitest run` 全绿；`npx tsc --noEmit` 相关工程 **0 错**；`npx eslint .` → **0 problems**；
+- `npx vitest run` 全绿；`npx tsc -p tsconfig.app.json --noEmit` → **0 errors**（**不用**空真的 `npx tsc --noEmit` —— 根 `tsconfig.json` 是 `files: []` + `references` 的 solution 桩，该命令编译空集、恒 0 错，见 P-19）；`npx eslint .` → **0 problems**；
 - 全局 toast 的错误分支不回归（`plugins/error-toast.ts` 仍能取到业务 `msg`）。
 
 > issue [#207](https://github.com/EricKingWhy/deepsearch/issues/207)　**状态**：DONE（`a328005` + `a2d1f4d`，PR #215 / merge `1bd3de4`）
@@ -3695,11 +3695,14 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 >
 > 票面要求「执行时二选一并把理由写入票面」。**选 B（删除 `unwrap` 与 `_data` 类型）**，理由：
 >
-> 1. **该选项面向的信封在本仓库不存在** —— 全仓只有两处 `"status": "success"`
+> 1. **该选项面向的信封在本仓库不存在** —— **HTTP 响应**里只有两处 `"status": "success"`
 >    （`app_main.py:145`、`document_router.py:105`），都不含 `data` 键；其余端点一律**直接返回响应体**
 >    （`/news/*` 返 `{success, data, total, stats}`、`/sessions` 与 `/knowledge-bases` 返裸数组、
 >    `/research/.../timeline` 返裸对象）。声明的 `{ code: number; msg: string; data: T }` 与任何后端返回体
 >    都不符 —— 实现它等于为无人遵守的契约写代码。
+>    **口径勘误（§4 终审 T71 / F3）**：原文写「全仓只有两处」，`grep -rn '"status": "success"' backend/app/`
+>    实测命中 **3 处** —— 第三处 `core/langfuse_client.py:105` 是 `trace.update(output={"status": "success"})`，
+>    属 **Langfuse trace 调用、不是 HTTP 信封**，故不参与本条论证；计数应限定为 HTTP 响应。结论不变。
 > 2. **零消费点**：`unwrap` 全仓只有声明处两行、无读取点；`.data.data` 全仓唯一出现是
 >    `axios-extend.d.ts` 里解释 `unwrap` 的那句注释本身。
 > 3. 票面自带的**删除测试成立**：删除后运行时零变化（纯 pass-through）。
