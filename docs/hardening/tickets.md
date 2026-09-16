@@ -3108,6 +3108,72 @@ P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168**
 > issue [#191](https://github.com/EricKingWhy/deepsearch/issues/191)　**状态**：DONE
 
 ---
+
+## T62 — SSE 断连 teardown 时 contextvar token 跨 Context 重置报错，掩盖真实关闭路径（T61 同族）
+
+### 背景
+
+T61（P-16）定性后，§3 复核 finding 3 指出：被延后的
+`ValueError: … created in a different Context` 属**代码侧**缺陷，却没有任何跟踪物。
+本票即该跟踪物的落地，与 T61 同属「断连 teardown 族」。
+
+### 定性
+
+归档日志 `.runlogs/t49_backend8001c.log` 中两条 ERROR 同源：
+
+- `10:25:03.786` `opentelemetry.context | ERROR | Failed to detach context`
+  （堆栈：`observability/events.py:126` → `service.py:227 yield self._format_sse(event)` → `GeneratorExit`）；
+- `10:25:03.838` `asyncio | ERROR | Task exception was never retrieved`
+  （`Token var=<ContextVar name='observability_context' …> was created in a different Context`）。
+
+机制：SSE 客户端断连 → Starlette 关闭响应生成器 → `GeneratorExit` 展开经过
+`service.py` 的 `with bind_context(...), bind_run_usage()` → 这些 token 是在**另一个**
+Context 里 `set` 的 → `ContextVar.reset(token)` 抛 `ValueError`；三层
+（`bind_run_usage` → `bind_context` → `span`）逐个抛错，最终以
+`async_generator_athrow` 的未取回异常收尾。
+
+**影响**：干净的关闭被 `ValueError` **顶替** —— 日志里读到的是「context 用错」而不是
+「客户端断连」，这正是 P-16 长期只能记「**不能据现有日志定性**」的直接原因。
+
+### 改什么
+
+`observability/context.py` 新增共用守卫 `reset_context_var(var, token)`：**仅当 token 属于
+当前 Context 时才重置**，否则 debug 记录并跳过。三处调用点全部改走该守卫 ——
+`context.py` 的 `bind_context`、`events.py` 的 `bind_event_recorder` / `bind_run_usage`
+（全仓 `.reset(token)` 仅此三处）。
+
+### 关键取舍
+
+- **不是「吞异常」**：`reset` 抛 `ValueError` 即表明当前 Context **从未执行过**对应的 `set`
+  （token 属于另一个 Context），所以**没有需要撤销的东西**，跳过在语义上正确。
+- **只捕获 `ValueError`**：另一种误用（拿错 var 去 reset）抛的是 `TypeError`，不在捕获范围内，
+  仍会正常暴露 —— 守卫不会把真正的编程错误一起吃掉。
+- **三个上下文管理器一起改**：同族同病灶，只修其一会在下一个调用点复发。
+- **不加入 `observability/__init__.py` 公开面**：与同族的 `bind_event_recorder` /
+  `bind_run_usage`（二者同样未被导出）保持一致；它只是包内管道。
+
+### 验收
+
+- 新增 `backend/tests/observability/test_context_teardown.py`，**不依赖任何基础设施**，5 条用例：
+  - 三个上下文管理器各一条「在别的 Context `__enter__`、在本 Context `__exit__`」
+    （`contextvars.copy_context().run(...)`）；
+  - 一条复现**生产机制**的异步生成器用例：本任务推进、由**另一个任务** `aclose()`
+    （等价于 Starlette 的断连 teardown）；
+  - 一条回归用例：同 Context 下仍照常复原（守卫不能把正常路径一起吞掉）；
+  - 修复前 **4 failed**（`ValueError: … created in a different Context`）→ 修复后 **5 passed**；
+- 变异检验：三处守卫换回裸 `reset(token)` → **4 failed**；还原 → 逐字节一致且变绿；
+- 全量 `pytest -q` → **413 passed / 17 deselected**（前档 408，本票 +5）；
+- `ruff check app tests` → All checks passed。
+
+### 风险
+
+- 守卫会让「跨 Context 的 reset 静默跳过」成为默认行为。这是刻意的：该场景下本来就无事可撤销；
+  真正写错（var 不匹配）仍由 `TypeError` 暴露。
+
+> issue [#193](https://github.com/EricKingWhy/deepsearch/issues/193)　**状态**：DONE
+
+---
+
 ## 附：ticket 统计
 
 | 阶段 | 编号 | 数量 |
@@ -3123,8 +3189,8 @@ P-16（TRACKER 未闭合项）：同一份后端日志里 `Queued event` **168**
 | 追加 · 缺陷（T49 复核衍生） | T51–T54 | 4 |
 | 追加 · 缺陷（§4 总门禁衍生） | T55–T56 | 2 |
 | 追加 · 未闭合项收口（第二轮，2026-09-16） | T57–T60 | 4 |
-| 追加 · 未闭合项收口（第三轮，2026-09-16） | T61 | 1 |
-| **合计** | | **61** |
+| 追加 · 未闭合项收口（第三轮，2026-09-16） | T61–T62 | 2 |
+| **合计** | | **62** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
