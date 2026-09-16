@@ -98,17 +98,21 @@ def _researching_state():
 
 
 def _graph_with_scout(scout, monkeypatch):
-    graph = object.__new__(DeepResearchGraph)
-    for attribute in (
-        "architect",
-        "scout",
-        "data_analyst",
-        "wizard",
-        "critic",
-        "writer",
-    ):
-        setattr(graph, attribute, scout)
-    graph.checkpoint_service = None
+    # 走真实构造器：六个角色全部注入同一个替身（与原 object.__new__ 写法等价）
+    graph = DeepResearchGraph(
+        agents={
+            attribute: scout
+            for attribute in (
+                "architect",
+                "scout",
+                "data_analyst",
+                "wizard",
+                "critic",
+                "writer",
+            )
+        },
+        checkpoint_service=None,
+    )
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module, "is_research_cancelled", lambda _session_id: False

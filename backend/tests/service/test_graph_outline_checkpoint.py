@@ -75,11 +75,20 @@ class RecordingCheckpointService:
         return True
 
 
+_AGENT_ROLES = ("architect", "scout", "data_analyst", "wizard", "critic", "writer")
+
+
+def _graph(agent, checkpoint_service):
+    """走真实构造器：六个角色全部注入同一个替身（该阶段用不到的不会被访问）。"""
+    return DeepResearchGraph(
+        agents={role: agent for role in _AGENT_ROLES},
+        checkpoint_service=checkpoint_service,
+    )
+
+
 @pytest.mark.asyncio
 async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
-    graph = object.__new__(DeepResearchGraph)
-    graph.architect = FakeArchitect()
-    graph.checkpoint_service = FailingCheckpointService()
+    graph = _graph(FakeArchitect(), FailingCheckpointService())
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,
@@ -108,9 +117,7 @@ async def test_failed_checkpoint_never_emits_outline_approval(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_completion_saves_final_state_and_ui_before_emitting_report(monkeypatch):
-    graph = object.__new__(DeepResearchGraph)
-    graph.critic = CompletingCritic()
-    graph.checkpoint_service = RecordingCheckpointService()
+    graph = _graph(CompletingCritic(), RecordingCheckpointService())
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,
@@ -150,9 +157,7 @@ async def test_completion_saves_final_state_and_ui_before_emitting_report(monkey
 
 @pytest.mark.asyncio
 async def test_failed_final_checkpoint_never_emits_research_complete(monkeypatch):
-    graph = object.__new__(DeepResearchGraph)
-    graph.critic = CompletingCritic()
-    graph.checkpoint_service = FailingCheckpointService()
+    graph = _graph(CompletingCritic(), FailingCheckpointService())
     monkeypatch.setattr(graph_module, "clear_cancel_flag", lambda _session_id: None)
     monkeypatch.setattr(
         graph_module,

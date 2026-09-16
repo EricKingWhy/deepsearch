@@ -164,9 +164,15 @@ def test_graph_run_wires_kb_name_into_initial_state(monkeypatch):
 
     monkeypatch.setattr(graph_module, "create_initial_state", spy_create_initial_state)
 
-    # 不走 __init__（它会真实构造全部 agent）；run() 首个 yield 前只用到 max_iterations
-    graph = object.__new__(DeepResearchGraph)
-    graph.max_iterations = 3
+    # 走真实构造器：run() 首个 yield 前不触碰任何 agent，故六个角色给占位对象即可
+    graph = DeepResearchGraph(
+        max_iterations=3,
+        agents={
+            role: object()
+            for role in ("architect", "scout", "data_analyst", "wizard", "critic", "writer")
+        },
+        checkpoint_service=None,
+    )
 
     async def first_event():
         agen = graph.run(

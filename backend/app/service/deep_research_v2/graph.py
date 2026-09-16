@@ -99,59 +99,79 @@ class DeepResearchGraph:
         llm_base_url: str = None,
         search_api_key: str = None,
         model: str = None,
-        max_iterations: int = None
+        max_iterations: int = None,
+        *,
+        agents: Dict[str, Any] = None,
+        checkpoint_service: Any = None,
     ):
         """
         初始化工作流
 
-        所有参数都可从配置文件读取，传入的参数会覆盖配置
+        所有参数都可从配置文件读取，传入的参数会覆盖配置。
+
+        构造缝（测试注入协作者的入口）：
+        - `agents`：六个 agent 的**完整**映射，键为 architect / scout / data_analyst /
+          wizard / critic / writer。给了它就**不再读配置、不再自建 agent** ——
+          测试因此可以直接走构造器，不必 `object.__new__` 绕过。
+        - `checkpoint_service`：检查点服务；仅在注入 `agents` 时生效。
         """
-        # 获取配置
-        config = get_config()
+        if agents is None:
+            # 获取配置
+            config = get_config()
 
-        # 使用传入参数或配置默认值
-        self.llm_api_key = llm_api_key or config.api_key
-        self.llm_base_url = llm_base_url or config.base_url
-        self.search_api_key = search_api_key or config.search_api_key
-        self.model = model or config.default_model
-        self.max_iterations = max_iterations or config.research.max_iterations
+            # 使用传入参数或配置默认值
+            self.llm_api_key = llm_api_key or config.api_key
+            self.llm_base_url = llm_base_url or config.base_url
+            self.search_api_key = search_api_key or config.search_api_key
+            self.model = model or config.default_model
+            self.max_iterations = max_iterations or config.research.max_iterations
 
-        # 初始化各个 Agent（使用各自配置的模型）
-        self.architect = ChiefArchitect(
-            self.llm_api_key, self.llm_base_url,
-            config.agents.architect.model
-        )
-        self.scout = DeepScout(
-            self.llm_api_key, self.llm_base_url, self.search_api_key,
-            config.agents.scout.model
-        )
-        self.data_analyst = DataAnalyst(
-            self.llm_api_key, self.llm_base_url,
-            config.agents.data_analyst.model
-        )
-        self.wizard = CodeWizard(
-            self.llm_api_key, self.llm_base_url,
-            config.agents.wizard.model
-        )
-        self.critic = CriticMaster(
-            self.llm_api_key, self.llm_base_url,
-            config.agents.critic.model
-        )
-        self.writer = LeadWriter(
-            self.llm_api_key, self.llm_base_url,
-            config.agents.writer.model
-        )
+            # 初始化各个 Agent（使用各自配置的模型）
+            self.architect = ChiefArchitect(
+                self.llm_api_key, self.llm_base_url,
+                config.agents.architect.model
+            )
+            self.scout = DeepScout(
+                self.llm_api_key, self.llm_base_url, self.search_api_key,
+                config.agents.scout.model
+            )
+            self.data_analyst = DataAnalyst(
+                self.llm_api_key, self.llm_base_url,
+                config.agents.data_analyst.model
+            )
+            self.wizard = CodeWizard(
+                self.llm_api_key, self.llm_base_url,
+                config.agents.wizard.model
+            )
+            self.critic = CriticMaster(
+                self.llm_api_key, self.llm_base_url,
+                config.agents.critic.model
+            )
+            self.writer = LeadWriter(
+                self.llm_api_key, self.llm_base_url,
+                config.agents.writer.model
+            )
 
-        logger.info("DeepResearchGraph initialized with models:")
-        logger.info(f"  - Architect: {config.agents.architect.model}")
-        logger.info(f"  - Scout: {config.agents.scout.model}")
-        logger.info(f"  - DataAnalyst: {config.agents.data_analyst.model}")
-        logger.info(f"  - Wizard: {config.agents.wizard.model}")
-        logger.info(f"  - Critic: {config.agents.critic.model}")
-        logger.info(f"  - Writer: {config.agents.writer.model}")
+            logger.info("DeepResearchGraph initialized with models:")
+            logger.info(f"  - Architect: {config.agents.architect.model}")
+            logger.info(f"  - Scout: {config.agents.scout.model}")
+            logger.info(f"  - DataAnalyst: {config.agents.data_analyst.model}")
+            logger.info(f"  - Wizard: {config.agents.wizard.model}")
+            logger.info(f"  - Critic: {config.agents.critic.model}")
+            logger.info(f"  - Writer: {config.agents.writer.model}")
 
-        # 检查点服务
-        self.checkpoint_service = get_checkpoint_service()
+            # 检查点服务
+            self.checkpoint_service = get_checkpoint_service()
+        else:
+            # 注入路径：协作者全部由调用方提供，不读配置；密钥/模型参数按传入值（可为 None）
+            self.llm_api_key = llm_api_key
+            self.llm_base_url = llm_base_url
+            self.search_api_key = search_api_key
+            self.model = model
+            self.max_iterations = max_iterations
+            for role in ("architect", "scout", "data_analyst", "wizard", "critic", "writer"):
+                setattr(self, role, agents[role])
+            self.checkpoint_service = checkpoint_service
 
         # 构建图
         # 注意：这里构建的 LangGraph 图对象当前**不被 run() 使用**（run() 固定走
