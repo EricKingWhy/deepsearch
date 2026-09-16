@@ -2,25 +2,30 @@
 
 复现依据：`.runlogs/t49_backend8001c.log`
 
-  - 10:25:03.786 在 `service.py:227  yield self._format_sse(event)` 处被抛入
+  - `10:25:03.786` 在 `service.py:227  yield self._format_sse(event)` 处被抛入
     `GeneratorExit` —— Starlette 检测到 SSE 客户端断连后关闭了响应生成器；
-  - 此后 DeepScout 的 `asyncio.create_task(execute_agent())` 任务**脱管继续运行约 6 分钟**
-    （日志一路跑到 10:31:45），期间每条事件都因 `_run_simplified` 的 finally 已把
-    `state["_message_queue"]` 置为 None 而落到 `[SSE] No queue available`（全文 246 条），
-    事件全部丢失；`search_results` 丢失最集中。
+  - 此后 DeepScout 的 `asyncio.create_task(execute_agent())` 任务**脱管继续运行**
+    （`e9e2b878` 续跑 6m42s：`10:25:04` → `10:31:45`），期间每条事件都因
+    `_run_simplified` 的 finally 已把 `state["_message_queue"]` 置为 None 而落到
+    `[SSE] No queue available`（该会话 95 条；全文合计 246 条 = 本会话 95 + `50c3dde7`
+    151，后者是**同一机制**但断连未留下 contextvar 异常记录），`search_results` 丢得最集中
+    （全文 120 = 43 + 77）。
 
 本用例不依赖任何基础设施（不起 Postgres/Redis/Milvus，也不调 LLM）：用一个替身 agent
 驱动 `_run_simplified`，在流式阶段 `aclose()` 模拟断连，断言替身 agent 收到取消，
-且不再产生「无队列」事件。
+且**真实 `BaseAgent.add_message`** 不再产生「无队列」告警。
 """
 
 import asyncio
+import logging
 
 import pytest
 
 import service.deep_research_v2.agents as agents_package
 
 
+# 兜底：真实 agent 类缺失时（精简环境）给 `agents` 包占位名，保证 graph 模块可导入。
+# 本机真实类存在，因此这一段在正常环境下不产生任何副作用。
 for agent_name in (
     "ChiefArchitect",
     "DeepScout",
@@ -34,28 +39,35 @@ for agent_name in (
 
 
 import service.deep_research_v2.graph as graph_module
+from service.deep_research_v2.agents.base import BaseAgent
 from service.deep_research_v2.graph import DeepResearchGraph
 
 
+class NoQueueWarningRecorder(logging.Handler):
+    """只收集 `[SSE] No queue available` 告警 —— 即 P-16 的原始症状。"""
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.messages = []
+
+    def emit(self, record):
+        message = record.getMessage()
+        if "No queue available" in message:
+            self.messages.append(message)
+
+
 class StreamingScout:
-    """替身 agent：与 `BaseAgent.add_message` 同构地持续把事件推进实时队列。"""
+    """替身 agent：复用**真实**的 `BaseAgent.add_message` 向实时队列推事件。"""
 
     name = "DeepScout"
     role = "scout"
+    logger = logging.getLogger("Agent.DeepScout")
+    # 绑定基类的真实实现，避免在测试里重实现被测逻辑（否则断言可能恒真）。
+    add_message = BaseAgent.add_message
 
     def __init__(self):
         self.cancelled = False
         self.completed = False
-        self.dropped_events = 0
-
-    def add_message(self, state, event_type, content):
-        message = {"type": event_type, "agent": self.name, "content": content}
-        state["messages"].append(message)
-        queue = state.get("_message_queue")
-        if queue is not None:
-            queue.put_nowait(message)
-        else:
-            self.dropped_events += 1
 
     async def process(self, state):
         try:
@@ -110,24 +122,33 @@ async def test_closing_stream_cancels_inflight_agent(monkeypatch):
     graph = _graph_with_scout(scout, monkeypatch)
     state = _researching_state()
 
-    stream = graph._run_simplified(state)
-    received = 0
-    async for event in stream:
-        if event.get("type") == "search_results":
-            received += 1
-            if received >= 2:
-                break
-    assert received >= 2, "预期在 agent 流式阶段收到事件"
+    recorder = NoQueueWarningRecorder()
+    scout.logger.addHandler(recorder)
+    try:
+        stream = graph._run_simplified(state)
+        received = 0
+        async for event in stream:
+            if event.get("type") == "search_results":
+                received += 1
+                if received >= 2:
+                    break
+        assert received >= 2, "预期在 agent 流式阶段收到事件"
 
-    await stream.aclose()  # 模拟 SSE 客户端断连
-    await asyncio.sleep(0.05)  # 给取消/脱管任务留出推进窗口
+        await stream.aclose()  # 模拟 SSE 客户端断连
+        # 给取消/脱管任务留出推进窗口：足够让一个**未被取消**的任务再推若干条事件
+        # （替身每 2ms 推一条），从而让下面的断言具备判别力。
+        await asyncio.sleep(0.05)
 
-    cancelled = scout.cancelled
-    completed = scout.completed
-    dropped = scout.dropped_events
-    assert (cancelled, completed, dropped) == (True, False, 0), (
-        f"流被关闭后：cancelled={cancelled}（应 True，否则任务脱管）、"
-        f"completed={completed}（应 False）、"
-        f"dropped_events={dropped}（应 0；非 0 即 P-16 观测到的大量 "
-        "`[SSE] No queue available`）"
-    )
+        cancelled = scout.cancelled
+        completed = scout.completed
+        dropped = list(recorder.messages)
+        assert (cancelled, completed) == (True, False), (
+            f"流被关闭后应取消在飞任务：cancelled={cancelled}（应 True）、"
+            f"completed={completed}（应 False）"
+        )
+        assert dropped == [], (
+            f"流关闭后不应再产生 `[SSE] No queue available`（P-16 症状），"
+            f"实际 {len(dropped)} 条，前 3 条：{dropped[:3]}"
+        )
+    finally:
+        scout.logger.removeHandler(recorder)
