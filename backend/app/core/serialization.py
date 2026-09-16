@@ -26,4 +26,3 @@ def serialize_event(event_data: Dict[str, Any]) -> str:
     except Exception as e:
         logging.error(f"Failed to serialize event: {e}")
         return json.dumps({"type": "error", "content": f"Serialization error: {e}"})
-
