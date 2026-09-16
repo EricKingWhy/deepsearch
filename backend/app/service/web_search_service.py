@@ -43,8 +43,8 @@ class WebSearchService:
         
         Args:
             query: Search query text
-            gl: Google country code (default: "us")
-            hl: Language code (default: "en")
+            gl: Google country code (default: "cn")
+            hl: Language code (default: "zh-cn")
             autocorrect: Whether to enable autocorrection (default: True)
             page: Search result page number (default: 1)
             search_type: Type of search (default: "search")
