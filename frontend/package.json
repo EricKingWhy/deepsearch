@@ -21,6 +21,7 @@
     "axios": "^1.7.9",
     "classnames": "^2.5.1",
     "dayjs": "^1.11.13",
+    "dompurify": "^3.4.15",
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.5",
     "lodash-es": "^4.17.21",
