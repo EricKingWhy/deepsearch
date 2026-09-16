@@ -3601,7 +3601,40 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 - 新增一条测试：`数组 / 字符串 / None / 混合` 四种输入都产出**同一形状**的 fact；
 - `pytest tests -q` 全绿；`ruff check app tests` → All checks passed。
 
-> issue [#206](https://github.com/EricKingWhy/deepsearch/issues/206)　**状态**：TODO
+> issue [#206](https://github.com/EricKingWhy/deepsearch/issues/206)　**状态**：DONE（`27cc407` + `5ec21cb`，PR #214 / merge `17886c6`）
+
+> **实施与验收（收口记录）**
+>
+> **唯一构造口**：模块级 `build_fact_entry` / `build_data_point`（与 `normalize_source_url` 同址）。
+> `source_url` 在构造口内归一；三条写入路径的差异改为**关键字参数注入**
+> （`section_id` / `is_supplementary` / `search_depth` / `search_type`），输出键集是三条路径的**并集**
+> —— 形状容忍度只增不减。`_is_duplicate_fact` 与假设证据改读构造口产出的 `entry`，归一只有一处来源。
+>
+> **验收对照（票面第 1 条：grep 前后）**：构造模式源码出现次数 **3 → 1**
+> （`grep -c '"id": f"fact_{uuid.uuid4().hex[:8]}"'`）；`data_point` 同形 **2 → 1**；
+> 写入边界上的归一赋值点 `source_url = normalize_source_url(...)` **3 → 0**（全部收进构造口）。
+>
+> **验收对照（票面第 2/3/4 条：测试）**：删除两条 `src.count(...) == 3 / == 2` 的源码计数断言（穿透接口），
+> 改为 `test_construction_port_is_single_and_public`（断言构造口**唯一且公共可导入**，不按调用点数量守）；
+> 聚合侧的检查点旧数组数据改由真实 `process()` 路径验证；新增
+> `test_four_source_url_shapes_yield_identical_fact_shape`（数组 / 字符串 / `None` / 混合 → 同一键集 +
+> 可哈希字符串）与 `test_all_three_write_paths_share_one_fact_shape`（三条写入路径产出的 fact 键集必须完全一致
+> —— 收拢前三条键集互不相同，故该断言**在收拢前必红**）。
+>
+> **负向对照（`.runlogs/t69_negative_control.py`，字节级定点变异 + 从 baseline 精确还原）**：
+> 构造口不再归一 `source_url` → **3 failed**；深度路径恢复一份手抄构造 → **2 failed**；
+> `data_point` 不再补 `name`/`value` 空串 → **1 failed**；每次变异后还原并复跑全绿，
+> harness 末尾断言文件字节与 baseline 一致。**M3 首跑逃逸**：原用例传的 dict 已带 `name`/`value`，
+> 缺省分支根本没生效 —— 即那条锁本是装饰，补「空 dict」触发后才咬人。
+>
+> **验证**：`pytest tests -q` → **527 passed / 17 deselected**（基线 525，+2）；`ruff check app tests` →
+> All checks passed；改动文件（**工作树**）CRLF / **git 侧** LF（`core.autocrlf=true`，全仓同形）；
+> CI backend pass 1m8s / frontend pass 57s；`gh issue view 206` → **CLOSED**（核验而非声明）。
+>
+> **顺带观察（不立项、不顺手改）**：`_supplementary_research()` 的 `sources_count` 归一的是切片
+> `state["facts"][-new_facts_count:]` —— 该切片**只能**包含本次由构造口新写的 fact（已归一），
+> 故这层包裹当前是**防御性冗余**；保留它符合本票「容忍度只增不减」的有意选择，不属缺陷。
+
 
 ---
 
