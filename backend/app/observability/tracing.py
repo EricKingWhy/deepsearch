@@ -175,6 +175,12 @@ class TracingManager:
             )
             raise
         finally:
+            # 这层 try/except 只照得到 manager.__exit__ 自己抛出的异常。OTel 自身
+            # ContextVar 的 detach 失败在库内就被吞掉：opentelemetry/context/__init__.py
+            # 的 detach() 把 _RUNTIME_CONTEXT.detach(token) 包在 except Exception 里并
+            # logger.exception("Failed to detach context") —— 该 ERROR 会在 __exit__
+            # 执行期间由 OTel 打出，但异常不外抛，本包裹照不到；也不要试图在这里再包
+            # 一层（无效）。独立复现见 TRACKER P-20 / .runlogs/t63_otel_repro.py。
             try:
                 manager.__exit__(*error_info)
             except Exception:
@@ -224,6 +230,7 @@ class TracingManager:
             wrapper.update(level="ERROR", status_message=str(error_info[1])[:500])
             raise
         finally:
+            # 同上：OTel 自身的 detach ERROR 在库内已被 catch，本包裹照不到（P-20）。
             try:
                 manager.__exit__(*error_info)
             except Exception:
