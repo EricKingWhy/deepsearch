@@ -3742,6 +3742,101 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 
 
 ---
+
+## T71 — §4 总门禁（追加-8 终审）findings 修复
+
+- **类型**：fix / docs（含 1 处**协议**修正与 1 处**流程**记账）　**阶段**：§4 总门禁（追加-8 终审）　**依赖**：无　**标记**：无
+
+### 背景
+
+`docs/hardening/LOOP-PROTOCOL.md` §4 总门禁：全部 ticket 完成后，对**整条分支**跑最终全量 `/code-review`，
+**fixed point = 计划起始基线 `9342913`**（§4.1 明令**不得**写成 `main` / `origin/main`）。
+本票是**追加-8（架构评审深化，T65–T70）终审**的产物。
+
+**审查规模**：`9342913..HEAD` = **329 commits / 176 files / +15581 −1967**；
+重点复核本轮未把关面 `e370735..HEAD` = **12 files / +656 −155**（T69 + T70）。
+双轴（Standards / Spec）并行子代理独立取证、所有可执行声明实跑复核。
+
+**门禁验收复核**：T69 / T70 全部验收条目**实测 PASS、零回归**；issue #202–#207 全部真实 `CLOSED`、
+PR #208–#216 全部真实 `MERGED` 且 `mergeCommit.oid` 与台账逐字一致 —— 无未核验的副作用声明。
+
+### 改什么
+
+7 条 findings，全部为「一眼能定位」级，按 §3 第 2 条**直接最小修复、不停顿不询问**：
+
+| # | 轴 | 严重度 | 内容 |
+|---|----|--------|------|
+| F1 | 标准 | 中 | `request.test.ts` 的 `_data` 断言**恒真**（该属性从来只是 `.d.ts` 类型声明）→ 删除 |
+| F2 | 标准 / 规格 | 中 | `build_data_point` docstring 自称「唯一」**失实**（`data_analyst.py:351-353` 也直写 LLM data_point）→ 收窄措辞 + 立 **P-24** |
+| F3 | 规格 | 低 | T70 理由「全仓只有两处 `"status": "success"`」实测 **3 处** → 记账勘误 |
+| F4 | **协议** | 中 | 台账 **4 处** `fixed point = main` 违反 §4.1 → 全改显式 `9342913`；并刷新行 17 陈旧字段值 |
+| F5 | 规格 | 观察 | 验收命令短路径 `api/news.ts` 跑不通 → 2 处补全 |
+| F6 | 规格 | 低 | 把 P-19 已判「证据强度为零」的 `tsc --noEmit` 当门禁证据（**已关闭问题的口径回归**）→ 3 处改真实命令 |
+| F7 | **流程** | 中 | `8fed36f` 的 message 声明「行 17 字段值已改」而 **diff 里没有该改动**（P-08 文档回退 + 落账未回读）→ 收口回填修正，如实记账，历史 commit 不追改 |
+
+### 关键取舍
+
+- **只收窄措辞，不越界改行为**（F2）：收拢 `data_analyst.py:351-353` 与股票块会改动**另一个 agent**
+  的运行时行为，超出 T69 票面「删除 scout.py 手抄的 2 份 `data_point`」的声明范围 —— 与 T67 F4
+  处理「`sse_frame` 自称全仓唯一」的方式一致：**收窄 + 立未闭合项**，不在终审里做架构变更。
+- **F6 两轴均漏报**：子代理都按 `-p tsconfig.app.json` 实跑并核对了「0 errors」**数值**，数值一致，
+  故未注意台账里记的**命令字符串**是空真形态 —— 属「数值对、口径错」，与 P-19 原始病灶同型。
+  由主执行者在复核 F5 读第 900 行全文时连带发现，**同一次门禁内自查补漏**。
+- **F7 是门禁把手术刀对准自己**：写入静默失败（P-08）本身是环境性缺陷，但它成为 finding 是因为
+  **落账时以「工具报成功」代替了回读** —— 与 §4 第一轮 #17「未核验的副作用声明」同族。
+
+### 风险
+
+F1 删测试有「降低覆盖率」的外观风险 —— 但删掉的是**恒真断言**，它本就不覆盖任何行为；
+其行为面（响应体不被改写）由同文件另一条用例覆盖，且那条的负向对照 M1 实测咬人。净覆盖不降。
+
+### 验收
+
+- `pytest tests -q` → **528 passed / 17 deselected**；`ruff check app tests` → **All checks passed**；
+- `npx vitest run` → **95 passed / 11 files**（原 96，**恰减 F1 删除的 1 例恒真用例**）；
+  `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**；`npx eslint .` → **0 problems**；
+- `grep -c 'fixed point = main' docs/hardening/TRACKER.md` → **0**；
+- `grep -rn '_data' frontend/src/api/` → 仅说明性注释，无断言；
+- 改动文件工作树 CRLF。
+
+> issue [#217](https://github.com/EricKingWhy/deepsearch/issues/217)　**状态**：DONE（`97ee745` + `5e79ae6` + `3c9e0f9` + `8fed36f`，PR #218 / merge `75b2dfb`）
+
+> **实施与验收（收口记录）**
+>
+> **改法（4 commit，一 finding 一族）**：
+> ① `97ee745` **F1** —— 删 `request.test.ts` 的 `_data` 用例，原地留注释说明删除理由
+>   （`_data` 是**类型级**事实，运行时无从断言）与看守分工；
+> ② `5e79ae6` **F2** —— `build_data_point` docstring 收窄为「`scout.py` 内唯一」+ 显式列出两处残余 writer
+>   及其实测后果（下游一律 `.get()` 带缺省，非运行时缺陷）；`build_fact_entry` 的「唯一」**经复核成立**
+>   （`state["facts"].append` 全仓仅 3 处、全经该口），不动；
+> ③ `3c9e0f9` **F3 + F6（票面侧）** —— T70 的 status 计数勘误（`grep -rn '"status": "success"' backend/app/`
+>   实测 3 处，第三处 `core/langfuse_client.py:105` 是 Langfuse trace、非 HTTP 信封）+ 验收命令改真实
+>   `npx tsc -p tsconfig.app.json --noEmit`（并注明为何不用空真形态）；
+> ④ `8fed36f` **F4 + F5 + F6（台账侧）** —— 4 处 `fixed point = main` → `9342913`；行 17 字段值刷新；
+>   2 处短路径补全；2 处 tsc 口径修正。
+>
+> **F6 的补充记账**：已在 issue #217 追加评论（含「两轴为何都漏报」与「后续门禁提示词应要求复核
+> **命令字符串本身**、不能只核对数值」的加固项）。
+>
+> **F7 的记账（门禁自查）**：`8fed36f` 的 message 声明「第 17 行字段值已推进为 `d86066c`」，
+> 但**同一 commit 的 `git show` diff 里没有这个改动** —— 行 17 字段值仍是 `187cb90`。
+> 成因是 **P-08「文档回退」**（写入静默失败，编辑器报成功而文件未变）；但它成为 finding 是因为
+> **落账时以「工具报成功」代替了 `git diff` 回读**。处置：本收口回填把字段值改为终态 `75b2dfb` 并
+> 如实记账；**历史 commit 不追改**（与 T63 对 `1ea758f` message 失实的处理一致）。
+> **加固项**：commit 前必须 `git diff --stat` + 逐条 marker 回读，尤其对「一次性长文替换」型的台账改动。
+>
+> **验证（实跑，非声明）**：`pytest tests -q` → **528 passed / 17 deselected**；`ruff check app tests`
+> → **All checks passed**；`npx vitest run` → **95 passed / 11 files**（原 96，恰减 F1 的 1 例）；
+> `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**；`npx eslint .` → **0 problems**；
+> `grep -c 'fixed point = `main`' docs/hardening/TRACKER.md` → **0**；
+> 改动文件工作树 CRLF（`grep -c $'\r'` == `wc -l`）、git 对象 LF。
+> CI backend **pass 1m2s** / frontend **pass 1m9s**；`gh issue view 217` → **CLOSED (COMPLETED)**；
+> `gh pr view 218` → **MERGED** `75b2dfb`。
+
+---
+
+
+---
 ---
 
 ## 附：ticket 统计
@@ -3763,7 +3858,8 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 | 追加 · §4 总门禁（第三轮）修复（2026-09-16） | T63 | 1 |
 | 追加 · 鉴权锁目录级全覆盖 + CI 揪出的依赖顺序修复（2026-09-16） | T64 | 1 |
 | 架构评审深化（2026-09-16，8 候选取 6 `Strong`） | T65–T70 | 6 |
-| **合计** | | **70** |
+| §4 总门禁（追加-8 终审）修复（2026-09-16） | T71 | 1 |
+| **合计** | | **71** |
 
 **其中决策票（`needs-decision`，不进入自动循环）**：T18、T19、T20、T37、T41、T44、T45、T47 —— 共 8 张。
 **`needs-human`**：T10 —— 1 张。
