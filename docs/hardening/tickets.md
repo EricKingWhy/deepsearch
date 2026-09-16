@@ -3611,7 +3611,7 @@ scout 是检索阶段核心。归一化路径对既有输入形态的容忍度�
 > —— 形状容忍度只增不减。`_is_duplicate_fact` 与假设证据改读构造口产出的 `entry`，归一只有一处来源。
 >
 > **验收对照（票面第 1 条：grep 前后）**：构造模式源码出现次数 **3 → 1**
-> （`grep -c '"id": f"fact_{uuid.uuid4().hex[:8]}"'`）；`data_point` 同形 **2 → 1**；
+> （`grep -Fc '"id": f"fact_{uuid.uuid4().hex[:8]}"' backend/app/service/deep_research_v2/agents/scout.py` —— **必须 `-F`**：裸 `grep`（BRE）把 `[:8]` 当括号表达式、实测读 **0**；命令亦须限定该文件，同一字面量也出现在测试文件里，见第 3 批 F4）；`data_point` 同形 **2 → 1**；
 > 写入边界上的归一赋值点 `source_url = normalize_source_url(...)` **3 → 0**（全部收进构造口）。
 >
 > **验收对照（票面第 2/3/4 条：测试）**：删除两条 `src.count(...) == 3 / == 2` 的源码计数断言（穿透接口），
